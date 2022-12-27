@@ -1,0 +1,44 @@
+ActivityVirtues:
+  Rest:
+    - leisure-time
+  Gambling:
+    - wealth
+    - excitement
+    - adventure
+    - lust
+  Shopping:
+    - material things
+    - excitement
+    - leisure-time
+  Recreation:
+    - health
+    - excitement
+  Studying:
+    - knowledge
+    - power
+    - ambition
+  Reading:
+    - knowledge
+    - power
+    - leisure-time
+  Errands:
+    - reliability
+    - health
+    - family
+  Eating:
+    - socializing
+    - health
+    - family
+  Socializing:
+    - socializing
+    - excitement
+    - friendship
+  Drinking:
+    - socializing
+    - friendship
+  Relaxing:
+    - health
+    - tranquility
+    - leisure-time
+  Napping:
+    - leisure-time
