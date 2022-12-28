@@ -1,17 +1,22 @@
-from dataclasses import dataclass
 import pathlib
+from dataclasses import dataclass
 from typing import Any, Dict, List
-from orrery.activity import ActivityManager
 
-from orrery.components.shared import Actor, Location, Name
-from orrery.ecs import Component, ComponentBundle, GameObject, World
-from orrery.loaders import OrreryYamlLoader, load_activity_virtues
 from orrery import Orrery
-from orrery.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
-from orrery.relationship import Relationship, RelationshipManager, RelationshipModifier
-from orrery.social_rule import SocialRule, SocialRuleLibrary
-from orrery.status import RelationshipStatusBundle
-from orrery.traits import Trait, TraitManager
+from orrery.core.activity import ActivityManager
+from orrery.components.character import GameCharacter
+from orrery.components.shared import Location, Name
+from orrery.core.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
+from orrery.core.ecs import Component, ComponentBundle, GameObject, World
+from orrery.loaders import OrreryYamlLoader, load_activity_virtues
+from orrery.core.relationship import (
+    Relationship,
+    RelationshipManager,
+    RelationshipModifier,
+)
+from orrery.core.social_rule import SocialRule, SocialRuleLibrary
+from orrery.core.status import RelationshipStatusBundle
+from orrery.core.traits import Trait, TraitManager
 from orrery.utils.common import (
     add_character,
     add_location,
@@ -21,8 +26,7 @@ from orrery.utils.common import (
     get_relationship,
     pprint_gameobject,
 )
-from orrery.virtues import VirtueVector
-
+from orrery.core.virtues import VirtueVector
 
 #######################################
 # Sample Components
@@ -59,7 +63,11 @@ class HumanCharacter(ComponentBundle):
     def __init__(self, first_name: str, last_name: str, age: int) -> None:
         super().__init__(
             {
-                Actor: {"first_name": first_name, "last_name": last_name, "age": age},
+                GameCharacter: {
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "age": age,
+                },
                 RelationshipManager: {},
                 TraitManager: {},
                 VirtueVector: {},
@@ -71,7 +79,11 @@ class RobotCharacter(ComponentBundle):
     def __init__(self, first_name: str, last_name: str, age: int) -> None:
         super().__init__(
             {
-                Actor: {"first_name": first_name, "last_name": last_name, "age": age},
+                GameCharacter: {
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "age": age,
+                },
                 RelationshipManager: {},
                 TraitManager: {},
                 VirtueVector: {},
@@ -168,7 +180,7 @@ def main():
             stats={
                 "Friendship": RelationshipStatConfig(changes_with_time=True),
                 "Romance": RelationshipStatConfig(changes_with_time=True),
-                "Power": RelationshipStatConfig(-50, 50, changes_with_time=False),
+                "Power": RelationshipStatConfig(min_value=-50, max_value=50, changes_with_time=False),
             }
         )
     )
@@ -176,7 +188,6 @@ def main():
     sim = Orrery(config)
 
     sim.world.register_component(Robot)
-
     sim.world.register_component(InDebt)
 
     sim.world.get_resource(SocialRuleLibrary).add(VirtueCompatibilityRule())
@@ -214,7 +225,6 @@ def main():
     add_relationship(sim.world, delores, charlotte)
     get_relationship(sim.world, delores, charlotte)["Friendship"] += -1
     get_relationship(sim.world, delores, charlotte)["Friendship"] += 1
-    get_relationship(sim.world, delores, charlotte).tags.add("Friends")
 
     add_relationship_status(
         sim.world, delores, InDeptStatus(delores.id, charlotte.id, 500)
@@ -224,7 +234,6 @@ def main():
     get_relationship(sim.world, delores, william)["Romance"] += 4
     get_relationship(sim.world, delores, william)["Romance"] += -7
     get_relationship(sim.world, delores, william)["Interaction"] += 1
-    get_relationship(sim.world, delores, william).tags.add("Enemies")
 
     add_relationship(sim.world, william, delores)["Interaction"] += 1
     add_trait(sim.world, william, hates_robots)

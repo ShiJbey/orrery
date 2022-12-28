@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Type, Tuple
+from typing import Any, Dict, Tuple, Type
 
-from orrery.ecs import ISystem, Component, ComponentBundle
+from orrery.core.ecs import Component, ComponentBundle, ISystem
 
 
 @dataclass

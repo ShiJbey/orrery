@@ -1,6 +1,71 @@
+from dataclasses import dataclass
 from typing import Any, Dict, Set
 
-from orrery.ecs import Component
+from orrery.core.ecs import Component
+
+
+class Active(Component):
+    """Tags a GameObject as active within the simulation"""
+
+    pass
+
+
+class FrequentedLocations(Component):
+
+    __slots__ = "locations"
+
+    def __init__(self, locations: Set[int]) -> None:
+        super(Component, self).__init__()
+        self.locations: Set[int] = locations
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"locations": list(self.locations)}
+
+    def __contains__(self, location: int) -> bool:
+        return location in self.locations
+
+    def __str__(self) -> str:
+        return super().__repr__()
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.locations.__repr__()})"
+
+
+class Building(Component):
+    """
+    Building components are attached to structures (like businesses and residences)
+    that are currently present in the town.
+
+    Attributes
+    ----------
+    building_type: str
+        What kind of building is this
+    lot: int
+        ID of the lot this building is on
+    """
+
+    __slots__ = "building_type", "lot", "settlement"
+
+    def __init__(self, building_type: str, lot: int, settlement: int) -> None:
+        super(Component, self).__init__()
+        self.building_type: str = building_type
+        self.lot: int = lot
+        self.settlement: int = settlement
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "building_type": self.building_type,
+            "lot": self.lot,
+            "settlement": self.settlement,
+        }
+
+    def __repr__(self):
+        return "{}(settlement={}, building_type={}, lot={})".format(
+            self.__class__.__name__,
+            self.settlement,
+            self.building_type,
+            self.lot,
+        )
 
 
 class Name(Component):
@@ -13,7 +78,7 @@ class Name(Component):
         self.name: str = name
 
     def to_dict(self) -> Dict[str, Any]:
-        return {**super().to_dict(), "name": self.name}
+        return {"name": self.name}
 
     def __str__(self) -> str:
         return self.name
@@ -30,31 +95,17 @@ class Location(Component):
         super(Component, self).__init__()
         self.frequented_by: Set[int] = set()
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {"frequented_by": list(self.frequented_by)}
 
-class Actor(Component):
-    def __init__(self, first_name: str, last_name: str, age: int = 0) -> None:
-        super(Component, self).__init__()
-        self.first_name: str = first_name
-        self.last_name: str = last_name
-        self.age: float = float(age)
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.frequented_by})"
 
 
-class FrequentedLocations(Component):
-
-    __slots__ = "locations"
-
-    def __init__(self, locations: Set[int]) -> None:
-        super(Component, self).__init__()
-        self.locations: Set[int] = locations
+@dataclass
+class Position2D(Component):
+    x: float = 0.0
+    y: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
-        return {**super().to_dict(), "locations": list(self.locations)}
-
-    def __contains__(self, location: int) -> bool:
-        return location in self.locations
-
-    def __str__(self) -> str:
-        return super().__repr__()
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.locations.__repr__()})"
+        return {**super().to_dict(), "x": self.x, "y": self.y}

@@ -1,7 +1,7 @@
-from typing import Dict, Optional, List, Iterator, Any
+from typing import Any, Dict, Iterator, List, Optional
 
-from orrery.social_rule import ISocialRule
-from orrery.ecs import Component
+from orrery.core.ecs import Component
+from orrery.core.social_rule import ISocialRule
 
 
 class Trait(Component):

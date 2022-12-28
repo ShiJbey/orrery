@@ -1,9 +1,8 @@
 import re
-from typing import Protocol, List, Dict, Optional
+from typing import Dict, List, Optional, Protocol
 
-
-from orrery.relationship import Relationship, IRelationshipModifier
-from orrery.ecs import World, GameObject
+from orrery.core.ecs import GameObject, World
+from orrery.core.relationship import IRelationshipModifier, Relationship
 
 
 class ISocialRule(Protocol):

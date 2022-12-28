@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Dict, Any, Set, Iterator, List
+from typing import Any, Dict, Iterator, List, Set
 
-from orrery.ecs import Component, World, IComponentFactory
+from orrery.core.ecs import Component, IComponentFactory, World
 
 
 class Activity:

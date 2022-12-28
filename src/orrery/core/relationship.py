@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple, Set, Iterator, Protocol
+from typing import Any, Dict, Iterator, Protocol, Tuple
+from enum import IntFlag, auto
 
-from orrery.ecs import Component, ISystem
+from orrery.core.ecs import Component, ISystem
 
 
 def lerp(a: float, b: float, f: float) -> float:
@@ -230,6 +231,15 @@ class SimpleRelationshipModifier:
             relationship[stat].remove_modifier(buff)
 
 
+class RelationshipTag(IntFlag):
+    Empty = auto()
+    Family = auto()
+    Parent = auto()
+    Sibling = auto()
+    Coworker = auto()
+    SignificantOther = auto()
+
+
 class Relationship:
 
     __slots__ = "_stats", "interaction_score", "tags", "active_modifiers", "_is_dirty"
@@ -240,9 +250,15 @@ class Relationship:
             **stats,
             "Interaction": self.interaction_score,
         }
-        self.tags: Set[str] = set()
+        self.tags: RelationshipTag = RelationshipTag.Empty
         self.active_modifiers: Dict[str, IRelationshipModifier] = {}
         self._is_dirty = False
+
+    def add_tags(self, tags: RelationshipTag) -> None:
+        self.tags |= tags
+
+    def remove_tags(self, tags: RelationshipTag) -> None:
+        self.tags ^= tags
 
     def add_modifier(self, modifier: IRelationshipModifier) -> None:
         self.active_modifiers[modifier.get_uid()] = modifier

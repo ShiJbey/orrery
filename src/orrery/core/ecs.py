@@ -10,10 +10,10 @@ https://github.com/bevyengine/bevy
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, TypeVar
-import dataclasses
 
 import esper  # type: ignore
 from ordered_set import OrderedSet  # type: ignore

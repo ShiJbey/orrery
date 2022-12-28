@@ -6,12 +6,12 @@ Utility class and functions for importing simulation configuration data
 from __future__ import annotations
 
 import pathlib
-from typing import Any, Dict, List, Sequence, Union, Protocol
+from typing import Any, Dict, List, Protocol, Sequence, Union
 
 import yaml
 
-from orrery.ecs import World
-from orrery.config import ActivityToVirtueConfig
+from orrery.core.config import ActivityToVirtueMap
+from orrery.core.ecs import World
 
 
 class IDataLoader(Protocol):
@@ -62,7 +62,7 @@ def load_activity_virtues(world: World, data: Dict[str, Any]) -> None:
     """Load virtue mappings for activities"""
     section_data: Dict[str, List[str]] = data.get("ActivityVirtues", {})
 
-    config = world.get_resource(ActivityToVirtueConfig)
+    config = world.get_resource(ActivityToVirtueMap)
 
     for activity_name, virtue_names in section_data.items():
         config.add_by_name(world, activity_name, *virtue_names)

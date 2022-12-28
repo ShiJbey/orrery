@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import random
 import enum
+import random
 from typing import Any, Dict, List
 
 import numpy as np
 import numpy.typing as npt
 
-from orrery.ecs import Component, Optional, IComponentFactory, World
+from orrery.core.ecs import Component, IComponentFactory, Optional, World
 
 
 class Virtue(enum.Enum):
