@@ -32,7 +32,14 @@ from orrery.components.character import (
     Retired,
 )
 from orrery.components.residence import Residence, ResidenceLibrary, Resident, Vacant
-from orrery.components.shared import Active, Building, FrequentedLocations, Location, Name, Position2D
+from orrery.components.shared import (
+    Active,
+    Building,
+    FrequentedLocations,
+    Location,
+    Name,
+    Position2D,
+)
 from orrery.constants import (
     BUSINESS_UPDATE_PHASE,
     CHARACTER_UPDATE_PHASE,
@@ -154,7 +161,6 @@ class Orrery:
         self.world.add_system(BuildHousingSystem(), SETTLEMENT_UPDATE_PHASE)
         self.world.add_system(SpawnResidentSystem(), SETTLEMENT_UPDATE_PHASE)
         self.world.add_system(BuildBusinessSystem(), SETTLEMENT_UPDATE_PHASE)
-
 
         # Register components
         self.world.register_component(Active)

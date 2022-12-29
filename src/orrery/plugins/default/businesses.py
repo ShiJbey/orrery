@@ -3,7 +3,11 @@ import pathlib
 from typing import Any
 
 from orrery.core.ecs import World
-from orrery.loaders import OrreryYamlLoader, load_business_configs, load_occupation_types
+from orrery.loaders import (
+    OrreryYamlLoader,
+    load_business_configs,
+    load_occupation_types,
+)
 from orrery.orrery import Plugin
 
 _RESOURCES_DIR = pathlib.Path(os.path.abspath(__file__)).parent / "data"

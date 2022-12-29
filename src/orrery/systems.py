@@ -22,12 +22,7 @@ from orrery.components.character import (
     Pregnant,
 )
 from orrery.components.residence import Residence, ResidenceLibrary, Resident, Vacant
-from orrery.components.shared import (
-    Active,
-    Building,
-    FrequentedLocations,
-    Location,
-)
+from orrery.components.shared import Active, Building, FrequentedLocations, Location
 from orrery.core.config import CharacterConfig, OrreryConfig
 from orrery.core.ecs import ComponentBundle, GameObject, ISystem
 from orrery.core.event import Event, EventLog, EventRole
@@ -119,9 +114,7 @@ class LifeEventSystem(System):
         life_events = self.world.get_resource(LifeEventLibrary)
 
         for _, settlement in self.world.get_component(Settlement):
-            for life_event in rng.choices(
-                life_events.get_all(), k=(max(1, int(settlement.population / 2)))
-            ):
+            for life_event in rng.choices(life_events.get_all(), k=10):
                 success = life_event.try_execute_event(self.world)
                 if success:
                     self.world.clear_command_queue()
@@ -183,9 +176,7 @@ class FindEmployeesSystem(ISystem):
         occupation_types = self.world.get_resource(OccupationTypeLibrary)
         rng = self.world.get_resource(random.Random)
 
-        for _, (business, _, _, _) in self.world.get_components(
-            Business, OpenForBusiness, Building, Active
-        ):
+        for _, (business, _) in self.world.get_components(Business, OpenForBusiness):
             business = cast(Business, business)
             open_positions = business.get_open_positions()
 
@@ -279,13 +270,9 @@ class BuildHousingSystem(System):
 
             add_residence(
                 self.world,
-                create_residence(
-                    self.world,
-                    bundle,
-                    settlement_id
-                ),
+                create_residence(self.world, bundle, settlement_id),
                 settlement=self.world.get_gameobject(settlement_id),
-                lot=lot
+                lot=lot,
             )
 
 
@@ -358,19 +345,18 @@ class BuildBusinessSystem(System):
             lot = rng.choice(vacancies)
 
             # Pick random eligible business archetype
-            bundle = business_library.choose_random(self.world, self.world.get_gameobject(settlement_id))
+            bundle = business_library.choose_random(
+                self.world, self.world.get_gameobject(settlement_id)
+            )
 
             if bundle is None:
                 return
 
             business = add_business(
                 self.world,
-                create_business(
-                    self.world,
-                    bundle
-                ),
+                create_business(self.world, bundle),
                 self.world.get_gameobject(settlement_id),
-                lot=lot
+                lot=lot,
             )
 
             # Attempt to find an owner

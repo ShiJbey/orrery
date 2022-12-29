@@ -10,7 +10,13 @@ from typing import Any, Dict, List, Optional, Set
 
 from orrery.core import query
 from orrery.core.config import BusinessConfig
-from orrery.core.ecs import Component, ComponentBundle, GameObject, IComponentFactory, World
+from orrery.core.ecs import (
+    Component,
+    ComponentBundle,
+    GameObject,
+    IComponentFactory,
+    World,
+)
 from orrery.core.event import Event
 from orrery.core.settlement import Settlement
 from orrery.core.status import StatusBundle
@@ -346,7 +352,7 @@ class BusinessFactory(IComponentFactory):
     def create(self, world: World, **kwargs: Any) -> Component:
         name_pattern: str = kwargs["name"]
         owner_type: str = kwargs.get("owner_type", None)
-        employee_types: Dict[str, int] = kwargs.get("employees", {})
+        employee_types: Dict[str, int] = {**kwargs.get("employees", {})}
 
         config_name = kwargs["config"]
 
@@ -473,7 +479,9 @@ class BusinessLibrary:
 
         return matches
 
-    def choose_random(self, world: World, settlement: GameObject) -> Optional[ComponentBundle]:
+    def choose_random(
+        self, world: World, settlement: GameObject
+    ) -> Optional[ComponentBundle]:
         """
         Return all business archetypes that may be built
         given the state of the simulation
@@ -487,7 +495,8 @@ class BusinessLibrary:
 
         for config in self.get_all():
             if (
-                settlement_comp.business_counts[config.name] < config.spawning.max_instances
+                settlement_comp.business_counts[config.name]
+                < config.spawning.max_instances
                 and settlement_comp.population >= config.spawning.min_population
                 and (
                     config.spawning.year_available

@@ -10,9 +10,18 @@ from typing import Any, Dict, List, Optional, Protocol, Sequence, Type, Union
 
 import yaml
 
-from orrery.components.business import Business, BusinessLibrary, OccupationType, OccupationTypeLibrary
+from orrery.components.business import (
+    Business,
+    BusinessLibrary,
+    OccupationType,
+    OccupationTypeLibrary,
+)
 from orrery.components.character import CharacterLibrary, GameCharacter
-from orrery.components.residence import Residence, ResidenceComponentBundle, ResidenceLibrary
+from orrery.components.residence import (
+    Residence,
+    ResidenceComponentBundle,
+    ResidenceLibrary,
+)
 from orrery.core.activity import ActivityToVirtueMap
 from orrery.core.config import BusinessConfig, CharacterConfig, ResidenceConfig
 from orrery.core.ecs import Component, ComponentBundle, World
@@ -84,7 +93,7 @@ def load_occupation_types(world: World, data: Dict[str, Any]) -> None:
             OccupationType(
                 name=entry["name"],
                 level=entry.get("level", 1),
-                description=entry.get("description", "")
+                description=entry.get("description", ""),
             )
         )
 
@@ -207,7 +216,9 @@ def create_business_bundle(world: World, config: BusinessConfig) -> ComponentBun
     return ComponentBundle(components)
 
 
-def create_residence_bundle(world: World, config: ResidenceConfig) -> ResidenceComponentBundle:
+def create_residence_bundle(
+    world: World, config: ResidenceConfig
+) -> ResidenceComponentBundle:
     components: Dict[Type[Component], Dict[str, Any]] = {}
 
     unit_components: Dict[Type[Component], Dict[str, Any]] = {}
@@ -226,5 +237,5 @@ def create_residence_bundle(world: World, config: ResidenceConfig) -> ResidenceC
     return ResidenceComponentBundle(
         building_components=components,
         unit_components=unit_components,
-        units=config.num_units
+        units=config.num_units,
     )

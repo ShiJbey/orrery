@@ -28,7 +28,14 @@ class Residence(Component):
         ID of the Settlement this residence belongs to
     """
 
-    __slots__ = "owners", "former_owners", "residents", "former_residents", "settlement", "config"
+    __slots__ = (
+        "owners",
+        "former_owners",
+        "residents",
+        "former_residents",
+        "settlement",
+        "config",
+    )
 
     def __init__(self, config: ResidenceConfig, settlement: int) -> None:
         super(Component, self).__init__()
@@ -117,8 +124,11 @@ class ResidenceComponentBundle(ComponentBundle):
         self.unit_bundle = ComponentBundle(unit_components)
         self.units: int = units
 
-
-    def spawn(self, world: World, overrides: Optional[Dict[Type[Component], Dict[str, Any]]] = None) -> GameObject:
+    def spawn(
+        self,
+        world: World,
+        overrides: Optional[Dict[Type[Component], Dict[str, Any]]] = None,
+    ) -> GameObject:
         building = super().spawn(world, overrides)
 
         for _ in range(self.units):
@@ -156,7 +166,9 @@ class ResidenceLibrary:
         """Retrieve the ComponentBundle mapped to the given name"""
         return self._bundles[name]
 
-    def get_matching_bundles(self, *bundle_names: str) -> List[ResidenceComponentBundle]:
+    def get_matching_bundles(
+        self, *bundle_names: str
+    ) -> List[ResidenceComponentBundle]:
         """Get all component bundles that match the given regex strings"""
 
         matches: List[ResidenceComponentBundle] = []

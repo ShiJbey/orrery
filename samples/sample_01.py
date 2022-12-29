@@ -1,15 +1,15 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-import orrery.plugins.default.characters
-import orrery.plugins.default.names
 import orrery.plugins.default.businesses
-import orrery.plugins.default.residences
+import orrery.plugins.default.characters
 import orrery.plugins.default.life_events
+import orrery.plugins.default.names
+import orrery.plugins.default.residences
 from orrery import Orrery
+from orrery.components.business import BusinessLibrary
 from orrery.components.character import CharacterLibrary
 from orrery.components.shared import Location, Name
-from orrery.components.business import BusinessLibrary
 from orrery.core.activity import ActivityManager
 from orrery.core.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
 from orrery.core.ecs import Component, ComponentBundle, GameObject, World
@@ -154,7 +154,7 @@ def main():
                         min_value=-50, max_value=50, changes_with_time=False
                     ),
                 }
-            )
+            ),
         )
     )
 
@@ -180,13 +180,30 @@ def main():
         """
     ).load(sim.world, [load_all_data])
 
-
     sim.world.get_resource(SocialRuleLibrary).add(VirtueCompatibilityRule())
 
     character_library = sim.world.get_resource(CharacterLibrary)
     business_library = sim.world.get_resource(BusinessLibrary)
 
     west_world = create_settlement(sim.world, "West World")
+
+    add_business(
+        sim.world,
+        create_business(sim.world, business_library.get_bundle("Library")),
+        west_world,
+    )
+
+    add_business(
+        sim.world,
+        create_business(sim.world, business_library.get_bundle("Library")),
+        west_world,
+    )
+
+    add_business(
+        sim.world,
+        create_business(sim.world, business_library.get_bundle("Library")),
+        west_world,
+    )
 
     add_business(
         sim.world,
@@ -248,6 +265,7 @@ def main():
         sim.world.step()
 
     print()
+
 
 if __name__ == "__main__":
     main()

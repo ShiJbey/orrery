@@ -17,7 +17,12 @@ from orrery.components.business import (
     unemployed_status,
 )
 from orrery.components.character import CharacterLibrary, GameCharacter, LifeStage
-from orrery.components.residence import Residence, ResidenceComponentBundle, Resident, Vacant
+from orrery.components.residence import (
+    Residence,
+    ResidenceComponentBundle,
+    Resident,
+    Vacant,
+)
 from orrery.components.shared import (
     Active,
     Building,
@@ -117,7 +122,7 @@ def create_residence(
     settlement: int,
     name: Optional[str] = None,
 ) -> GameObject:
-    overrides: Dict[Type[Component], Dict[str, Any]] = {Name: { "name": "residence"}}
+    overrides: Dict[Type[Component], Dict[str, Any]] = {Name: {"name": "residence"}}
 
     if name:
         overrides[Business]["name"] = name
@@ -125,7 +130,6 @@ def create_residence(
     overrides[Residence] = {"settlement": settlement}
 
     return bundle.spawn(world, overrides=overrides)
-
 
 
 def add_business(

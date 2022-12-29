@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, Tuple, Type
 
 from orrery.core.ecs import Component, ComponentBundle, ISystem
 
+
 @dataclass
 class Status(Component):
     """
