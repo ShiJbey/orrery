@@ -1,7 +1,10 @@
+import pathlib
 from typing import Dict, List, Optional, Union
 
 import tracery as tracery  # type: ignore
 import tracery.modifiers as tracery_modifiers  # type: ignore
+
+AnyPath = Union[pathlib.Path, str]
 
 
 class Tracery:
@@ -42,3 +45,20 @@ class Tracery:
         """Rebuild the Grammar after adding new rules"""
         self._grammar = tracery.Grammar(self._all_rules)
         self._grammar.add_modifiers(tracery_modifiers.base_english)  # type: ignore
+
+    def load_names(
+        self,
+        rule_name: str,
+        names: Optional[List[str]] = None,
+        filepath: Optional[AnyPath] = None,
+    ) -> None:
+        """Load names a list of names from a text file or given list"""
+        if names:
+            self.add({rule_name: names})
+        elif filepath:
+            with open(filepath, "r") as f:
+                self.add({rule_name: f.read().splitlines()})
+        else:
+            raise ValueError(
+                "Need to supply names list or path to file containing names"
+            )

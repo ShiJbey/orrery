@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import logging
 import math
+import random
+import re
 from abc import ABC
 from dataclasses import dataclass
-import random
 from typing import Any, Dict, List, Optional, Set
 
 from orrery.core import query
-from orrery.components.settlement import Settlement
 from orrery.core.config import BusinessConfig
-from orrery.core.ecs import Component, IComponentFactory, World
+from orrery.core.ecs import Component, ComponentBundle, GameObject, IComponentFactory, World
 from orrery.core.event import Event
+from orrery.core.settlement import Settlement
+from orrery.core.status import StatusBundle
 from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
 
@@ -240,7 +242,7 @@ class Services(Component):
 
 class ServicesFactory(IComponentFactory):
     def create(self, world: World, **kwargs: Any) -> Component:
-        service_list: List[str] = kwargs["services"]
+        service_list: List[str] = kwargs.get("services", [])
         return Services(set([ServiceTypes.get(s) for s in service_list]))
 
 
@@ -264,21 +266,25 @@ class IBusinessType(Component, ABC):
 
 class Business(Component):
     __slots__ = (
+        "config",
         "name",
         "_employees",
         "_open_positions",
         "owner",
         "owner_type",
+        "years_in_business",
     )
 
     def __init__(
         self,
+        config: BusinessConfig,
         name: str,
         owner_type: Optional[str] = None,
         owner: Optional[int] = None,
         open_positions: Optional[Dict[str, int]] = None,
     ) -> None:
         super().__init__()
+        self.config: BusinessConfig = config
         self.name: str = name
         self.owner_type: Optional[str] = owner_type
         self._open_positions: Dict[str, int] = open_positions if open_positions else {}
@@ -339,12 +345,17 @@ class Business(Component):
 class BusinessFactory(IComponentFactory):
     def create(self, world: World, **kwargs: Any) -> Component:
         name_pattern: str = kwargs["name"]
-        owner_type: str = kwargs["owner_type"]
-        employee_types: Dict[str, int] = kwargs["employees"]
+        owner_type: str = kwargs.get("owner_type", None)
+        employee_types: Dict[str, int] = kwargs.get("employees", {})
+
+        config_name = kwargs["config"]
+
+        config = world.get_resource(BusinessLibrary).get(config_name)
 
         name_generator = world.get_resource(Tracery)
 
         return Business(
+            config=config,
             name=name_generator.generate(name_pattern),
             owner_type=owner_type,
             open_positions=employee_types,
@@ -425,14 +436,19 @@ class OccupationTypeLibrary:
 class BusinessLibrary:
     """Collection factories that create business entities"""
 
-    __slots__ = "_registry"
+    __slots__ = "_registry", "_bundles"
 
     def __init__(self) -> None:
         self._registry: Dict[str, BusinessConfig] = {}
+        self._bundles: Dict[str, ComponentBundle] = {}
 
-    def add(self, config: BusinessConfig) -> None:
+    def add(
+        self, config: BusinessConfig, bundle: Optional[ComponentBundle] = None
+    ) -> None:
         """Register a new archetype by name"""
         self._registry[config.name] = config
+        if bundle:
+            self._bundles[config.name] = bundle
 
     def get_all(self) -> List[BusinessConfig]:
         """Get all stored archetypes"""
@@ -442,36 +458,66 @@ class BusinessLibrary:
         """Get an archetype by name"""
         return self._registry[name]
 
-    def choose_random(self, world: World) -> Optional[BusinessConfig]:
+    def get_bundle(self, name: str) -> ComponentBundle:
+        """Retrieve the ComponentBundle mapped to the given name"""
+        return self._bundles[name]
+
+    def get_matching_bundles(self, *bundle_names: str) -> List[ComponentBundle]:
+        """Get all component bundles that match the given regex strings"""
+
+        matches: List[ComponentBundle] = []
+
+        for name, bundle in self._bundles.items():
+            if any([re.match(pattern, name) for pattern in bundle_names]):
+                matches.append(bundle)
+
+        return matches
+
+    def choose_random(self, world: World, settlement: GameObject) -> Optional[ComponentBundle]:
         """
         Return all business archetypes that may be built
         given the state of the simulation
         """
-        settlement = world.get_resource(Settlement)
+        settlement_comp = settlement.get_component(Settlement)
         date = world.get_resource(SimDateTime)
         rng = world.get_resource(random.Random)
 
         choices: List[BusinessConfig] = []
         weights: List[int] = []
 
-        for archetype in self.get_all():
+        for config in self.get_all():
             if (
-                settlement.business_counts[archetype.name]
-                < archetype.spawning.max_instances
-                and settlement.population >= archetype.spawning.min_population
+                settlement_comp.business_counts[config.name] < config.spawning.max_instances
+                and settlement_comp.population >= config.spawning.min_population
                 and (
-                    archetype.spawning.year_available
+                    config.spawning.year_available
                     <= date.year
-                    < archetype.spawning.year_obsolete
+                    < config.spawning.year_obsolete
                 )
+                and not config.template
             ):
-                choices.append(archetype)
-                weights.append(archetype.spawning.spawn_frequency)
+                choices.append(config)
+                weights.append(config.spawning.spawn_frequency)
 
         if choices:
             # Choose an archetype at random
-            archetype = rng.choices(population=choices, weights=weights, k=1)[0]
-
-            return archetype
+            chosen = rng.choices(population=choices, weights=weights, k=1)[0]
+            return self._bundles[chosen.name]
 
         return None
+
+
+class Unemployed(Component):
+    __slots__ = "days_to_find_a_job", "grace_period"
+
+    def __init__(self, days_to_find_a_job: int) -> None:
+        super(Component, self).__init__()
+        self.days_to_find_a_job: float = float(days_to_find_a_job)
+        self.grace_period: float = float(days_to_find_a_job)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"days_to_find_a_job": self.days_to_find_a_job}
+
+
+def unemployed_status(days_to_find_a_job: int) -> ComponentBundle:
+    return StatusBundle((Unemployed, {"days_to_find_a_job": days_to_find_a_job}))

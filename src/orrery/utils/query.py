@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from typing import List, Optional, Tuple, Type
 
-from orrery.components.business import Occupation, WorkHistory
+from orrery.components.business import Occupation, Unemployed, WorkHistory
 from orrery.components.character import (
     CollegeGraduate,
     GameCharacter,
@@ -349,8 +349,7 @@ def is_single(world: World, *gameobjects: GameObject) -> bool:
         len(
             [
                 r
-                for _, r in
-                gameobjects[0].get_component(RelationshipManager)
+                for _, r in gameobjects[0].get_component(RelationshipManager)
                 if RelationshipTag.SignificantOther in r.tags
             ]
         )
@@ -361,7 +360,6 @@ def is_single(world: World, *gameobjects: GameObject) -> bool:
 def is_unemployed(world: World, *gameobjects: GameObject) -> bool:
     """Returns True if this entity does not have a job"""
     return gameobjects[0].has_component(Unemployed)
-
 
 
 def is_employed(world: World, *gameobjects: GameObject) -> bool:

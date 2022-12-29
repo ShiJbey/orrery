@@ -1,21 +1,39 @@
 from __future__ import annotations
 
 import random
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Type
 
 from ordered_set import OrderedSet
-from orrery.core.config import ResidenceConfig  # type: ignore
 
-from orrery.core.ecs import Component
+from orrery.core.config import ResidenceConfig  # type: ignore
+from orrery.core.ecs import Component, ComponentBundle, GameObject, World
 
 
 class Residence(Component):
-    """Residence is a place where characters live"""
+    """
+    Residence is a place where characters live
 
-    __slots__ = "owners", "former_owners", "residents", "former_residents", "_vacant"
+    Attributes
+    ----------
+    owners: OrderedSet[int]
+        Characters that currently own the residence
+    former_owners: OrderedSet[int]
+        Characters who owned the residence in the past
+    residents: OrderedSet[int]
+        All the characters who live at the residence (including non-owners)
+    former_residents: OrderedSet[int]
+        Characters who lived at this residence in the past
+    settlement: int
+        ID of the Settlement this residence belongs to
+    """
 
-    def __init__(self) -> None:
+    __slots__ = "owners", "former_owners", "residents", "former_residents", "settlement", "config"
+
+    def __init__(self, config: ResidenceConfig, settlement: int) -> None:
         super(Component, self).__init__()
+        self.config: ResidenceConfig = config
+        self.settlement: int = settlement
         self.owners: OrderedSet[int] = OrderedSet([])
         self.former_owners: OrderedSet[int] = OrderedSet([])
         self.residents: OrderedSet[int] = OrderedSet([])
@@ -23,7 +41,7 @@ class Residence(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            **super().to_dict(),
+            "settlement": self.settlement,
             "owners": list(self.owners),
             "former_owners": list(self.former_owners),
             "residents": list(self.residents),
@@ -57,16 +75,26 @@ class Residence(Component):
 
 
 class Resident(Component):
-    """Component attached to characters indicating that they live in the town"""
+    """
+    Component attached to characters indicating that they live in the town
 
-    __slots__ = "residence"
+    Attributes
+    ----------
+    residence: int
+        Unique ID of the Residence GameObject that the resident belongs to
+    settlement: int
+        Unique ID of the settlement that the resident's residence belongs to
+    """
 
-    def __init__(self, residence: int) -> None:
-        super().__init__()
+    __slots__ = "residence", "settlement"
+
+    def __init__(self, residence: int, settlement: int) -> None:
+        super(Component, self).__init__()
         self.residence: int = residence
+        self.settlement: int = settlement
 
     def to_dict(self) -> Dict[str, Any]:
-        return {**super().to_dict(), "residence": self.residence}
+        return {"residence": self.residence, "settlement": self.settlement}
 
 
 class Vacant(Component):
@@ -75,20 +103,46 @@ class Vacant(Component):
     pass
 
 
+class ResidenceComponentBundle(ComponentBundle):
+
+    __slots__ = "unit_bundle", "units"
+
+    def __init__(
+        self,
+        building_components: Dict[Type[Component], Dict[str, Any]],
+        unit_components: Dict[Type[Component], Dict[str, Any]],
+        units: int = 1,
+    ) -> None:
+        super().__init__(building_components)
+        self.unit_bundle = ComponentBundle(unit_components)
+        self.units: int = units
+
+
+    def spawn(self, world: World, overrides: Optional[Dict[Type[Component], Dict[str, Any]]] = None) -> GameObject:
+        building = super().spawn(world, overrides)
+
+        for _ in range(self.units):
+            building.add_child(self.unit_bundle.spawn(world))
+
+        return building
+
+
 class ResidenceLibrary:
     """Collection factories that create residence entities"""
 
-    __slots__ = "_registry"
+    __slots__ = "_registry", "_bundles"
 
     def __init__(self) -> None:
         self._registry: Dict[str, ResidenceConfig] = {}
+        self._bundles: Dict[str, ResidenceComponentBundle] = {}
 
     def add(
-        self,
-        config: ResidenceConfig,
+        self, config: ResidenceConfig, bundle: Optional[ResidenceComponentBundle] = None
     ) -> None:
         """Register a new archetype by name"""
         self._registry[config.name] = config
+        if bundle:
+            self._bundles[config.name] = bundle
 
     def get_all(self) -> List[ResidenceConfig]:
         """Get all stored archetypes"""
@@ -98,17 +152,38 @@ class ResidenceLibrary:
         """Get an archetype by name"""
         return self._registry[name]
 
-    def choose_random(self, rng: random.Random) -> Optional[ResidenceConfig]:
+    def get_bundle(self, name: str) -> ResidenceComponentBundle:
+        """Retrieve the ComponentBundle mapped to the given name"""
+        return self._bundles[name]
+
+    def get_matching_bundles(self, *bundle_names: str) -> List[ResidenceComponentBundle]:
+        """Get all component bundles that match the given regex strings"""
+
+        matches: List[ResidenceComponentBundle] = []
+
+        for name, bundle in self._bundles.items():
+            if any([re.match(pattern, name) for pattern in bundle_names]):
+                matches.append(bundle)
+
+        return matches
+
+    def choose_random(
+        self,
+        rng: random.Random,
+    ) -> Optional[ResidenceComponentBundle]:
+        """Performs a weighted random selection across all character archetypes"""
         choices: List[ResidenceConfig] = []
         weights: List[int] = []
-        for archetype in self.get_all():
-            choices.append(archetype)
-            weights.append(archetype.spawning.spawn_frequency)
+
+        for config in self.get_all():
+            if config.template is False:
+                choices.append(config)
+                weights.append(config.spawning.spawn_frequency)
 
         if choices:
             # Choose an archetype at random
-            archetype = rng.choices(population=choices, weights=weights, k=1)[0]
+            chosen_config = rng.choices(population=choices, weights=weights, k=1)[0]
 
-            return archetype
-
-        return None
+            return self._bundles[chosen_config.name]
+        else:
+            return None

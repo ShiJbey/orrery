@@ -1,10 +1,10 @@
 import json
 
-from orrery.orrery import Orrery
 from orrery.core.serializable import ISerializable
+from orrery.orrery import Orrery
 
 
-class NeighborlyJsonExporter:
+class OrreryJsonExporter:
     """Serializes the simulation to a JSON string"""
 
     def export(self, sim: Orrery) -> str:

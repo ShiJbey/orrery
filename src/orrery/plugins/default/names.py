@@ -2,33 +2,35 @@ import os
 import pathlib
 from typing import Any
 
-from neighborly.core.name_generation import TraceryNameFactory
-from neighborly.simulation import Plugin, Simulation
+from orrery.core.ecs import World
+from orrery.core.tracery import Tracery
+from orrery.orrery import Plugin
 
 _RESOURCES_DIR = pathlib.Path(os.path.abspath(__file__)).parent / "data"
 
 
 class DefaultNameDataPlugin(Plugin):
-    def setup(self, sim: Simulation, **kwargs: Any) -> None:
+    def setup(self, world: World, **kwargs: Any) -> None:
         # Load entity name data
-        name_generator = sim.world.get_resource(TraceryNameFactory)
+        name_generator = world.get_resource(Tracery)
 
         name_generator.load_names(
-            rule_name="family_name", filepath=_RESOURCES_DIR / "names" / "surnames.txt"
+            rule_name="character::default::last_name",
+            filepath=_RESOURCES_DIR / "names" / "surnames.txt",
         )
 
         name_generator.load_names(
-            rule_name="first_name",
+            rule_name="character::default::first_name::gender-neutral",
             filepath=_RESOURCES_DIR / "names" / "neutral_names.txt",
         )
 
         name_generator.load_names(
-            rule_name="feminine_first_name",
+            rule_name="character::default::first_name::feminine",
             filepath=_RESOURCES_DIR / "names" / "feminine_names.txt",
         )
 
         name_generator.load_names(
-            rule_name="masculine_first_name",
+            rule_name="character::default::first_name::masculine",
             filepath=_RESOURCES_DIR / "names" / "masculine_names.txt",
         )
 
@@ -44,7 +46,7 @@ class DefaultNameDataPlugin(Plugin):
 
         # Load potential names for the town
         name_generator.load_names(
-            rule_name="town_name",
+            rule_name="settlement_name",
             filepath=_RESOURCES_DIR / "names" / "US_settlement_names.txt",
         )
 

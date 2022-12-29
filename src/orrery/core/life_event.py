@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Protocol, Union
 
 from orrery.core.ecs import GameObject, World
 from orrery.core.event import Event, EventLog, RoleBinder, RoleList
+from orrery.core.time import SimDateTime
 
 
 class ILifeEvent(Protocol):
@@ -60,7 +61,7 @@ class LifeEventInstance:
         """Executes the LifeEvent instance, emitting an event"""
         event = Event(
             name=self.name,
-            timestamp=str(Event.get_next_id()),
+            timestamp=world.get_resource(SimDateTime).to_iso_str(),
             roles=[r for r in self.roles],
         )
 
@@ -81,7 +82,7 @@ class LifeEvent:
     ----------
     name: str
         Name of the LifeEventType and the LifeEvent it instantiates
-    bind_fn: neighborly.core.event.RoleBinder
+    bind_fn: orrery.core.event.RoleBinder
         Function that attempt to bind roles for the LifeEvent
     probability: LifeEventProbabilityFn
         The relative frequency of this event compared to other events

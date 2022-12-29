@@ -2,12 +2,7 @@ import json
 import random
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
 
-from orrery.core.activity import (
-    Activity,
-    ActivityLibrary,
-    ActivityManager,
-    LikedActivities,
-)
+import orrery.events
 from orrery.components.business import (
     Business,
     ClosedForBusiness,
@@ -17,18 +12,28 @@ from orrery.components.business import (
     OpenForBusiness,
     Services,
     ServiceTypes,
+    Unemployed,
     WorkHistory,
+    unemployed_status,
 )
-from orrery.components.residence import Residence, Resident, Vacant
-from orrery.components.settlement import Settlement
+from orrery.components.character import CharacterLibrary, GameCharacter, LifeStage
+from orrery.components.residence import Residence, ResidenceComponentBundle, Resident, Vacant
 from orrery.components.shared import (
     Active,
     Building,
     FrequentedLocations,
     Location,
+    Name,
     Position2D,
 )
-from orrery.core.config import ActivityToVirtueMap, OrreryConfig
+from orrery.core.activity import (
+    Activity,
+    ActivityLibrary,
+    ActivityManager,
+    ActivityToVirtueMap,
+    LikedActivities,
+)
+from orrery.core.config import OrreryConfig
 from orrery.core.ecs import Component, ComponentBundle, GameObject, World
 from orrery.core.event import EventLog
 from orrery.core.query import QueryBuilder
@@ -36,24 +41,180 @@ from orrery.core.relationship import (
     Relationship,
     RelationshipManager,
     RelationshipNotFound,
+    RelationshipStat,
+    RelationshipTag,
 )
+from orrery.core.settlement import Settlement, create_grid_settlement
 from orrery.core.social_rule import SocialRuleLibrary
+from orrery.core.status import Status, StatusManager
 from orrery.core.time import SimDateTime
+from orrery.core.tracery import Tracery
 from orrery.core.traits import Trait, TraitManager
 from orrery.core.virtues import VirtueVector
+from orrery.utils.query import is_unemployed
+
+_CT = TypeVar("_CT", bound=Component)
 
 
 def create_settlement(
     world: World,
+    settlement_name: str = "#settlement_name#",
+    settlement_size: Tuple[int, int] = (5, 5),
 ) -> GameObject:
     """Create a new Settlement to represent the Town"""
-    generated_name = sim.world.get_resource(NeighborlyEngine).name_generator.get_name(
-        self.town_name
+    generated_name = world.get_resource(Tracery).generate(settlement_name)
+    settlement = world.spawn_gameobject(
+        [create_grid_settlement(generated_name, settlement_size)]
     )
+    return settlement
 
-    sim.world.add_resource(create_grid_settlement(generated_name, self.town_size))
 
-    return self
+def create_character(
+    world: World,
+    bundle: ComponentBundle,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    age: Optional[int] = None,
+    life_stage: Optional[LifeStage] = None,
+    gender: Optional[str] = None,
+) -> GameObject:
+    overrides: Dict[Type[Component], Dict[str, Any]] = {GameCharacter: {}}
+
+    if first_name:
+        overrides[GameCharacter]["first_name"] = first_name
+
+    if last_name:
+        overrides[GameCharacter]["last_name"] = last_name
+
+    if age:
+        overrides[GameCharacter]["age"] = age
+
+    if life_stage:
+        overrides[GameCharacter]["life_stage"] = life_stage
+
+    if gender:
+        overrides[GameCharacter]["gender"] = gender
+
+    return bundle.spawn(world, overrides=overrides)
+
+
+def create_business(
+    world: World,
+    bundle: ComponentBundle,
+    name: Optional[str] = None,
+) -> GameObject:
+    overrides: Dict[Type[Component], Dict[str, Any]] = {Business: {}}
+
+    if name:
+        overrides[Business]["name"] = name
+
+    return bundle.spawn(world, overrides=overrides)
+
+
+def create_residence(
+    world: World,
+    bundle: ResidenceComponentBundle,
+    settlement: int,
+    name: Optional[str] = None,
+) -> GameObject:
+    overrides: Dict[Type[Component], Dict[str, Any]] = {Name: { "name": "residence"}}
+
+    if name:
+        overrides[Business]["name"] = name
+
+    overrides[Residence] = {"settlement": settlement}
+
+    return bundle.spawn(world, overrides=overrides)
+
+
+
+def add_business(
+    world: World,
+    business: GameObject,
+    settlement: GameObject,
+    lot: Optional[int] = None,
+) -> GameObject:
+    settlement_comp = settlement.get_component(Settlement)
+
+    # Increase the count of this business type in the settlement
+    settlement_comp.business_counts[business.get_component(Business).config.name] += 1
+
+    if lot is None:
+        lot = settlement_comp.land_map.get_vacant_lots()[0]
+
+    # Reserve the space
+    settlement_comp.land_map.reserve_lot(lot, business.id)
+
+    # Set the position of the building
+    position = settlement_comp.land_map.get_lot_position(lot)
+    business.get_component(Position2D).x = position[0]
+    business.get_component(Position2D).y = position[1]
+
+    # Give the business a building
+    business.add_component(
+        Building(building_type="commercial", lot=lot, settlement=settlement.id)
+    )
+    business.add_component(OpenForBusiness())
+    business.add_component(Active())
+
+    return business
+
+
+def add_residence(
+    world: World, residence: GameObject, settlement: GameObject, lot: int
+) -> GameObject:
+    settlement_comp = settlement.get_component(Settlement)
+
+    # Reserve the space
+    settlement_comp.land_map.reserve_lot(lot, residence.id)
+
+    # Set the position of the building
+    position = settlement_comp.land_map.get_lot_position(lot)
+    residence.get_component(Position2D).x = position[0]
+    residence.get_component(Position2D).y = position[1]
+
+    # Give the business a building
+    residence.add_component(
+        Building(building_type="residential", lot=lot, settlement=settlement.id)
+    )
+    residence.add_component(Vacant())
+    residence.add_component(Active())
+
+    return residence
+
+
+def generate_child_bundle(
+    world: World, parent_a: GameObject, parent_b: GameObject
+) -> ComponentBundle:
+    rng = world.get_resource(random.Random)
+    library = world.get_resource(CharacterLibrary)
+
+    eligible_child_configs = [
+        *parent_a.get_component(GameCharacter).config.spawning.child_archetypes,
+        *parent_b.get_component(GameCharacter).config.spawning.child_archetypes,
+    ]
+
+    potential_child_bundles = library.get_matching_bundles(*eligible_child_configs)
+
+    if potential_child_bundles:
+
+        bundle = rng.choice(potential_child_bundles)
+
+        return bundle
+
+    else:
+        config_to_inherit = rng.choice(
+            [
+                parent_a.get_component(GameCharacter).config,
+                parent_b.get_component(GameCharacter).config,
+            ]
+        )
+
+        bundle = library.get_bundle(config_to_inherit.name)
+
+        return bundle
+
+    return child
 
 
 def demolish_building(world: World, gameobject: GameObject) -> None:
@@ -74,7 +235,6 @@ def set_residence(
     """
     Moves a character into a new permanent residence
     """
-
     if resident := character.try_component(Resident):
         # This character is currently a resident at another location
         former_residence = world.get_gameobject(resident.residence).get_component(
@@ -87,6 +247,11 @@ def set_residence(
         former_residence.remove_resident(character.id)
         character.remove_component(Resident)
 
+        former_settlement = world.get_gameobject(resident.settlement).get_component(
+            Settlement
+        )
+        former_settlement.decrement_population()
+
         if len(former_residence.residents) <= 0:
             former_residence.gameobject.add_component(Vacant())
 
@@ -95,16 +260,21 @@ def set_residence(
 
     # Move into new residence
     new_residence.get_component(Residence).add_resident(character.id)
+    new_settlement = world.get_gameobject(
+        new_residence.get_component(Residence).settlement
+    )
 
     if is_owner:
         new_residence.get_component(Residence).add_owner(character.id)
 
-    character.add_component(Resident(new_residence.id))
+    character.add_component(
+        Resident(residence=new_residence.id, settlement=new_settlement.id)
+    )
 
     if new_residence.has_component(Vacant):
         new_residence.remove_component(Vacant)
 
-    settlement.increment_population()
+    new_settlement.get_component(Settlement).increment_population()
 
 
 def check_share_residence(gameobject: GameObject, other: GameObject) -> bool:
@@ -142,23 +312,21 @@ def depart_town(world: World, character: GameObject, reason: str = "") -> None:
             continue
 
         if (
-            character.get_component(RelationshipManager)
-            .get(resident_id)
-            .has_tag("Spouse")
+            RelationshipTag.Spouse
+            in character.get_component(RelationshipManager).get(resident_id).tags
         ):
             set_residence(world, resident, None)
             departing_characters.append(resident)
 
         elif (
-            character.get_component(RelationshipManager)
-            .get(resident_id)
-            .has_tag("Child")
+            RelationshipTag.Child
+            in character.get_component(RelationshipManager).get(resident_id).tags
         ):
             set_residence(world, resident, None)
             departing_characters.append(resident)
 
     world.get_resource(EventLog).record_event(
-        DepartEvent(
+        orrery.events.DepartEvent(
             date=world.get_resource(SimDateTime),
             characters=departing_characters,
             reason=reason,
@@ -175,11 +343,11 @@ def add_coworkers(world: World, character: GameObject, business: GameObject) -> 
         coworker = world.get_gameobject(employee_id)
 
         character.get_component(RelationshipManager).get(employee_id).add_tags(
-            "Coworker"
+            RelationshipTag.Coworker
         )
 
         coworker.get_component(RelationshipManager).get(character.id).add_tags(
-            "Coworker"
+            RelationshipTag.Coworker
         )
 
 
@@ -192,11 +360,11 @@ def remove_coworkers(world: World, character: GameObject, business: GameObject) 
         coworker = world.get_gameobject(employee_id)
 
         character.get_component(RelationshipManager).get(employee_id).remove_tags(
-            "Coworker"
+            RelationshipTag.Coworker
         )
 
         coworker.get_component(RelationshipManager).get(character.id).remove_tags(
-            "Coworker"
+            RelationshipTag.Coworker
         )
 
 
@@ -204,7 +372,7 @@ def shutdown_business(world: World, business: GameObject) -> None:
     """Close a business and remove all employees and the owner"""
     date = world.get_resource(SimDateTime)
 
-    event = BusinessClosedEvent(date, business)
+    event = orrery.events.BusinessClosedEvent(date, business)
 
     business.remove_component(OpenForBusiness)
     business.add_component(ClosedForBusiness())
@@ -212,7 +380,6 @@ def shutdown_business(world: World, business: GameObject) -> None:
     world.get_resource(EventLog).record_event(event)
 
     business_comp = business.get_component(Business)
-    location = business.get_component(Location)
 
     for employee in business_comp.get_employees():
         end_job(world, world.get_gameobject(employee), reason=event.name)
@@ -241,7 +408,7 @@ def start_job(
     add_coworkers(world, character, business.gameobject)
 
     if has_status(character, Unemployed):
-        status = get_status(character, Unemployed).gameobject
+        status = get_status(world, character, Unemployed)
         remove_status(character, status)
 
 
@@ -263,7 +430,7 @@ def end_job(
     business_comp.remove_employee(character.id)
 
     character.remove_component(Occupation)
-    add_status(world, character, Unemployed(336))
+    add_status(world, character, unemployed_status(336))
 
     # Update the former employee's work history
     if not character.has_component(WorkHistory):
@@ -272,13 +439,12 @@ def end_job(
     character.get_component(WorkHistory).add_entry(
         occupation_type=occupation.occupation_type,
         business=business.id,
-        start_date=occupation.start_date,
-        end_date=world.get_resource(SimDateTime).copy(),
+        years_held=occupation.years_held,
     )
 
     # Emit the event
     world.get_resource(EventLog).record_event(
-        EndJobEvent(
+        orrery.events.EndJobEvent(
             date=world.get_resource(SimDateTime),
             character=character,
             business=business,
@@ -354,14 +520,15 @@ def add_relationship(
     schema = world.get_resource(OrreryConfig).relationship_schema
 
     relationship = Relationship(
-        {
-            name: RelationshipManagertat(
+        target=target.id,
+        stats={
+            name: RelationshipStat(
                 min_value=config.min_value,
                 max_value=config.max_value,
                 changes_with_time=config.changes_with_time,
             )
             for name, config in schema.stats.items()
-        }
+        },
     )
 
     social_rules = world.get_resource(SocialRuleLibrary).get_active_rules()
@@ -534,14 +701,17 @@ def pprint_gameobject(gameobject: GameObject) -> None:
     )
 
 
-def add_character(
-    world: World,
-    bundle: ComponentBundle,
-    overrides: Optional[Dict[Type[Component], Dict[str, Any]]] = None,
-) -> GameObject:
-    character = bundle.spawn(world, overrides)
+def add_character(world: World, character: GameObject) -> GameObject:
     set_liked_activities(world, character)
     set_frequented_locations(world, character)
+    character.add_component(Active())
+
+    character_comp = character.get_component(GameCharacter)
+
+    if character_comp.life_stage >= LifeStage.YoungAdult:
+        character.add_component(InTheWorkforce())
+        add_status(world, character, unemployed_status(336))
+
     return character
 
 
@@ -560,6 +730,35 @@ def add_relationship_status(
     """Add a status to the character"""
     status = status_bundle.spawn(world)
     character.add_child(status)
+
+
+def add_status(world: World, gameobject: GameObject, bundle: ComponentBundle) -> None:
+    """Adds a new status to the given GameObject"""
+    status = bundle.spawn(world)
+    gameobject.add_child(status)
+    gameobject.get_component(StatusManager).add(
+        status.id, status.get_component(Status).component_type
+    )
+
+
+def get_status(
+    world: World, gameobject: GameObject, status_type_type: Type[_CT]
+) -> GameObject:
+    return world.get_gameobject(gameobject.get_component_in_child(status_type_type)[0])
+
+
+def remove_status(gameobject: GameObject, status: GameObject) -> None:
+    """Removes a status from the given GameObject"""
+    gameobject.remove_child(status)
+    status_manager = gameobject.get_component(StatusManager)
+    status_manager.remove(status.id)
+    status.destroy()
+
+
+def has_status(gameobject: GameObject, status_type: Type[Component]) -> bool:
+    """Return True if the given gameobject has a status of the given type"""
+    status_manager = gameobject.get_component(StatusManager)
+    return status_type in status_manager
 
 
 _KT = TypeVar("_KT")
@@ -590,24 +789,8 @@ def deep_merge(source: Dict[_KT, Any], other: Dict[_KT, Any]) -> Dict[_KT, Any]:
         if isinstance(value, dict):
             # get node or create one
             node = merged_dict.get(key, {})
-            merged_dict[key] = deep_merge(value, node) # type: ignore
+            merged_dict[key] = deep_merge(node, value)  # type: ignore
         else:
             merged_dict[key] = value
 
     return merged_dict
-
-    # for key, value in other.items():
-    #     # Add new key-value pair if key is not in the merged dict
-    #     if key not in merged_dict:
-    #         merged_dict[key] = value
-
-    #     else:
-    #         if isinstance(value, dict) and isinstance(merged_dict[key], dict):
-    #             merged_dict[key] = deep_merge(merged_dict[key], value)  # type: ignore
-    #         # Throw error if one value is a dict and not the other
-    #         else:
-    #             raise ValueError(
-    #                 f"Cannot merge nested key {key} when only one value is a dict"
-    #             )
-
-    # return merged_dict

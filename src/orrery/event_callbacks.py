@@ -1,11 +1,12 @@
 from typing import List
 
-from orrery.components.business import InTheWorkforce, Occupation
+from orrery.components.business import InTheWorkforce, Occupation, unemployed_status
 from orrery.components.character import Departed
 from orrery.components.shared import Active
 from orrery.core.ecs import GameObject, World
 from orrery.core.event import Event
-from orrery.utils.common import set_residence, end_job
+from orrery.core.status import Status
+from orrery.utils.common import add_status, end_job, remove_status, set_residence
 
 
 def on_depart_callback(world: World, event: Event) -> None:
@@ -50,7 +51,7 @@ def on_become_young_adult(world: World, event: Event) -> None:
     character.add_component(InTheWorkforce())
 
     if not character.has_component(Occupation):
-        add_status(world, character, Unemployed(336))
+        add_status(world, character, unemployed_status(336))
 
 
 def remove_statuses_from_deceased(world: World, event: Event) -> None:

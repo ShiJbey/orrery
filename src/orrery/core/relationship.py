@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, Protocol, Tuple
 from enum import IntFlag, auto
+from typing import Any, Dict, Iterator, List, Protocol, Tuple
 
 from orrery.core.ecs import Component, ISystem
 
@@ -235,16 +235,30 @@ class RelationshipTag(IntFlag):
     Empty = auto()
     Family = auto()
     Parent = auto()
+    Child = auto()
     Sibling = auto()
     Coworker = auto()
     SignificantOther = auto()
+    Spouse = auto()
+    Friend = auto()
+    Enemy = auto()
+    Dating = auto()
+    Married = auto()
 
 
 class Relationship:
 
-    __slots__ = "_stats", "interaction_score", "tags", "active_modifiers", "_is_dirty"
+    __slots__ = (
+        "_stats",
+        "interaction_score",
+        "tags",
+        "active_modifiers",
+        "_is_dirty",
+        "target",
+    )
 
-    def __init__(self, stats: Dict[str, RelationshipStat]) -> None:
+    def __init__(self, target: int, stats: Dict[str, RelationshipStat]) -> None:
+        self.target: int = target
         self.interaction_score: RelationshipStat = RelationshipStat(-5, 5, False)
         self._stats: Dict[str, RelationshipStat] = {
             **stats,
@@ -291,7 +305,7 @@ class Relationship:
     def to_dict(self) -> Dict[str, Any]:
         return {
             **{k: stat.to_dict() for k, stat in self._stats.items()},
-            "tags": list(self.tags),
+            "tags": str(self.tags),
             "active_modifiers": [m.to_dict() for _, m in self.active_modifiers.items()],
         }
 
@@ -330,6 +344,12 @@ class RelationshipManager(Component):
             If no relationship is found for the given target and create_new is False
         """
         return self._relationships[target]
+
+    def get_all_with_tags(self, tags: RelationshipTag) -> List[Relationship]:
+        """
+        Get all the relationships between a character and others with specific tags
+        """
+        return [rel for _, rel in self._relationships.items() if tags in rel.tags]
 
     def to_dict(self) -> Dict[str, Any]:
         return {str(t): r.to_dict() for t, r in self._relationships.items()}

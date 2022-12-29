@@ -1,11 +1,9 @@
+from __future__ import annotations
+
 import random
 from typing import Any, Dict, List, Optional, Union
 
 import pydantic
-
-from orrery.core.activity import Activity, ActivityLibrary
-from orrery.core.ecs import World
-from orrery.core.virtues import VirtueVector
 
 
 class RelationshipStatConfig(pydantic.BaseModel):
@@ -16,24 +14,6 @@ class RelationshipStatConfig(pydantic.BaseModel):
 
 class RelationshipSchema(pydantic.BaseModel):
     stats: Dict[str, RelationshipStatConfig] = pydantic.Field(default_factory=dict)
-
-
-class ActivityToVirtueMap:
-    """
-    Mapping of activities to character virtues.
-    We use this class to determine what activities
-    characters like to engage in based on their virtues
-    """
-    __slots__ = "mappings"
-
-    def __init__(self) -> None:
-        self.mappings: Dict[Activity, VirtueVector] = {}
-
-    def add_by_name(self, world: World, activity_name: str, *virtues: str) -> None:
-        """Add a new virtue to the mapping"""
-        activity = world.get_resource(ActivityLibrary).get(activity_name)
-
-        self.mappings[activity] = VirtueVector({v: 1 for v in virtues})
 
 
 class CharacterSpawnConfig(pydantic.BaseModel):
@@ -74,10 +54,10 @@ class CharacterAgingConfig(pydantic.BaseModel):
     """
 
     lifespan: int
-    adolescent: int
-    young_adult: int
-    adult: int
-    senior: int
+    adolescent_age: int
+    young_adult_age: int
+    adult_age: int
+    senior_age: int
 
 
 class CharacterConfig(pydantic.BaseModel):
@@ -123,10 +103,17 @@ class ResidenceSpawnConfig(pydantic.BaseModel):
 
 class ResidenceConfig(pydantic.BaseModel):
     name: str
-    spawning: ResidenceSpawnConfig = pydantic.Field(default_factory=ResidenceSpawnConfig)
-    building_components: Dict[str, Dict[str, Any]] = pydantic.Field(default_factory=dict)
+    spawning: ResidenceSpawnConfig = pydantic.Field(
+        default_factory=ResidenceSpawnConfig
+    )
+    building_components: Dict[str, Dict[str, Any]] = pydantic.Field(
+        default_factory=dict
+    )
     unit_components: Dict[str, Dict[str, Any]] = pydantic.Field(default_factory=dict)
     num_units: int = 1
+    template: bool = False
+    extends: Optional[str] = None
+    components: Dict[str, Dict[str, Any]] = pydantic.Field(default_factory=dict)
 
 
 class BusinessSpawnConfig(pydantic.BaseModel):
@@ -157,14 +144,57 @@ class BusinessSpawnConfig(pydantic.BaseModel):
     min_population: int = 0
     year_available: int = 0
     year_obsolete: int = 9999
+    lifespan: int = 10
 
 
 class BusinessConfig(pydantic.BaseModel):
     name: str
     spawning: BusinessSpawnConfig = pydantic.Field(default_factory=BusinessSpawnConfig)
+    template: bool = False
+    extends: Optional[str] = None
+    components: Dict[str, Dict[str, Any]] = pydantic.Field(default_factory=dict)
+
+
+class PluginConfig(pydantic.BaseModel):
+    """
+    Settings for loading and constructing a plugin
+
+    Fields
+    ----------
+    name: str
+        Name of the plugin's python module
+    path: Optional[str]
+        The path where the plugin is located
+    options: Dict[str, Any]
+        Parameters to pass to the plugin when constructing
+        and loading it
+    """
+
+    name: str
+    path: Optional[str] = None
+    options: Dict[str, Any] = pydantic.Field(default_factory=dict)
 
 
 class OrreryConfig(pydantic.BaseModel):
-    seed: Union[str, int] = pydantic.Field(default_factory=lambda: random.randint(0, 9999999))
-    relationship_schema: RelationshipSchema = pydantic.Field(default_factory=RelationshipSchema)
-    verbose: bool = False
+    seed: Union[str, int] = pydantic.Field(
+        default_factory=lambda: random.randint(0, 9999999)
+    )
+    relationship_schema: RelationshipSchema = pydantic.Field(
+        default_factory=RelationshipSchema
+    )
+    # Months to increment time by each simulation step
+    time_increment: int = 1
+    verbose: bool = True
+
+
+class OrreryCLIConfig(OrreryConfig):
+    years_to_simulate: int
+    plugins: List[Union[str, PluginConfig]] = pydantic.Field(default_factory=list)
+    path: str = "."
+
+    @classmethod
+    def from_partial(
+        cls, data: Dict[str, Any], defaults: OrreryCLIConfig
+    ) -> OrreryCLIConfig:
+        """Construct new config from a default config and a partial set of parameters"""
+        return cls(**{**defaults.dict(), **data})

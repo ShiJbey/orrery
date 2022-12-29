@@ -1,32 +1,35 @@
-import pathlib
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
+import orrery.plugins.default.characters
+import orrery.plugins.default.names
+import orrery.plugins.default.businesses
+import orrery.plugins.default.residences
+import orrery.plugins.default.life_events
 from orrery import Orrery
-from orrery.core.activity import ActivityManager
-from orrery.components.character import GameCharacter
+from orrery.components.character import CharacterLibrary
 from orrery.components.shared import Location, Name
+from orrery.components.business import BusinessLibrary
+from orrery.core.activity import ActivityManager
 from orrery.core.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
 from orrery.core.ecs import Component, ComponentBundle, GameObject, World
-from orrery.loaders import OrreryYamlLoader, load_activity_virtues
-from orrery.core.relationship import (
-    Relationship,
-    RelationshipManager,
-    RelationshipModifier,
-)
+from orrery.core.relationship import Relationship, RelationshipModifier
 from orrery.core.social_rule import SocialRule, SocialRuleLibrary
 from orrery.core.status import RelationshipStatusBundle
-from orrery.core.traits import Trait, TraitManager
+from orrery.core.traits import Trait
+from orrery.core.virtues import VirtueVector
+from orrery.loaders import OrreryYamlLoader, load_all_data
 from orrery.utils.common import (
+    add_business,
     add_character,
-    add_location,
     add_relationship,
     add_relationship_status,
     add_trait,
+    create_business,
+    create_character,
+    create_settlement,
     get_relationship,
-    pprint_gameobject,
 )
-from orrery.core.virtues import VirtueVector
 
 #######################################
 # Sample Components
@@ -57,39 +60,6 @@ hates_robots = Trait(
 #######################################
 # Main Application
 #######################################
-
-
-class HumanCharacter(ComponentBundle):
-    def __init__(self, first_name: str, last_name: str, age: int) -> None:
-        super().__init__(
-            {
-                GameCharacter: {
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "age": age,
-                },
-                RelationshipManager: {},
-                TraitManager: {},
-                VirtueVector: {},
-            }
-        )
-
-
-class RobotCharacter(ComponentBundle):
-    def __init__(self, first_name: str, last_name: str, age: int) -> None:
-        super().__init__(
-            {
-                GameCharacter: {
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "age": age,
-                },
-                RelationshipManager: {},
-                TraitManager: {},
-                VirtueVector: {},
-                Robot: {},
-            }
-        )
 
 
 class SimpleLocation(ComponentBundle):
@@ -173,53 +143,87 @@ class InDeptStatus(RelationshipStatusBundle):
 
 def main():
     """Main entry point for this module"""
-
-    # Simulation configuration
-    config = OrreryConfig(
-        relationship_schema=RelationshipSchema(
-            stats={
-                "Friendship": RelationshipStatConfig(changes_with_time=True),
-                "Romance": RelationshipStatConfig(changes_with_time=True),
-                "Power": RelationshipStatConfig(min_value=-50, max_value=50, changes_with_time=False),
-            }
+    sim = Orrery(
+        OrreryConfig(
+            seed=3,
+            relationship_schema=RelationshipSchema(
+                stats={
+                    "Friendship": RelationshipStatConfig(changes_with_time=True),
+                    "Romance": RelationshipStatConfig(changes_with_time=True),
+                    "Power": RelationshipStatConfig(
+                        min_value=-50, max_value=50, changes_with_time=False
+                    ),
+                }
+            )
         )
     )
 
-    sim = Orrery(config)
+    sim.load_plugin(orrery.plugins.default.names.get_plugin())
+    sim.load_plugin(orrery.plugins.default.characters.get_plugin())
+    sim.load_plugin(orrery.plugins.default.businesses.get_plugin())
+    sim.load_plugin(orrery.plugins.default.residences.get_plugin())
+    sim.load_plugin(orrery.plugins.default.life_events.get_plugin())
 
     sim.world.register_component(Robot)
     sim.world.register_component(InDebt)
 
+    OrreryYamlLoader.from_str(
+        """
+        Characters:
+            - name: "character::robot"
+              extends: "character::default"
+              components:
+                GameCharacter:
+                    first_name: "#character::default::first_name::gender-neutral#"
+                    last_name: "#character::default::last_name#"
+                Robot: {}
+        """
+    ).load(sim.world, [load_all_data])
+
+
     sim.world.get_resource(SocialRuleLibrary).add(VirtueCompatibilityRule())
 
-    OrreryYamlLoader.from_path(
-        pathlib.Path(__file__).parent / "data" / "data.yaml"
-    ).load(sim.world, [load_activity_virtues])
+    character_library = sim.world.get_resource(CharacterLibrary)
+    business_library = sim.world.get_resource(BusinessLibrary)
 
-    add_location(
+    west_world = create_settlement(sim.world, "West World")
+
+    add_business(
         sim.world,
-        SimpleLocation(
-            "The Saloon", ["drinking", "socializing", "cards", "prostitutes"]
-        ),
-    )
-
-    add_location(
-        sim.world, SimpleLocation("The Meadow", ["painting", "fishing", "napping"])
+        create_business(sim.world, business_library.get_bundle("Library")),
+        west_world,
     )
 
     delores = add_character(
         sim.world,
-        RobotCharacter("Delores", "Abernathy", 32),
+        create_character(
+            sim.world,
+            character_library.get_bundle("character::robot"),
+            first_name="Delores",
+            last_name="Abernathy",
+            age=32,
+        ),
     )
 
     charlotte = add_character(
         sim.world,
-        HumanCharacter("Charlotte", "Hale", 40),
+        create_character(
+            sim.world,
+            character_library.get_bundle("character::default::female"),
+            first_name="Charlotte",
+            last_name="Hale",
+            age=40,
+        ),
     )
 
     william = add_character(
         sim.world,
-        HumanCharacter("William", "Black", 68),
+        create_character(
+            sim.world,
+            character_library.get_bundle("character::default::male"),
+            first_name="William",
+            age=68,
+        ),
     )
 
     add_relationship(sim.world, delores, charlotte)
@@ -243,11 +247,7 @@ def main():
     for _ in range(TIMESTEPS):
         sim.world.step()
 
-    pprint_gameobject(delores)
-
-    for c in delores.children:
-        pprint_gameobject(c)
-
+    print()
 
 if __name__ == "__main__":
     main()

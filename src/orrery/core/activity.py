@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterator, List, Set
 
 from orrery.core.ecs import Component, IComponentFactory, World
+from orrery.core.virtues import VirtueVector
 
 
 class Activity:
@@ -150,3 +151,22 @@ class LikedActivities(Component):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.activities.__repr__()})"
+
+
+class ActivityToVirtueMap:
+    """
+    Mapping of activities to character virtues.
+    We use this class to determine what activities
+    characters like to engage in based on their virtues
+    """
+
+    __slots__ = "mappings"
+
+    def __init__(self) -> None:
+        self.mappings: Dict[Activity, VirtueVector] = {}
+
+    def add_by_name(self, world: World, activity_name: str, *virtues: str) -> None:
+        """Add a new virtue to the mapping"""
+        activity = world.get_resource(ActivityLibrary).get(activity_name)
+
+        self.mappings[activity] = VirtueVector({v: 1 for v in virtues})

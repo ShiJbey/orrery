@@ -2,10 +2,10 @@ Characters:
   - name: "character::default"
     template: true
     aging:
-      adolescent: 13
-      young_adult: 18
-      adult: 30
-      senior: 65
+      adolescent_age: 13
+      young_adult_age: 18
+      adult_age: 30
+      senior_age: 65
       lifespan: 85
     spawning:
       spawn_frequency: 1
@@ -23,6 +23,8 @@ Characters:
       TraitManager: {}
       VirtueVector: {}
       CanAge: {}
+      StatusManager: {}
+      FrequentedLocations: {}
   - name: "character::default::male"
     extends: "character::default"
     components:
@@ -41,17 +43,42 @@ Characters:
       GameCharacter:
         first_name: "#character::default::first_name::gender-neutral#"
         last_name: "#character::default::last_name#"
+
 Residences:
-  - name: House
+  - name: "residence::default::house"
+    components:
+      Residence: {}
+      Location: {}
+      Position2D: {}
+
+Occupations:
+  - name: Librarian
+    level: 1
+
 Businesses:
-  - name: Park
-    min_population: 20
-    max_instances: 5
+  - name: "business::default"
+    template: true
+    components:
+      Business:
+        name: "Business"
+      StatusManager: {}
+      Services: {}
+      Location: {}
+      ActivityManager: {}
+      Position2D: {}
   - name: Library
+    extends: "business::default"
     employee_types:
-      librarian: 2
-    min_population: 50
-    max_instances: 1
+      Librarian: 2
+    components:
+      Business:
+        name: "Library"
+        employees:
+          Librarian: 2
+      ActivityManager:
+        activities:
+          - reading
+
 Activities:
   - name: Rest
     traits:

@@ -16,7 +16,6 @@ from typing import (
 )
 
 from orrery.core.ecs import Component
-from orrery.core.serializable import ISerializable
 
 
 class ISettlementMap(Protocol):
@@ -46,7 +45,7 @@ class ISettlementMap(Protocol):
         raise NotImplementedError
 
 
-class Settlement(Component, ISerializable):
+class Settlement(Component):
     """Manages all the information about the town/city/village"""
 
     __slots__ = "name", "land_map", "population", "business_counts"

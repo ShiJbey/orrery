@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import random
+import re
 from enum import Enum, IntEnum, auto
 from typing import Any, Dict, List, Optional
-from orrery.core.config import CharacterConfig
 
+from orrery.core.config import CharacterAgingConfig, CharacterConfig
 from orrery.core.ecs import Component, ComponentBundle, IComponentFactory, World
+from orrery.core.status import StatusBundle
+from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
 
 
@@ -79,7 +82,6 @@ class GameCharacter(Component):
         first_name: str,
         last_name: str,
         age: int = 0,
-        life_stage: LifeStage = LifeStage.Child,
         gender: Gender = Gender.NotSpecified,
     ) -> None:
         super(Component, self).__init__()
@@ -87,8 +89,24 @@ class GameCharacter(Component):
         self.first_name: str = first_name
         self.last_name: str = last_name
         self.age: float = float(age)
-        self.life_stage: LifeStage = life_stage
+        self.life_stage: LifeStage = self.life_stage_from_age(
+            self.config.aging, int(self.age)
+        )
         self.gender: Gender = gender
+
+    @staticmethod
+    def life_stage_from_age(aging_config: CharacterAgingConfig, age: int) -> LifeStage:
+        """Determine the life stage of a character given an age"""
+        if 0 <= age < aging_config.adolescent_age:
+            return LifeStage.Child
+        elif aging_config.adolescent_age <= age < aging_config.young_adult_age:
+            return LifeStage.Adolescent
+        elif aging_config.young_adult_age <= age < aging_config.adult_age:
+            return LifeStage.YoungAdult
+        elif aging_config.adult_age <= age < aging_config.senior_age:
+            return LifeStage.Adult
+        else:
+            return LifeStage.Senior
 
     @property
     def name(self) -> str:
@@ -99,25 +117,25 @@ class GameCharacter(Component):
 
         if (
             self.life_stage < LifeStage.Adolescent
-            and self.age >= self.config.aging.adolescent
+            and self.age >= self.config.aging.adolescent_age
         ):
             self.life_stage = LifeStage.Adolescent
 
         elif (
             self.life_stage < LifeStage.YoungAdult
-            and self.age >= self.config.aging.young_adult
+            and self.age >= self.config.aging.young_adult_age
         ):
             self.life_stage = LifeStage.YoungAdult
 
         elif (
             self.life_stage < LifeStage.Adult
-            and self.age >= self.config.aging.adult
+            and self.age >= self.config.aging.adult_age
         ):
             self.life_stage = LifeStage.Adult
 
         elif (
             self.life_stage < LifeStage.Senior
-            and self.age >= self.config.aging.senior
+            and self.age >= self.config.aging.senior_age
         ):
             self.life_stage = LifeStage.Senior
 
@@ -126,6 +144,8 @@ class GameCharacter(Component):
             "first_name": self.first_name,
             "last_name": self.last_name,
             "age": self.age,
+            "life_stage": self.life_stage.name,
+            "gender": self.gender.name,
         }
 
     def __repr__(self) -> str:
@@ -136,11 +156,39 @@ class GameCharacter(Component):
 
 
 class GameCharacterFactory(IComponentFactory):
+    @staticmethod
+    def _generate_age_from_life_stage(
+        rng: random.Random, aging_config: CharacterAgingConfig, life_stage: LifeStage
+    ) -> int:
+        """Return an age for the character given their life_stage"""
+        if life_stage == LifeStage.Child:
+            return rng.randint(0, aging_config.adolescent_age - 1)
+        elif life_stage == LifeStage.Adolescent:
+            return rng.randint(
+                aging_config.adolescent_age,
+                aging_config.young_adult_age - 1,
+            )
+        elif life_stage == LifeStage.YoungAdult:
+            return rng.randint(
+                aging_config.young_adult_age,
+                aging_config.adult_age - 1,
+            )
+        elif life_stage == LifeStage.Adult:
+            return rng.randint(
+                aging_config.adult_age,
+                aging_config.senior_age - 1,
+            )
+        else:
+            return aging_config.senior_age + int(10 * rng.random())
+
     def create(self, world: World, **kwargs: Any) -> Component:
         name_generator = world.get_resource(Tracery)
         first_name_pattern = kwargs["first_name"]
         last_name_pattern = kwargs["last_name"]
         config_name = kwargs["config"]
+
+        life_stage: Optional[str] = kwargs.get("life_stage")
+        age: int = kwargs.get("age", 0)
 
         config = world.get_resource(CharacterLibrary).get(config_name)
 
@@ -159,7 +207,13 @@ class GameCharacterFactory(IComponentFactory):
         last_name = name_generator.generate(last_name_pattern)
         gender = gender_options[gender_str]
 
-        return GameCharacter(config, first_name, last_name, gender=gender)
+        if life_stage is not None:
+            # LifeStage overwrites any given age
+            age = self._generate_age_from_life_stage(
+                world.get_resource(random.Random), config.aging, life_stage
+            )
+
+        return GameCharacter(config, first_name, last_name, gender=gender, age=age)
 
 
 class CharacterLibrary:
@@ -171,7 +225,9 @@ class CharacterLibrary:
         self._configs: Dict[str, CharacterConfig] = {}
         self._bundles: Dict[str, ComponentBundle] = {}
 
-    def add(self, config: CharacterConfig, bundle: Optional[ComponentBundle] = None) -> None:
+    def add(
+        self, config: CharacterConfig, bundle: Optional[ComponentBundle] = None
+    ) -> None:
         """Register a new archetype by name"""
         self._configs[config.name] = config
         if bundle:
@@ -188,6 +244,17 @@ class CharacterLibrary:
     def get_bundle(self, name: str) -> ComponentBundle:
         """Retrieve the ComponentBundle mapped to the given name"""
         return self._bundles[name]
+
+    def get_matching_bundles(self, *bundle_names: str) -> List[ComponentBundle]:
+        """Get all component bundles that match the given regex strings"""
+
+        matches: List[ComponentBundle] = []
+
+        for name, bundle in self._bundles.items():
+            if any([re.match(pattern, name) for pattern in bundle_names]):
+                matches.append(bundle)
+
+        return matches
 
     def choose_random(
         self,
@@ -209,3 +276,20 @@ class CharacterLibrary:
             return self._bundles[chosen_config.name]
         else:
             return None
+
+
+class Pregnant(Component):
+    """
+    Pregnant characters give birth when the timeout
+    """
+
+    __slots__ = "partner_id", "due_date"
+
+    def __init__(self, partner_id: int, due_date: SimDateTime) -> None:
+        super(Component, self).__init__()
+        self.partner_id: int = partner_id
+        self.due_date: SimDateTime = due_date
+
+
+def pregnant_status(partner_id: int, due_date: SimDateTime) -> ComponentBundle:
+    return StatusBundle((Pregnant, {"partner_id": partner_id, "due_date": due_date}))

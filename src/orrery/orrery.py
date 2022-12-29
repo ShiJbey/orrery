@@ -1,14 +1,10 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
 
 import random
-from typing import Any, List, Dict, Tuple
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Tuple
 
-from orrery.core.activity import (
-    ActivityLibrary,
-    ActivityManager,
-    ActivityManagerFactory,
-)
+from orrery import event_callbacks
 from orrery.components.business import (
     Business,
     BusinessFactory,
@@ -16,9 +12,11 @@ from orrery.components.business import (
     ClosedForBusiness,
     InTheWorkforce,
     Occupation,
+    OccupationTypeLibrary,
     OpenForBusiness,
     Services,
     ServicesFactory,
+    Unemployed,
     WorkHistory,
 )
 from orrery.components.character import (
@@ -34,13 +32,36 @@ from orrery.components.character import (
     Retired,
 )
 from orrery.components.residence import Residence, ResidenceLibrary, Resident, Vacant
-from orrery.components.shared import Active, Building, Location, Name, Position2D
-from orrery.core.config import ActivityToVirtueMap, OrreryConfig
+from orrery.components.shared import Active, Building, FrequentedLocations, Location, Name, Position2D
+from orrery.constants import (
+    BUSINESS_UPDATE_PHASE,
+    CHARACTER_UPDATE_PHASE,
+    CORE_SYSTEMS_PHASE,
+    SETTLEMENT_UPDATE_PHASE,
+)
+from orrery.core.activity import (
+    ActivityLibrary,
+    ActivityManager,
+    ActivityManagerFactory,
+    ActivityToVirtueMap,
+)
+from orrery.core.config import OrreryConfig
 from orrery.core.ecs import World
 from orrery.core.event import EventLog
+from orrery.core.life_event import LifeEventLibrary
 from orrery.core.relationship import RelationshipManager, UpdateRelationshipsSystem
 from orrery.core.social_rule import SocialRuleLibrary
-from orrery.core.status import RelationshipStatus, StatusDuration, statusDurationSystem
+from orrery.core.status import (
+    RelationshipStatus,
+    Status,
+    StatusDuration,
+    StatusManager,
+    statusDurationSystem,
+)
+from orrery.core.time import SimDateTime, TimeDelta
+from orrery.core.tracery import Tracery
+from orrery.core.traits import TraitManager
+from orrery.core.virtues import VirtueVector, VirtueVectorFactory
 from orrery.systems import (
     BuildBusinessSystem,
     BuildHousingSystem,
@@ -48,15 +69,13 @@ from orrery.systems import (
     CharacterAgingSystem,
     EventSystem,
     FindEmployeesSystem,
+    LifeEventSystem,
     MeetNewPeopleSystem,
+    PregnantStatusSystem,
     SpawnResidentSystem,
     TimeSystem,
+    UnemployedStatusSystem,
 )
-from orrery.core.time import SimDateTime
-from orrery.core.tracery import Tracery
-from orrery.core.traits import TraitManager
-from orrery.core.virtues import VirtueVector, VirtueVectorFactory
-from orrery import event_callbacks
 
 
 class PluginSetupError(Exception):
@@ -85,6 +104,18 @@ class Plugin(ABC):
 
 
 class Orrery:
+    """
+    Main entry class for running Orrery simulations.
+
+    Attributes
+    ----------
+    world: World
+        Entity-component system (ECS) that manages entities and procedures in the virtual world
+    config: OrreryConfig
+        Configuration settings for the simulation
+    plugins: List[Tuple[Plugin, Dict[str, Any]]]
+        List of loaded plugins and their configuration data
+    """
 
     __slots__ = "world", "config", "plugins"
 
@@ -105,19 +136,25 @@ class Orrery:
         self.world.add_resource(ActivityToVirtueMap())
         self.world.add_resource(SimDateTime())
         self.world.add_resource(EventLog())
+        self.world.add_resource(OccupationTypeLibrary())
+        self.world.add_resource(LifeEventLibrary())
 
         # Add default systems
-        self.world.add_system(statusDurationSystem())
-        self.world.add_system(UpdateRelationshipsSystem())
-        self.world.add_system(MeetNewPeopleSystem())
-        self.world.add_system(EventSystem())
-        self.world.add_system(TimeSystem())
-        self.world.add_system(CharacterAgingSystem())
-        self.world.add_system(BusinessUpdateSystem())
-        self.world.add_system(FindEmployeesSystem())
-        self.world.add_system(BuildHousingSystem())
-        self.world.add_system(SpawnResidentSystem())
-        self.world.add_system(BuildBusinessSystem())
+        self.world.add_system(statusDurationSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(PregnantStatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(UnemployedStatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(UpdateRelationshipsSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(MeetNewPeopleSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(LifeEventSystem(), CORE_SYSTEMS_PHASE)
+        self.world.add_system(EventSystem(), CORE_SYSTEMS_PHASE)
+        self.world.add_system(TimeSystem(), CORE_SYSTEMS_PHASE)
+        self.world.add_system(CharacterAgingSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(BusinessUpdateSystem(), BUSINESS_UPDATE_PHASE)
+        self.world.add_system(FindEmployeesSystem(), BUSINESS_UPDATE_PHASE)
+        self.world.add_system(BuildHousingSystem(), SETTLEMENT_UPDATE_PHASE)
+        self.world.add_system(SpawnResidentSystem(), SETTLEMENT_UPDATE_PHASE)
+        self.world.add_system(BuildBusinessSystem(), SETTLEMENT_UPDATE_PHASE)
+
 
         # Register components
         self.world.register_component(Active)
@@ -149,6 +186,11 @@ class Orrery:
         self.world.register_component(Vacant)
         self.world.register_component(Building)
         self.world.register_component(Position2D)
+        self.world.register_component(StatusManager)
+        self.world.register_component(FrequentedLocations)
+        self.world.register_component(Status)
+        self.world.register_component(RelationshipStatus)
+        self.world.register_component(Unemployed)
 
         # Configure printing every event to the console
         if config.verbose:
@@ -195,3 +237,21 @@ class Orrery:
         """Add plugin to simulation"""
         self.plugins.append((plugin, {**kwargs}))
         plugin.setup(self.world, **kwargs)
+
+    def run_for(self, years: int) -> None:
+        """Run the simulation for a given number of years"""
+        stop_date = self.world.get_resource(SimDateTime).copy() + TimeDelta(years=years)
+        self.run_until(stop_date)
+
+    def run_until(self, stop_date: SimDateTime) -> None:
+        """Run the simulation until a specific date is reached"""
+        try:
+            current_date = self.world.get_resource(SimDateTime)
+            while stop_date >= current_date:
+                self.step()
+        except KeyboardInterrupt:
+            print("\nStopping Simulation")
+
+    def step(self) -> None:
+        """Advance the simulation a single timestep"""
+        self.world.step()

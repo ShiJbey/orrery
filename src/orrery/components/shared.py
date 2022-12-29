@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Set
+from typing import Any, Dict, Optional, Set
 
 from orrery.core.ecs import Component
 
@@ -14,9 +14,9 @@ class FrequentedLocations(Component):
 
     __slots__ = "locations"
 
-    def __init__(self, locations: Set[int]) -> None:
+    def __init__(self, locations: Optional[Set[int]] = None) -> None:
         super(Component, self).__init__()
-        self.locations: Set[int] = locations
+        self.locations: Set[int] = locations if locations else set()
 
     def to_dict(self) -> Dict[str, Any]:
         return {"locations": list(self.locations)}

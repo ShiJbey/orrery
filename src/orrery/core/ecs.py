@@ -602,17 +602,11 @@ def _deep_merge(source: Dict[_KT, Any], other: Dict[_KT, Any]) -> Dict[_KT, Any]
     merged_dict = {**source}
 
     for key, value in other.items():
-        # Add new key-value pair if key is not in the merged dict
-        if key not in merged_dict:
-            merged_dict[key] = value
-
+        if isinstance(value, dict):
+            # get node or create one
+            node = merged_dict.get(key, {})
+            merged_dict[key] = _deep_merge(node, value)  # type: ignore
         else:
-            if isinstance(value, dict) and isinstance(merged_dict[key], dict):
-                merged_dict[key] = deep_merge(merged_dict[key], value)  # type: ignore
-            # Throw error if one value is a dict and not the other
-            else:
-                raise ValueError(
-                    f"Cannot merge nested key {key} when only one value is a dict"
-                )
+            merged_dict[key] = value
 
     return merged_dict

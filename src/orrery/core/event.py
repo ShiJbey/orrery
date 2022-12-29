@@ -56,11 +56,13 @@ class Event:
         GameObjects involved with this event
     """
 
-    __slots__ = "timestamp", "name", "roles"
+    __slots__ = "timestamp", "name", "roles", "uid"
 
     _next_event_id: ClassVar[int] = 0
 
     def __init__(self, name: str, timestamp: str, roles: List[EventRole]) -> None:
+        self.uid: int = Event._next_event_id
+        Event._next_event_id += 1
         self.name: str = name
         self.timestamp: str = timestamp
         self.roles: RoleList = RoleList(roles)
@@ -89,16 +91,16 @@ class Event:
         return self.roles[role_name]
 
     def __le__(self, other: Event) -> bool:
-        return self.timestamp <= other.timestamp
+        return self.uid <= other.uid
 
     def __lt__(self, other: Event) -> bool:
-        return self.timestamp < other.timestamp
+        return self.uid < other.uid
 
     def __ge__(self, other: Event) -> bool:
-        return self.timestamp >= other.timestamp
+        return self.uid >= other.uid
 
     def __gt__(self, other: Event) -> bool:
-        return self.timestamp > other.timestamp
+        return self.uid > other.uid
 
     def __repr__(self) -> str:
         return "LifeEvent(name={}, timestamp={}, roles=[{}])".format(
@@ -107,12 +109,6 @@ class Event:
 
     def __str__(self) -> str:
         return f"{self.name} [at {self.timestamp}] : {', '.join(map(lambda r: f'{r.name}:{r.gid}', self.roles))}"
-
-    @classmethod
-    def get_next_id(cls) -> int:
-        next_id = cls._next_event_id
-        cls._next_event_id += 1
-        return next_id
 
 
 class EventRole:
@@ -158,7 +154,7 @@ class EventLog:
     _per_gameobject: DefaultDict[int, List[Event]]
         Dictionary of all the LifEvents that have occurred divided by participant ID
     _subscribers: List[Callable[[LifeEvent], None]]
-        Callback functions executed everytime a LifeEvent occurs
+        Callback functions executed every time a LifeEvent occurs
     _per_gameobject_subscribers: DefaultDict[int, List[Callable[[LifeEvent], None]]
         Callback functions divided by the GameObject to which they are subscribed
     """
