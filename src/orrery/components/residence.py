@@ -112,16 +112,18 @@ class Vacant(Component):
 
 class ResidenceComponentBundle(ComponentBundle):
 
-    __slots__ = "unit_bundle", "units"
+    __slots__ = "unit_bundle", "units", "name"
 
     def __init__(
         self,
+        name: str,
         building_components: Dict[Type[Component], Dict[str, Any]],
         unit_components: Dict[Type[Component], Dict[str, Any]],
         units: int = 1,
     ) -> None:
         super().__init__(building_components)
-        self.unit_bundle = ComponentBundle(unit_components)
+        self.name: str = name
+        self.unit_bundle: ComponentBundle = ComponentBundle(unit_components)
         self.units: int = units
 
     def spawn(

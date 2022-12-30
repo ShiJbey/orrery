@@ -126,8 +126,8 @@ class SimDateTime:
         # Convert hours back to date components
         years = diff // (MONTHS_PER_YEAR * DAYS_PER_MONTH)
         remainder = diff % (MONTHS_PER_YEAR * DAYS_PER_MONTH)
-        months = remainder // (DAYS_PER_MONTH)
-        remainder = remainder % (DAYS_PER_MONTH)
+        months = remainder // DAYS_PER_MONTH
+        remainder = remainder % DAYS_PER_MONTH
         days = remainder
 
         return TimeDelta(years=years, months=months, days=days)

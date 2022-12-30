@@ -12,7 +12,6 @@ from orrery.components.character import (
     LifeStage,
     Pregnant,
     Retired,
-    pregnant_status,
 )
 from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.shared import Active
@@ -277,7 +276,7 @@ def pregnancy_event() -> ILifeEvent:
         add_status(
             world,
             world.get_gameobject(event["PregnantOne"]),
-            pregnant_status(
+            Pregnant(
                 partner_id=event["Other"],
                 due_date=due_date,
             ),

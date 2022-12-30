@@ -6,7 +6,7 @@ from orrery.core.social_rule import ISocialRule
 
 class Trait(Component):
     """
-    Traits describe a characters personality. They can be used
+    Traits describe a character's personality. They can be used
     to signify a character's tendency toward certain behaviors
     as well as help increase their proclivity toward certain
     behaviors.
@@ -20,6 +20,7 @@ class Trait(Component):
         rules: Optional[List[ISocialRule]] = None,
         location_proclivities: Optional[Dict[str, int]] = None,
     ) -> None:
+        super(Component, self).__init__()
         self.name: str = name
         self.rules: List[ISocialRule] = rules if rules else []
         self.location_proclivities: Dict[str, int] = (

@@ -30,6 +30,7 @@ from orrery.core.life_event import LifeEventLibrary
 from orrery.core.query import QueryBuilder
 from orrery.core.relationship import RelationshipManager, RelationshipTag
 from orrery.core.settlement import Settlement
+from orrery.core.status import RelationshipStatus, Status
 from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
 from orrery.utils.common import (
     add_business,
@@ -136,9 +137,11 @@ class MeetNewPeopleSystem(ISystem):
 
             candidates: List[int] = []
 
-            for l in frequented_locations:
+            for loc_id in frequented_locations:
                 for other_id in (
-                    self.world.get_gameobject(l).get_component(Location).frequented_by
+                    self.world.get_gameobject(loc_id)
+                    .get_component(Location)
+                    .frequented_by
                 ):
                     candidates.append(other_id)
 
@@ -269,7 +272,6 @@ class BuildHousingSystem(System):
                 continue
 
             add_residence(
-                self.world,
                 create_residence(self.world, bundle, settlement_id),
                 settlement=self.world.get_gameobject(settlement_id),
                 lot=lot,
@@ -353,7 +355,6 @@ class BuildBusinessSystem(System):
                 return
 
             business = add_business(
-                self.world,
                 create_business(self.world, bundle),
                 self.world.get_gameobject(settlement_id),
                 lot=lot,
@@ -733,7 +734,7 @@ class UnemployedStatusSystem(System):
                         c.add_component(Departed())
                         c.remove_component(Active, immediate=True)
 
-                    remove_status(character, status)
+                    remove_status(self.world, character, Unemployed)
                     self.world.delete_gameobject(status.id)
 
                     event = orrery.events.DepartEvent(
@@ -855,7 +856,7 @@ class PregnantStatusSystem(System):
                     RelationshipTag.Sibling
                 )
 
-            remove_status(character, status)
+            remove_status(self.world, character, Pregnant)
             self.world.delete_gameobject(status.id)
 
             # Pregnancy event dates are retro-fit to be the actual date that the
@@ -865,3 +866,14 @@ class PregnantStatusSystem(System):
                     current_date, character, other_parent, baby
                 )
             )
+
+
+class StatusDurationSystem(ISystem):
+    """Increases the elapsed time for all statuses by one month"""
+
+    def process(self, *args: Any, **kwargs: Any):
+        for _, status_duration in self.world.get_component(Status):
+            status_duration.time_active += 1
+
+        for _, status_duration in self.world.get_component(RelationshipStatus):
+            status_duration.time_active += 1

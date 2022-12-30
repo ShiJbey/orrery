@@ -3,11 +3,10 @@ from __future__ import annotations
 import random
 import re
 from enum import Enum, IntEnum, auto
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 from orrery.core.config import CharacterAgingConfig, CharacterConfig
 from orrery.core.ecs import Component, ComponentBundle, IComponentFactory, World
-from orrery.core.status import StatusBundle
 from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
 
@@ -210,10 +209,21 @@ class GameCharacterFactory(IComponentFactory):
         if life_stage is not None:
             # LifeStage overwrites any given age
             age = self._generate_age_from_life_stage(
-                world.get_resource(random.Random), config.aging, life_stage
+                world.get_resource(random.Random), config.aging, LifeStage[life_stage]
             )
 
         return GameCharacter(config, first_name, last_name, gender=gender, age=age)
+
+
+class CharacterComponentBundle(ComponentBundle):
+
+    __slots__ = "name"
+
+    def __init__(
+        self, name: str, components: Dict[Type[Component], Dict[str, Any]]
+    ) -> None:
+        super().__init__(components)
+        self.name: str = name
 
 
 class CharacterLibrary:
@@ -223,10 +233,10 @@ class CharacterLibrary:
 
     def __init__(self) -> None:
         self._configs: Dict[str, CharacterConfig] = {}
-        self._bundles: Dict[str, ComponentBundle] = {}
+        self._bundles: Dict[str, CharacterComponentBundle] = {}
 
     def add(
-        self, config: CharacterConfig, bundle: Optional[ComponentBundle] = None
+        self, config: CharacterConfig, bundle: Optional[CharacterComponentBundle] = None
     ) -> None:
         """Register a new archetype by name"""
         self._configs[config.name] = config
@@ -241,14 +251,16 @@ class CharacterLibrary:
         """Get an archetype by name"""
         return self._configs[name]
 
-    def get_bundle(self, name: str) -> ComponentBundle:
+    def get_bundle(self, name: str) -> CharacterComponentBundle:
         """Retrieve the ComponentBundle mapped to the given name"""
         return self._bundles[name]
 
-    def get_matching_bundles(self, *bundle_names: str) -> List[ComponentBundle]:
+    def get_matching_bundles(
+        self, *bundle_names: str
+    ) -> List[CharacterComponentBundle]:
         """Get all component bundles that match the given regex strings"""
 
-        matches: List[ComponentBundle] = []
+        matches: List[CharacterComponentBundle] = []
 
         for name, bundle in self._bundles.items():
             if any([re.match(pattern, name) for pattern in bundle_names]):
@@ -259,7 +271,7 @@ class CharacterLibrary:
     def choose_random(
         self,
         rng: random.Random,
-    ) -> Optional[ComponentBundle]:
+    ) -> Optional[CharacterComponentBundle]:
         """Performs a weighted random selection across all character archetypes"""
         choices: List[CharacterConfig] = []
         weights: List[int] = []
@@ -289,7 +301,3 @@ class Pregnant(Component):
         super(Component, self).__init__()
         self.partner_id: int = partner_id
         self.due_date: SimDateTime = due_date
-
-
-def pregnant_status(partner_id: int, due_date: SimDateTime) -> ComponentBundle:
-    return StatusBundle((Pregnant, {"partner_id": partner_id, "due_date": due_date}))

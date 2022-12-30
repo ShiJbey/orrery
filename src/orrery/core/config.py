@@ -90,8 +90,6 @@ class ResidenceSpawnConfig(pydantic.BaseModel):
     year_obsolete: int
         The simulated year that this business archetype will no longer
         be available to spawn
-    residential_zoning: ResidentialZoning
-        Marks this residence type as single or multi-family housing
     """
 
     spawn_frequency: int = 1

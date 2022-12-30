@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
@@ -14,14 +15,14 @@ from orrery.core.activity import ActivityManager
 from orrery.core.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
 from orrery.core.ecs import Component, ComponentBundle, GameObject, World
 from orrery.core.relationship import Relationship, RelationshipModifier
-from orrery.core.social_rule import SocialRule, SocialRuleLibrary
-from orrery.core.status import RelationshipStatusBundle
+from orrery.core.social_rule import ISocialRule, SocialRule, SocialRuleLibrary
+from orrery.core.time import SimDateTime
 from orrery.core.traits import Trait
 from orrery.core.virtues import VirtueVector
 from orrery.loaders import OrreryYamlLoader, load_all_data
 from orrery.utils.common import (
     add_business,
-    add_character,
+    add_character_to_settlement,
     add_relationship,
     add_relationship_status,
     add_trait,
@@ -73,7 +74,7 @@ class SimpleLocation(ComponentBundle):
         )
 
 
-class VirtueCompatibilityRule:
+class VirtueCompatibilityRule(ISocialRule):
     """
     Determines initial values for romance and friendship
     based on characters' personal virtues
@@ -136,11 +137,6 @@ class InDebt(Component):
         return {"amount": self.amount}
 
 
-class InDeptStatus(RelationshipStatusBundle):
-    def __init__(self, owner: int, target: int, amount: int) -> None:
-        super().__init__(owner, target, (InDebt, {"amount": amount}))
-
-
 def main():
     """Main entry point for this module"""
     sim = Orrery(
@@ -188,68 +184,59 @@ def main():
     west_world = create_settlement(sim.world, "West World")
 
     add_business(
-        sim.world,
         create_business(sim.world, business_library.get_bundle("Library")),
         west_world,
     )
 
     add_business(
-        sim.world,
         create_business(sim.world, business_library.get_bundle("Library")),
         west_world,
     )
 
     add_business(
-        sim.world,
         create_business(sim.world, business_library.get_bundle("Library")),
         west_world,
     )
 
     add_business(
-        sim.world,
         create_business(sim.world, business_library.get_bundle("Library")),
         west_world,
     )
 
-    delores = add_character(
+    delores = create_character(
         sim.world,
-        create_character(
-            sim.world,
-            character_library.get_bundle("character::robot"),
-            first_name="Delores",
-            last_name="Abernathy",
-            age=32,
-        ),
+        character_library.get_bundle("character::robot"),
+        first_name="Delores",
+        last_name="Abernathy",
+        age=32,
     )
 
-    charlotte = add_character(
+    add_character_to_settlement(sim.world, delores, west_world)
+
+    charlotte = create_character(
         sim.world,
-        create_character(
-            sim.world,
-            character_library.get_bundle("character::default::female"),
-            first_name="Charlotte",
-            last_name="Hale",
-            age=40,
-        ),
+        character_library.get_bundle("character::default::female"),
+        first_name="Charlotte",
+        last_name="Hale",
+        age=40,
     )
 
-    william = add_character(
+    add_character_to_settlement(sim.world, charlotte, west_world)
+
+    william = create_character(
         sim.world,
-        create_character(
-            sim.world,
-            character_library.get_bundle("character::default::male"),
-            first_name="William",
-            age=68,
-        ),
+        character_library.get_bundle("character::default::male"),
+        first_name="William",
+        age=68,
     )
+
+    add_character_to_settlement(sim.world, william, west_world)
 
     add_relationship(sim.world, delores, charlotte)
     get_relationship(sim.world, delores, charlotte)["Friendship"] += -1
     get_relationship(sim.world, delores, charlotte)["Friendship"] += 1
 
-    add_relationship_status(
-        sim.world, delores, InDeptStatus(delores.id, charlotte.id, 500)
-    )
+    add_relationship_status(sim.world, delores, charlotte, InDebt(500))
 
     add_relationship(sim.world, delores, william)
     get_relationship(sim.world, delores, william)["Romance"] += 4
@@ -259,12 +246,12 @@ def main():
     add_relationship(sim.world, william, delores)["Interaction"] += 1
     add_trait(sim.world, william, hates_robots)
 
-    TIMESTEPS = 12
+    st = time.time()
+    sim.run_for(1000)
+    elapsed_time = time.time() - st
 
-    for _ in range(TIMESTEPS):
-        sim.world.step()
-
-    print()
+    print(f"World Date: {str(sim.world.get_resource(SimDateTime))}")
+    print("Execution time: ", elapsed_time, "seconds")
 
 
 if __name__ == "__main__":

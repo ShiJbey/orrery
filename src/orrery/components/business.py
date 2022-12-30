@@ -6,7 +6,7 @@ import random
 import re
 from abc import ABC
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Type
 
 from orrery.core import query
 from orrery.core.config import BusinessConfig
@@ -19,7 +19,6 @@ from orrery.core.ecs import (
 )
 from orrery.core.event import Event
 from orrery.core.settlement import Settlement
-from orrery.core.status import StatusBundle
 from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
 
@@ -439,6 +438,17 @@ class OccupationTypeLibrary:
         return self._registry[name]
 
 
+class BusinessComponentBundle(ComponentBundle):
+
+    __slots__ = "name"
+
+    def __init__(
+        self, name: str, components: Dict[Type[Component], Dict[str, Any]]
+    ) -> None:
+        super().__init__(components)
+        self.name: str = name
+
+
 class BusinessLibrary:
     """Collection factories that create business entities"""
 
@@ -446,10 +456,10 @@ class BusinessLibrary:
 
     def __init__(self) -> None:
         self._registry: Dict[str, BusinessConfig] = {}
-        self._bundles: Dict[str, ComponentBundle] = {}
+        self._bundles: Dict[str, BusinessComponentBundle] = {}
 
     def add(
-        self, config: BusinessConfig, bundle: Optional[ComponentBundle] = None
+        self, config: BusinessConfig, bundle: Optional[BusinessComponentBundle] = None
     ) -> None:
         """Register a new archetype by name"""
         self._registry[config.name] = config
@@ -464,14 +474,14 @@ class BusinessLibrary:
         """Get an archetype by name"""
         return self._registry[name]
 
-    def get_bundle(self, name: str) -> ComponentBundle:
+    def get_bundle(self, name: str) -> BusinessComponentBundle:
         """Retrieve the ComponentBundle mapped to the given name"""
         return self._bundles[name]
 
-    def get_matching_bundles(self, *bundle_names: str) -> List[ComponentBundle]:
+    def get_matching_bundles(self, *bundle_names: str) -> List[BusinessComponentBundle]:
         """Get all component bundles that match the given regex strings"""
 
-        matches: List[ComponentBundle] = []
+        matches: List[BusinessComponentBundle] = []
 
         for name, bundle in self._bundles.items():
             if any([re.match(pattern, name) for pattern in bundle_names]):
@@ -481,7 +491,7 @@ class BusinessLibrary:
 
     def choose_random(
         self, world: World, settlement: GameObject
-    ) -> Optional[ComponentBundle]:
+    ) -> Optional[BusinessComponentBundle]:
         """
         Return all business archetypes that may be built
         given the state of the simulation
@@ -526,7 +536,3 @@ class Unemployed(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {"days_to_find_a_job": self.days_to_find_a_job}
-
-
-def unemployed_status(days_to_find_a_job: int) -> ComponentBundle:
-    return StatusBundle((Unemployed, {"days_to_find_a_job": days_to_find_a_job}))

@@ -12,7 +12,7 @@ import yaml
 
 from orrery import __version__
 from orrery.core.config import OrreryCLIConfig
-from orrery.exporter import OrreryJsonExporter
+from orrery.exporter import export_to_json
 from orrery.orrery import Orrery, Plugin, PluginSetupError
 
 
@@ -93,7 +93,7 @@ def try_load_local_config() -> Optional[Dict[str, Any]]:
     return None
 
 
-def load_plugin(module_name: str, path: Optional[str] = None, **kwargs: Any) -> Plugin:
+def load_plugin(module_name: str, path: Optional[str] = None) -> Plugin:
     """
     Load a plugin
 
@@ -163,5 +163,5 @@ def run():
         output_path = args.output if args.output else f"orrery_{sim.config.seed}.json"
 
         with open(output_path, "w") as f:
-            data = OrreryJsonExporter().export(sim)
+            data = export_to_json(sim)
             f.write(data)

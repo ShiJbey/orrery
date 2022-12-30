@@ -54,6 +54,10 @@ Residences:
 Occupations:
   - name: Librarian
     level: 1
+  - name: Owner
+    level: 4
+  - name: Barista
+    level: 4
 
 Businesses:
   - name: "business::default"
@@ -78,7 +82,20 @@ Businesses:
       ActivityManager:
         activities:
           - reading
-
+  - name: "business::default::cafe"
+    extends: "business::default"
+    employee_types:
+      Librarian: 2
+    components:
+      Business:
+        name: "Cafe"
+        owner_type: Owner
+        employees:
+          Barista: 2
+      ActivityManager:
+        activities:
+          - reading
+          - socializing
 Activities:
   - name: Rest
     traits:

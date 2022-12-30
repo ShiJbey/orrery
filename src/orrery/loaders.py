@@ -5,6 +5,7 @@ Utility class and functions for importing simulation configuration data
 """
 from __future__ import annotations
 
+import copy
 import pathlib
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Type, Union
 
@@ -12,11 +13,16 @@ import yaml
 
 from orrery.components.business import (
     Business,
+    BusinessComponentBundle,
     BusinessLibrary,
     OccupationType,
     OccupationTypeLibrary,
 )
-from orrery.components.character import CharacterLibrary, GameCharacter
+from orrery.components.character import (
+    CharacterComponentBundle,
+    CharacterLibrary,
+    GameCharacter,
+)
 from orrery.components.residence import (
     Residence,
     ResidenceComponentBundle,
@@ -24,19 +30,26 @@ from orrery.components.residence import (
 )
 from orrery.core.activity import ActivityToVirtueMap
 from orrery.core.config import BusinessConfig, CharacterConfig, ResidenceConfig
-from orrery.core.ecs import Component, ComponentBundle, World
+from orrery.core.ecs import Component, World
 from orrery.utils.common import deep_merge
 
 
 class IDataLoader(Protocol):
-    """Interface for a function that loads a specific subsection of the YAML data file"""
+    """Interface for a callable that loads a data from a YAML into the World state"""
 
     def __call__(self, world: World, data: Dict[str, Any]) -> None:
         raise NotImplementedError()
 
 
 class OrreryYamlLoader:
-    """Load Neighborly Component and Archetype definitions from an YAML"""
+    """
+    Load Neighborly Component and Archetype definitions from an YAML
+
+    Attributes
+    ----------
+    data: Dict[str, Any]
+        Data loaded from a YAML file or string
+    """
 
     __slots__ = "data"
 
@@ -45,14 +58,38 @@ class OrreryYamlLoader:
 
     @classmethod
     def from_path(cls, filepath: Union[str, pathlib.Path]) -> OrreryYamlLoader:
-        """Create a new importer instance using a file path"""
+        """
+        Create a new importer instance using a file path
+
+        Parameters
+        ----------
+        filepath: Union[str, pathlib.Path]
+            Absolute or relative path to a YAML file
+
+        Returns
+        -------
+        OrreryYamlLoader
+            A loader instance containing the data within the file
+        """
         with open(filepath, "r") as f:
             data: Dict[str, Any] = yaml.safe_load(f)
         return cls(data)
 
     @classmethod
     def from_str(cls, yaml_str: str) -> OrreryYamlLoader:
-        """Create a new importer instance using a yaml string"""
+        """
+        Create a new importer instance using a yaml string
+
+        Parameters
+        ----------
+        yaml_str: str
+            A multiline string formatted as YAML
+
+        Returns
+        -------
+        OrreryYamlLoader
+            A loader instance containing the data within the string
+        """
         data: Dict[str, Any] = yaml.safe_load(yaml_str)
         return cls(data)
 
@@ -62,8 +99,8 @@ class OrreryYamlLoader:
 
         Parameters
         ----------
-        sim: Simulation
-            The simulation instance to load data into
+        world: World
+            The world instance to load data into
         loaders: Sequence[IDataLoader]
             A function that loads information from the
             yaml data
@@ -183,6 +220,7 @@ def load_residence_configs(world: World, data: Dict[str, Any]) -> None:
 
 
 def load_all_data(world: World, data: Dict[str, Any]) -> None:
+    """Load data using all the available loader functions"""
     load_activity_virtues(world, data)
     load_character_configs(world, data)
     load_business_configs(world, data)
@@ -190,35 +228,75 @@ def load_all_data(world: World, data: Dict[str, Any]) -> None:
     load_occupation_types(world, data)
 
 
-def create_character_bundle(world: World, config: CharacterConfig) -> ComponentBundle:
+def create_character_bundle(
+    world: World, config: CharacterConfig
+) -> CharacterComponentBundle:
+    """
+    Creates a CharacterComponentBundle using the information in the config
+
+    Parameters
+    ----------
+    world: World
+        The world instance to get references to various component types
+    config: CharacterConfig
+        The configuration to draw component data from
+    """
     components: Dict[Type[Component], Dict[str, Any]] = {}
 
-    for c, options in config.components.items():
-        component_type = world.get_component_info(c).component_type
+    for name, options in config.components.items():
+        component_type = world.get_component_info(name).component_type
         if component_type == GameCharacter:
-            components[component_type] = {**options, "config": config.name}
+            components[component_type] = {
+                **copy.deepcopy(options),
+                "config": config.name,
+            }
         else:
-            components[component_type] = {**options}
+            components[component_type] = {**copy.deepcopy(options)}
 
-    return ComponentBundle(components)
+    return CharacterComponentBundle(config.name, components)
 
 
-def create_business_bundle(world: World, config: BusinessConfig) -> ComponentBundle:
+def create_business_bundle(
+    world: World, config: BusinessConfig
+) -> BusinessComponentBundle:
+    """
+    Creates a BusinessComponentBundle using the information in the config
+
+    Parameters
+    ----------
+    world: World
+        The world instance to get references to various component types
+    config: BusinessConfig
+        The configuration to draw component data from
+    """
     components: Dict[Type[Component], Dict[str, Any]] = {}
 
     for c, options in config.components.items():
         component_type = world.get_component_info(c).component_type
         if component_type == Business:
-            components[component_type] = {**options, "config": config.name}
+            components[component_type] = {
+                **copy.deepcopy(options),
+                "config": config.name,
+            }
         else:
-            components[component_type] = {**options}
+            components[component_type] = {**copy.deepcopy(options)}
 
-    return ComponentBundle(components)
+    return BusinessComponentBundle(config.name, components)
 
 
 def create_residence_bundle(
     world: World, config: ResidenceConfig
 ) -> ResidenceComponentBundle:
+    """
+    Creates a ResidenceComponentBundle using the information in the config
+
+    Parameters
+    ----------
+    world: World
+        The world instance to get references to various component types
+    config: ResidenceComponentBundle
+        The configuration to draw component data from
+    """
     components: Dict[Type[Component], Dict[str, Any]] = {}
 
     unit_components: Dict[Type[Component], Dict[str, Any]] = {}
@@ -226,15 +304,19 @@ def create_residence_bundle(
     for c, options in config.components.items():
         component_type = world.get_component_info(c).component_type
         if component_type == Residence:
-            components[component_type] = {**options, "config": config.name}
+            components[component_type] = {
+                **copy.deepcopy(options),
+                "config": config.name,
+            }
         else:
-            components[component_type] = {**options}
+            components[component_type] = {**copy.deepcopy(options)}
 
     for c, options in config.unit_components.items():
         component_type = world.get_component_info(c).component_type
-        unit_components[component_type] = {**options}
+        unit_components[component_type] = {**copy.deepcopy(options)}
 
     return ResidenceComponentBundle(
+        name=config.name,
         building_components=components,
         unit_components=unit_components,
         units=config.num_units,

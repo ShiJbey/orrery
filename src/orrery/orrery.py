@@ -58,13 +58,7 @@ from orrery.core.event import EventLog
 from orrery.core.life_event import LifeEventLibrary
 from orrery.core.relationship import RelationshipManager, UpdateRelationshipsSystem
 from orrery.core.social_rule import SocialRuleLibrary
-from orrery.core.status import (
-    RelationshipStatus,
-    Status,
-    StatusDuration,
-    StatusManager,
-    statusDurationSystem,
-)
+from orrery.core.status import RelationshipStatus, Status, StatusManager
 from orrery.core.time import SimDateTime, TimeDelta
 from orrery.core.tracery import Tracery
 from orrery.core.traits import TraitManager
@@ -80,16 +74,33 @@ from orrery.systems import (
     MeetNewPeopleSystem,
     PregnantStatusSystem,
     SpawnResidentSystem,
+    StatusDurationSystem,
     TimeSystem,
     UnemployedStatusSystem,
 )
 
 
 class PluginSetupError(Exception):
-    """Exception thrown when an error occurs while loading a plugin"""
+    """
+    Exception thrown when an error occurs while loading a plugin
 
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args)
+    Attributes
+    ----------
+    message: str
+        Text explaining the error that occurred
+    """
+
+    __slots__ = "message"
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message: str = message
+
+    def __str__(self) -> str:
+        return self.message
+
+    def __repr__(self) -> str:
+        return f"PluginSetupError('{self.message}')"
 
 
 class Plugin(ABC):
@@ -147,7 +158,7 @@ class Orrery:
         self.world.add_resource(LifeEventLibrary())
 
         # Add default systems
-        self.world.add_system(statusDurationSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(StatusDurationSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(PregnantStatusSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(UnemployedStatusSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(UpdateRelationshipsSystem(), CHARACTER_UPDATE_PHASE)
@@ -172,7 +183,6 @@ class Orrery:
         self.world.register_component(VirtueVector, factory=VirtueVectorFactory())
         self.world.register_component(ActivityManager, factory=ActivityManagerFactory())
         self.world.register_component(RelationshipStatus)
-        self.world.register_component(StatusDuration)
         self.world.register_component(Occupation)
         self.world.register_component(WorkHistory)
         self.world.register_component(Services, factory=ServicesFactory())
@@ -240,17 +250,40 @@ class Orrery:
         )
 
     def load_plugin(self, plugin: Plugin, **kwargs: Any) -> None:
-        """Add plugin to simulation"""
+        """
+        Add plugin to simulation
+
+        Parameters
+        ---------
+        plugin: Plugin
+            The plugin instance to load
+        **kwargs: Any
+            Keyword arguments to pass to the plugin's 'setup()' function
+        """
         self.plugins.append((plugin, {**kwargs}))
         plugin.setup(self.world, **kwargs)
 
     def run_for(self, years: int) -> None:
-        """Run the simulation for a given number of years"""
+        """
+        Run the simulation for a given number of simulated years
+
+        Parameters
+        ----------
+        years: int
+            Simulated years to run the simulation for
+        """
         stop_date = self.world.get_resource(SimDateTime).copy() + TimeDelta(years=years)
         self.run_until(stop_date)
 
     def run_until(self, stop_date: SimDateTime) -> None:
-        """Run the simulation until a specific date is reached"""
+        """
+        Run the simulation until a specific date is reached
+
+        Parameters
+        ----------
+        stop_date: SimDateTime
+            The date to stop stepping the simulation
+        """
         try:
             current_date = self.world.get_resource(SimDateTime)
             while stop_date >= current_date:

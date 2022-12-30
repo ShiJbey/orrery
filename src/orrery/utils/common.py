@@ -14,7 +14,6 @@ from orrery.components.business import (
     ServiceTypes,
     Unemployed,
     WorkHistory,
-    unemployed_status,
 )
 from orrery.components.character import CharacterLibrary, GameCharacter, LifeStage
 from orrery.components.residence import (
@@ -51,7 +50,7 @@ from orrery.core.relationship import (
 )
 from orrery.core.settlement import Settlement, create_grid_settlement
 from orrery.core.social_rule import SocialRuleLibrary
-from orrery.core.status import Status, StatusManager
+from orrery.core.status import RelationshipStatus, Status, StatusManager
 from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
 from orrery.core.traits import Trait, TraitManager
@@ -95,7 +94,7 @@ def create_character(
         overrides[GameCharacter]["age"] = age
 
     if life_stage:
-        overrides[GameCharacter]["life_stage"] = life_stage
+        overrides[GameCharacter]["life_stage"] = life_stage.name
 
     if gender:
         overrides[GameCharacter]["gender"] = gender
@@ -133,7 +132,6 @@ def create_residence(
 
 
 def add_business(
-    world: World,
     business: GameObject,
     settlement: GameObject,
     lot: Optional[int] = None,
@@ -165,7 +163,7 @@ def add_business(
 
 
 def add_residence(
-    world: World, residence: GameObject, settlement: GameObject, lot: int
+    residence: GameObject, settlement: GameObject, lot: int
 ) -> GameObject:
     settlement_comp = settlement.get_component(Settlement)
 
@@ -217,8 +215,6 @@ def generate_child_bundle(
         bundle = library.get_bundle(config_to_inherit.name)
 
         return bundle
-
-    return child
 
 
 def demolish_building(world: World, gameobject: GameObject) -> None:
@@ -338,6 +334,11 @@ def depart_town(world: World, character: GameObject, reason: str = "") -> None:
     )
 
 
+#######################################
+# Business Management
+#######################################
+
+
 def add_coworkers(world: World, character: GameObject, business: GameObject) -> None:
     """Add coworker tags to current coworkers in relationship network"""
     for employee_id in business.get_component(Business).get_employees():
@@ -391,6 +392,13 @@ def shutdown_business(world: World, business: GameObject) -> None:
     if business_comp.owner_type is not None and business_comp.owner is not None:
         end_job(world, world.get_gameobject(business_comp.owner), reason=event.name)
 
+    location = business.get_component(Location)
+
+    for frequenter_id in location.frequented_by:
+        world.get_gameobject(frequenter_id).get_component(
+            FrequentedLocations
+        ).locations.remove(business.id)
+
     business.remove_component(Active)
     business.remove_component(Location)
     demolish_building(world, business)
@@ -412,8 +420,7 @@ def start_job(
     add_coworkers(world, character, business.gameobject)
 
     if has_status(character, Unemployed):
-        status = get_status(world, character, Unemployed)
-        remove_status(character, status)
+        remove_status(world, character, Unemployed)
 
 
 def end_job(
@@ -434,7 +441,7 @@ def end_job(
     business_comp.remove_employee(character.id)
 
     character.remove_component(Occupation)
-    add_status(world, character, unemployed_status(336))
+    add_status(world, character, Unemployed(336))
 
     # Update the former employee's work history
     if not character.has_component(WorkHistory):
@@ -517,6 +524,11 @@ def fill_open_position(
     return None
 
 
+#######################################
+# Relationship Management
+#######################################
+
+
 def add_relationship(
     world: World, subject: GameObject, target: GameObject
 ) -> Relationship:
@@ -562,8 +574,12 @@ def get_relationship(
 
     Parameters
     ----------
-    target: int
-        Unique identifier of the other entity
+    world: World
+        The world instance of the simulation
+    subject: GameObject
+        The owner of the relationship
+    target: GameObject
+        The character the relationship is directed toward
     create_new: bool (default: False)
         Create a new relationship if one does not already exist
 
@@ -584,6 +600,11 @@ def get_relationship(
             return add_relationship(world, subject, target)
         else:
             raise RelationshipNotFound(subject.name, target.name)
+
+
+#######################################
+# Trait Management
+#######################################
 
 
 def add_trait(world: World, character: GameObject, trait: Trait) -> None:
@@ -607,7 +628,26 @@ def has_trait(character: GameObject, trait_name: str) -> bool:
     return trait_name in character.get_component(TraitManager)
 
 
-def set_liked_activities(world: World, character: GameObject, n: int = 3) -> None:
+#######################################
+# Activity Frequenting
+#######################################
+
+
+def set_liked_activities(
+    world: World, character: GameObject, max_activities: int = 3
+) -> None:
+    """
+    Determine the activities a character likes to do
+
+    Parameters
+    ----------
+    world: World
+        The World instance of the simulation
+    character: GameObject
+        The character to set liked activities for
+    max_activities: int
+        The maximum number of activities to select
+    """
 
     scores: List[Tuple[float, Activity]] = []
 
@@ -625,120 +665,303 @@ def set_liked_activities(world: World, character: GameObject, n: int = 3) -> Non
             [
                 activity_score[1]
                 for activity_score in sorted(scores, key=lambda s: s[0], reverse=True)
-            ][:n]
+            ][:max_activities]
         )
     )
 
     character.add_component(liked_activities)
 
 
-def find_places_with_activities(world: World, *activities: str) -> List[int]:
-    """Return a list of entity ID for locations that have the given activities"""
-    locations = world.get_component(ActivityManager)
+def find_places_with_activities(
+    world: World, settlement: GameObject, *activities: str
+) -> List[int]:
+    """
+    Find businesses within the given settlement with all the given activities
+
+    Parameters
+    ----------
+    world: World
+        The World instance of the simulation
+    settlement: GameObject
+        The settlement to search within
+    *activities: str
+        Activities to search for
+
+    Returns
+    -------
+    List[int]
+         Returns the identifiers of locations
+    """
     activity_library = world.get_resource(ActivityLibrary)
 
     matches: List[int] = []
 
+    settlement_comp = settlement.get_component(Settlement)
+
     activity_instances = [activity_library.get(a, create_new=False) for a in activities]
 
-    for location_id, location in locations:
-        if all([a in location for a in activity_instances]):
+    for location_id in settlement_comp.places_with_activities:
+        location_activities = world.get_gameobject(location_id).get_component(
+            ActivityManager
+        )
+        if all([a in location_activities for a in activity_instances]):
             matches.append(location_id)
 
     return matches
 
 
-def find_places_with_any_activities(world: World, *activities: str) -> List[int]:
-    """Return a list of entity ID for locations that have any of the given activities
-    Results are sorted by how many activities they match
+def find_places_with_any_activities(
+    world: World, settlement: GameObject, *activities: str
+) -> List[int]:
     """
-    locations = world.get_component(ActivityManager)
+    Find businesses within the given settlement with any of the given activities
+
+    Parameters
+    ----------
+    world: World
+        The World instance of the simulation
+    settlement: GameObject
+        The settlement to search within
+    *activities: str
+        Activities to search for
+
+    Returns
+    -------
+    List[int]
+         Returns the identifiers of locations
+    """
     activity_library = world.get_resource(ActivityLibrary)
 
     activity_instances = [activity_library.get(a, create_new=False) for a in activities]
 
-    def score_location(location: ActivityManager) -> int:
+    def score_location(loc: ActivityManager) -> int:
         location_score: int = 0
         for activity in activity_instances:
-            if activity in location:
+            if activity in loc:
                 location_score += 1
         return location_score
 
-    locations = world.get_component(ActivityManager)
-
     matches: List[Tuple[int, int]] = []
 
-    for location_id, location in locations:
-        score = score_location(location)
+    settlement_comp = settlement.get_component(Settlement)
+
+    for location_id in settlement_comp.places_with_activities:
+        score = score_location(
+            world.get_gameobject(location_id).get_component(ActivityManager)
+        )
         if score > 0:
             matches.append((score, location_id))
 
     return [match[1] for match in sorted(matches, key=lambda m: m[0], reverse=True)]
 
 
-def set_frequented_locations(world: World, character: GameObject, n: int = 3) -> None:
-    # Find locations in the town and select n to be places that the
-    # given character frequents
+def set_frequented_locations(
+    world: World, character: GameObject, settlement: GameObject, max_locations: int = 3
+) -> None:
+    """
+    Set what locations a character frequents based on the locations within
+    a given settlement
+
+    Parameters
+    ----------
+    world: World
+        The world instance of the simulation
+    character: GameObject
+        The character oto set frequented locations for
+    settlement: GameObject
+        The settlement to sample frequented locations from
+    max_locations: int
+        The max number of locations to sample
+    """
     liked_activities = [
         a.name for a in character.get_component(LikedActivities).activities
     ]
 
-    locations = find_places_with_any_activities(world, *list(liked_activities))
+    locations = find_places_with_any_activities(
+        world, settlement, *list(liked_activities)
+    )
 
-    n_locations_to_select = min(n, len(locations))
-
-    selected_locations = locations[:n_locations_to_select]
+    selected_locations = locations[:max_locations]
 
     character.add_component(FrequentedLocations(set(selected_locations)))
 
-    for l in selected_locations:
-        world.get_gameobject(l).get_component(Location).frequented_by.add(character.id)
-
-
-def pprint_gameobject(gameobject: GameObject) -> None:
-    print(
-        json.dumps(
-            gameobject.to_dict(),
-            sort_keys=True,
-            indent=2,
+    for loc_id in selected_locations:
+        world.get_gameobject(loc_id).get_component(Location).frequented_by.add(
+            character.id
         )
-    )
 
 
-def add_character(world: World, character: GameObject) -> GameObject:
+def add_character_to_settlement(
+    world: World, character: GameObject, settlement: GameObject
+) -> None:
+    """
+    Adds a character to a settlement and sets required fields for decision-making
+
+    Parameters
+    ----------
+    world: World
+        The World instance of ths simulation
+    character: GameObject
+        The character to add
+    settlement: GameObject
+        The settlement to add the character to
+    """
+
     set_liked_activities(world, character)
-    set_frequented_locations(world, character)
+    set_frequented_locations(world, character, settlement)
+
     character.add_component(Active())
 
     character_comp = character.get_component(GameCharacter)
 
     if character_comp.life_stage >= LifeStage.YoungAdult:
         character.add_component(InTheWorkforce())
-        add_status(world, character, unemployed_status(336))
-
-    return character
+        add_status(world, character, Unemployed(336))
 
 
-def add_location(
-    world: World,
-    bundle: ComponentBundle,
-    overrides: Optional[Dict[Type[Component], Dict[str, Any]]] = None,
-) -> GameObject:
-    location = bundle.spawn(world, overrides)
-    return location
+#######################################
+# Relationship Status Management
+#######################################
 
 
 def add_relationship_status(
-    world: World, character: GameObject, status_bundle: ComponentBundle
+    world: World, character: GameObject, target: GameObject, component: Component
 ) -> None:
-    """Add a status to the character"""
-    status = status_bundle.spawn(world)
+    """
+    Add a relationship status to the given character
+
+    Parameters
+    ----------
+    world: World
+        The World instance for the simulation
+    character: GameObject
+        The character to add the relationship status to
+    target: GameObject
+        The character the relationship status is directed toward
+    component: Component
+        The core component of the status
+    """
+    status = world.spawn_gameobject(
+        [
+            RelationshipStatus(
+                owner=character.id, target=target.id, component_type=type(component)
+            ),
+            component,
+        ]
+    )
+    relationship_status = status.get_component(RelationshipStatus)
+    other = world.get_gameobject(relationship_status.target)
+    relationship = get_relationship(world, character, other, create_new=True)
+    relationship.add_status(status.id, relationship_status.component_type)
     character.add_child(status)
 
 
-def add_status(world: World, gameobject: GameObject, bundle: ComponentBundle) -> None:
-    """Adds a new status to the given GameObject"""
-    status = bundle.spawn(world)
+def get_relationship_status(
+    world: World,
+    character: GameObject,
+    target: GameObject,
+    status_type: Type[Component],
+) -> GameObject:
+    """
+    Remove a relationship status to the given character
+
+    Parameters
+    ----------
+    world: World
+        The World instance for the simulation
+    character: GameObject
+        The character to add the relationship status to
+    target: GameObject
+        The character that is the target of the status
+    status_type: Type[Component]
+        The component type of the status
+    """
+    return world.get_gameobject(
+        character.get_component(RelationshipManager)
+        .get(target.id)
+        .get_status(status_type)
+    )
+
+
+def remove_relationship_status(
+    world: World,
+    character: GameObject,
+    target: GameObject,
+    status_type: Type[Component],
+) -> None:
+    """
+    Remove a relationship status to the given character
+
+    Parameters
+    ----------
+    world: World
+        The World instance for the simulation
+    character: GameObject
+        The character to add the relationship status to
+    target: GameObject
+        The character that is the target of the status
+    status_type: Type[Component]
+        The component type of the relationship status to remove
+    """
+    relationship = get_relationship(world, character, target, create_new=True)
+    status = world.get_gameobject(relationship.get_status(status_type))
+    relationship.remove_status(status_type)
+    character.remove_child(status)
+    status.destroy()
+
+
+def has_relationship_status(
+    world: World,
+    character: GameObject,
+    target: GameObject,
+    status_type: Type[Component],
+) -> None:
+    """
+    Check if a relationship between characters has a certain status type
+
+    Parameters
+    ----------
+    world: World
+        The World instance for the simulation
+    character: GameObject
+        The character to add the relationship status to
+    target: GameObject
+        The character that is the target of the status
+    status_type: Type[Component]
+        The component type of the relationship status to remove
+
+    Returns
+    -------
+        Returns True if relationship has a given status
+    """
+    relationship = get_relationship(world, character, target, create_new=True)
+    status = world.get_gameobject(relationship.get_status(status_type))
+    relationship.remove_status(status_type)
+    character.remove_child(status)
+    status.destroy()
+
+
+#######################################
+# Regular Status Management
+#######################################
+
+
+def add_status(world: World, gameobject: GameObject, component: Component) -> None:
+    """
+    Adds a new status to the given GameObject
+
+    Parameters
+    ----------
+    world: World
+        The World instance of the simulation
+    gameobject: GameObject
+        The GameObject to add the status to
+    component: Component
+        The component of the status to add to the given gameobject
+    """
+    status = world.spawn_gameobject(
+        [Status(owner=gameobject.id, component_type=type(component)), component]
+    )
     gameobject.add_child(status)
     gameobject.get_component(StatusManager).add(
         status.id, status.get_component(Status).component_type
@@ -746,24 +969,92 @@ def add_status(world: World, gameobject: GameObject, bundle: ComponentBundle) ->
 
 
 def get_status(
-    world: World, gameobject: GameObject, status_type_type: Type[_CT]
+    world: World, gameobject: GameObject, status_type: Type[Component]
 ) -> GameObject:
-    return world.get_gameobject(gameobject.get_component_in_child(status_type_type)[0])
+    """
+    Returns the first instance of a status with the given status type
 
+    Parameters
+    ----------
+    world: World
+        The World instance of the simulation
+    gameobject: GameObject
+        The GameObject to check for the presence of the status on
+    status_type: Type[Component]
+        The type of component identifying this status
 
-def remove_status(gameobject: GameObject, status: GameObject) -> None:
-    """Removes a status from the given GameObject"""
-    gameobject.remove_child(status)
+    Returns
+    -------
+    GameObject
+        The first instance of an instance attached to the gameobject
+        containing an instance of the given status type
+    """
     status_manager = gameobject.get_component(StatusManager)
-    status_manager.remove(status.id)
+    return world.get_gameobject(status_manager.get(status_type))
+
+
+def remove_status(
+    world: World, gameobject: GameObject, status_type: Type[Component]
+) -> None:
+    """
+    Remove a status from the given GameObject
+
+    Parameters
+    ----------
+    world: World
+        The world instance of the simulation
+    gameobject: GameObject
+        The GameObject to remove the status from
+    status_type: Type[Component]
+        The component type to check for
+    """
+    status_manager = gameobject.get_component(StatusManager)
+    status = world.get_gameobject(status_manager.get(status_type))
+    gameobject.remove_child(status)
+    status_manager.remove(status_type)
     status.destroy()
 
 
 def has_status(gameobject: GameObject, status_type: Type[Component]) -> bool:
-    """Return True if the given gameobject has a status of the given type"""
+    """
+    Check if a gameobject has a status of a given type
+
+    Parameters
+    ----------
+    gameobject: GameObject
+        The GameObject to check
+    status_type: Type[Component]
+        The component type to check for
+
+    Returns
+    -------
+        Returns True if the given GameObject has a status of the given type"""
     status_manager = gameobject.get_component(StatusManager)
     return status_type in status_manager
 
+
+def clear_statuses(world: World, gameobject: GameObject) -> None:
+    """
+    Removes all statuses from the given gameobject
+
+    Parameters
+    ----------
+    world: World
+        The world instance of the simulation
+    gameobject: GameObject
+        The GameObject to remove the status from
+    """
+    status_manager = gameobject.get_component(StatusManager)
+
+    active_statuses = list(status_manager.status_types.keys())
+
+    for status_type in active_statuses:
+        remove_status(world, gameobject, status_type)
+
+
+#######################################
+# General Utility Functions
+#######################################
 
 _KT = TypeVar("_KT")
 
@@ -798,3 +1089,14 @@ def deep_merge(source: Dict[_KT, Any], other: Dict[_KT, Any]) -> Dict[_KT, Any]:
             merged_dict[key] = value
 
     return merged_dict
+
+
+def pprint_gameobject(gameobject: GameObject) -> None:
+    """Pretty prints a GameObject"""
+    print(
+        json.dumps(
+            gameobject.to_dict(),
+            sort_keys=True,
+            indent=2,
+        )
+    )

@@ -48,7 +48,14 @@ class ISettlementMap(Protocol):
 class Settlement(Component):
     """Manages all the information about the town/city/village"""
 
-    __slots__ = "name", "land_map", "population", "business_counts"
+    __slots__ = (
+        "name",
+        "land_map",
+        "population",
+        "business_counts",
+        "places_with_activities",
+        "businesses",
+    )
 
     def __init__(self, name: str, land_map: ISettlementMap) -> None:
         super(Component, self).__init__()
@@ -56,6 +63,8 @@ class Settlement(Component):
         self.land_map: ISettlementMap = land_map
         self.population: int = 0
         self.business_counts: DefaultDict[str, int] = defaultdict(lambda: 0)
+        self.places_with_activities: Set[int] = set()
+        self.businesses: Set[int] = set()
 
     def increment_population(self) -> None:
         self.population += 1

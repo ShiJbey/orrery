@@ -1,87 +1,70 @@
-from abc import ABC
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Iterator, Tuple, Type
 
-from orrery.core.ecs import Component, ComponentBundle, ISystem
+from orrery.core.ecs import Component
 
 
 @dataclass
 class Status(Component):
     """
-    Identifies a GameObject as being a status and holds references to callback functions
+    Identifies a GameObject as being a status
+
+    Attributes
+    ----------
+    owner: int
+        Who/What owns the status
+    component_type: Type[Component]
+        The component type that hold status-specific data
+    time_active: int
+        The amount of time (in months) that this status has been active
     """
 
+    owner: int
     component_type: Type[Component]
-
-
-@dataclass
-class StatusDuration(Component):
-    duration: int = -1
-    elapsed: int = 0
+    time_active: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "duration": self.duration,
-            "elapsed": self.elapsed,
+            "owner": self.owner,
+            "component_type": self.component_type.__name__,
+            "time_active": self.time_active,
         }
 
 
 @dataclass
 class RelationshipStatus(Component):
+    """
+    Identifies a GameObject as being a RelationshipStatus
+
+    Attributes
+    ----------
+    owner: int
+        Who/What owns the status
+    target: int
+        Who/What the status is directed toward
+    component_type: Type[Component]
+        The component type that hold status-specific data
+    time_active: int
+        The amount of time (in months) that this status has been active
+    """
+
     owner: int
     target: int
     component_type: Type[Component]
+    time_active: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "owner": self.owner,
             "target": self.target,
             "component_type": self.component_type.__name__,
+            "time_active": self.time_active,
         }
-
-
-class StatusBundle(ComponentBundle, ABC):
-    def __init__(
-        self,
-        component_info: Tuple[Type[Component], Dict[str, Any]],
-        duration: int = -1,
-    ) -> None:
-        super().__init__(
-            {
-                Status: {
-                    "component_type": component_info[0],
-                },
-                StatusDuration: {"duration": duration},
-                component_info[0]: {**component_info[1]},
-            }
-        )
-
-
-class RelationshipStatusBundle(ComponentBundle):
-    def __init__(
-        self,
-        owner: int,
-        target: int,
-        component_info: Tuple[Type[Component], Dict[str, Any]],
-        duration: int = -1,
-    ) -> None:
-        super().__init__(
-            {
-                RelationshipStatus: {
-                    "owner": owner,
-                    "target": target,
-                    "component_type": component_info[0],
-                },
-                StatusDuration: {"duration": duration},
-                component_info[0]: {**component_info[1]},
-            }
-        )
 
 
 class StatusManager(Component):
     """
-    Helper component that tracks what statuses
-    are attached to a GameObject
+    Helper component that tracks what statuses are attached to a GameObject
 
     Attributes
     ----------
@@ -92,32 +75,53 @@ class StatusManager(Component):
     __slots__ = "status_types"
 
     def __init__(self) -> None:
-        super().__init__()
-        self.status_types: Dict[int, Type[Component]] = {}
+        super(Component, self).__init__()
+        self.status_types: Dict[Type[Component], int] = {}
 
     def add(self, status_id: int, status_type: Type[Component]) -> None:
-        self.status_types[status_id] = status_type
+        """
+        Add a status to the manager
 
-    def remove(self, status_id: int) -> None:
-        """Removes record of status with the given ID"""
-        del self.status_types[status_id]
+        Parameters
+        ----------
+        status_id: int
+            The identifier for the GameObject with the status component
+        status_type: Type[Component]
+            The main component with status information
+        """
+        self.status_types[status_type] = status_id
 
-    def remove_type(self, status_type: Type[Component]) -> None:
-        status_to_remove: Optional[int] = None
+    def get(self, status_type: Type[Component]) -> int:
+        """Get all the present statuses with the given status type"""
+        return self.status_types[status_type]
 
-        for s_id, s_type in self.status_types.items():
-            if s_type == status_type:
-                status_to_remove = s_id
-                break
+    def remove(self, status_type: Type[Component]) -> None:
+        """
+        Removes record of status with the given ID
 
-        if status_to_remove is not None:
-            self.remove(status_to_remove)
+        Parameters
+        ----------
+        status_type: Type[Component]
+            The main component with status information
+        """
+        del self.status_types[status_type]
 
     def __contains__(self, item: Type[Component]) -> bool:
+        """
+        Check if a status type is attached to the GameObject
+
+        Parameters
+        ----------
+        item: Type[Component]
+            The component type to check for
+
+        Returns
+        -------
+        bool
+            Returns True if there is a status with the given component type
+        """
         return item in self.status_types.values()
 
-
-class statusDurationSystem(ISystem):
-    def process(self, *args: Any, **kwargs: Any):
-        for _, status_duration in self.world.get_component(StatusDuration):
-            status_duration.elapsed += 1
+    def __iter__(self) -> Iterator[Tuple[Type[Component], int]]:
+        """Returns an iterator for the status types"""
+        return self.status_types.items().__iter__()

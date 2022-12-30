@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import IntFlag, auto
-from typing import Any, Dict, Iterator, List, Protocol, Tuple
+from typing import Any, Dict, Iterator, List, Protocol, Tuple, Type
 
 from orrery.core.ecs import Component, ISystem
 
@@ -88,10 +88,6 @@ class RelationshipStat:
         Scales the normalized score between the minimum and maximum
     _normalized_value: float
         The  normalized stat value on the interval [0.0, 1.0]
-    _increments: int
-        The total number of positive increments to this stat
-    _decrements: int
-        The total number of negative increments to this stat
     _is_dirty: bool
         Have the various values been recalculated since the last change
     """
@@ -226,7 +222,7 @@ class SimpleRelationshipModifier:
             relationship[stat].add_modifier(buff)
 
     def deactivate(self, relationship: Relationship) -> None:
-        """Remove this modifiers effects from the given relationship"""
+        """Remove this modifier's effects from the given relationship"""
         for stat, buff in self.modifiers.items():
             relationship[stat].remove_modifier(buff)
 
@@ -255,6 +251,7 @@ class Relationship:
         "active_modifiers",
         "_is_dirty",
         "target",
+        "statuses",
     )
 
     def __init__(self, target: int, stats: Dict[str, RelationshipStat]) -> None:
@@ -265,8 +262,55 @@ class Relationship:
             "Interaction": self.interaction_score,
         }
         self.tags: RelationshipTag = RelationshipTag.Empty
+        self.statuses: Dict[Type[Component], int] = {}
         self.active_modifiers: Dict[str, IRelationshipModifier] = {}
         self._is_dirty = False
+
+    def add_status(self, status_id: int, status_type: Type[Component]) -> None:
+        """
+        Add a relationship status to this relationship
+
+        Parameters
+        ----------
+        status_id: int
+            The ID of the GameObject with the status information
+        status_type: Type[Component]
+            The main component associated with the status
+        """
+        self.statuses[status_type] = status_id
+
+    def get_status(self, status_type: Type[Component]) -> int:
+        """
+        Get the ID of the status with this component type
+
+        Parameters
+        ----------
+        status_type: Type[Component]
+            The main component associated with the status
+        """
+        return self.statuses[status_type]
+
+    def remove_status(self, status_type: Type[Component]) -> None:
+        """
+        Remove a relationship status from this relationship
+
+        Parameters
+        ----------
+        status_type: Type[Component]
+            The main component associated with the status
+        """
+        del self.statuses[status_type]
+
+    def has_status(self, status_type: Type[Component]) -> bool:
+        """
+        Remove a relationship status from this relationship
+
+        Parameters
+        ----------
+        status_type: Type[Component]
+            The mani component associated with the status
+        """
+        return status_type in self.statuses.values()
 
     def add_tags(self, tags: RelationshipTag) -> None:
         self.tags |= tags
@@ -296,7 +340,7 @@ class Relationship:
     def __setitem__(self, item: str, value: RelationshipStat) -> RelationshipStat:
         # This function is here to allow user to do (+=) in combination with [] syntax
         # for example: relationship["Friendship"] += 3
-        # Its a slight abuse of syntax, but it works
+        # It's a slight abuse of syntax, but it works
         return self._stats[item]
 
     def __iter__(self) -> Iterator[tuple[str, RelationshipStat]]:
@@ -330,8 +374,6 @@ class RelationshipManager(Component):
         ----------
         target: int
             Unique identifier of the other entity
-        create_new: bool (default: False)
-            Create a new relationship if one does not already exist
 
         Returns
         -------
@@ -358,7 +400,7 @@ class RelationshipManager(Component):
         return self._relationships.items().__iter__()
 
     def __contains__(self, target: int) -> bool:
-        """Returns True if the if there is a relationship to the target"""
+        """Returns True if there is a relationship to the target"""
         return target in self._relationships
 
 
@@ -382,7 +424,7 @@ class IRelationshipModifier(Protocol):
         raise NotImplementedError
 
     def deactivate(self, relationship: Relationship) -> None:
-        """Remove this modifiers effects from the given relationship"""
+        """Remove this modifier's effects from the given relationship"""
         raise NotImplementedError
 
 
@@ -409,7 +451,7 @@ class RelationshipModifier:
             relationship[stat].add_modifier(buff)
 
     def deactivate(self, relationship: Relationship) -> None:
-        """Remove this modifiers effects from the given relationship"""
+        """Remove this modifier's effects from the given relationship"""
         for stat, buff in self.modifiers.items():
             relationship[stat].remove_modifier(-buff)
 
