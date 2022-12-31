@@ -773,6 +773,8 @@ def set_frequented_locations(
     max_locations: int
         The max number of locations to sample
     """
+    clear_frequented_locations(world, character)
+
     liked_activities = [
         a.name for a in character.get_component(LikedActivities).activities
     ]
@@ -789,6 +791,25 @@ def set_frequented_locations(
         world.get_gameobject(loc_id).get_component(Location).frequented_by.add(
             character.id
         )
+
+
+def clear_frequented_locations(world: World, character: GameObject) -> None:
+    """
+    Un-mark any locations as frequented by the given character
+
+    Parameters
+    ----------
+    world: World
+        The World instance of the simulation
+    character: GameObject
+        The GameObject to remove as a frequenter
+    """
+    if frequented_locations := character.try_component(FrequentedLocations):
+        for location_id in frequented_locations.locations:
+            location = world.get_gameobject(location_id).get_component(Location)
+            location.frequented_by.remove(character.id)
+        frequented_locations.locations.clear()
+        character.remove_component(FrequentedLocations)
 
 
 def add_character_to_settlement(

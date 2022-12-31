@@ -46,7 +46,7 @@ from orrery.utils.common import (
     has_status,
     remove_status,
     set_residence,
-    start_job,
+    start_job, add_character_to_settlement,
 )
 
 
@@ -128,7 +128,7 @@ class MeetNewPeopleSystem(ISystem):
     """
 
     def process(self, *args: Any, **kwargs: Any):
-        for gid, _ in self.world.get_component(GameCharacter):
+        for gid, _ in self.world.get_components(GameCharacter, Active):
             character = self.world.get_gameobject(gid)
 
             frequented_locations = character.get_component(
@@ -143,7 +143,8 @@ class MeetNewPeopleSystem(ISystem):
                     .get_component(Location)
                     .frequented_by
                 ):
-                    candidates.append(other_id)
+                    if other_id != gid:
+                        candidates.append(other_id)
 
             if candidates:
                 candidate_weights = Counter(candidates)
@@ -224,35 +225,17 @@ class FindEmployeesSystem(ISystem):
                 )
 
 
-class BuildHousingSystem(System):
+class BuildHousingSystem(ISystem):
     """
-    Builds housing archetypes on unoccupied spaces on the land grid
-
-    Attributes
-    ----------
-    chance_of_build: float
-        Probability that a new residential building will be built
-        if there is space available
+    Builds housing on unoccupied spaces on the land grid
     """
 
-    __slots__ = "chance_of_build"
-
-    def __init__(
-        self, chance_of_build: float = 0.5, interval: Optional[TimeDelta] = None
-    ) -> None:
-        super().__init__(interval=interval)
-        self.chance_of_build: float = chance_of_build
-
-    def run(self, *args: Any, **kwargs: Any) -> None:
+    def process(self, *args: Any, **kwargs: Any) -> None:
         """Build a new residence when there is space"""
         rng = self.world.get_resource(random.Random)
         residence_library = self.world.get_resource(ResidenceLibrary)
 
         for settlement_id, settlement in self.world.get_component(Settlement):
-            # Return early if the random-roll is not sufficient
-            if rng.random() > self.chance_of_build:
-                continue
-
             vacancies = settlement.land_map.get_vacant_lots()
 
             # Return early if there is nowhere to build
@@ -278,23 +261,10 @@ class BuildHousingSystem(System):
             )
 
 
-class BuildBusinessSystem(System):
+class BuildBusinessSystem(ISystem):
     """
     Build a new business building at a random free space on the land grid.
-
-    Attributes
-    ----------
-    chance_of_build: float
-        The probability that a new business may be built this timestep
     """
-
-    __slots__ = "chance_of_build"
-
-    def __init__(
-        self, chance_of_build: float = 0.5, interval: Optional[TimeDelta] = None
-    ) -> None:
-        super().__init__(interval)
-        self.chance_of_build: float = chance_of_build
 
     def find_business_owner(
         self, business: Business, occupation_types: OccupationTypeLibrary
@@ -324,7 +294,7 @@ class BuildBusinessSystem(System):
 
         return None
 
-    def run(self, *args: Any, **kwargs: Any) -> None:
+    def process(self, *args: Any, **kwargs: Any) -> None:
         """Build a new business when there is space"""
         event_log = self.world.get_resource(EventLog)
         business_library = self.world.get_resource(BusinessLibrary)
@@ -332,11 +302,6 @@ class BuildBusinessSystem(System):
         rng = self.world.get_resource(random.Random)
 
         for settlement_id, settlement in self.world.get_component(Settlement):
-
-            # Return early if the random-roll is not sufficient
-            if rng.random() > self.chance_of_build:
-                return
-
             vacancies = settlement.land_map.get_vacant_lots()
 
             # Return early if there is nowhere to build
@@ -425,6 +390,10 @@ class SpawnResidentSystem(System):
         for _, (residence, _, _, _) in self.world.get_components(
             Residence, Building, Active, Vacant
         ):
+            residence = cast(Residence, residence)
+
+            settlement = self.world.get_gameobject(residence.settlement)
+
             # Return early if the random-roll is not sufficient
             if rng.random() > self.chance_spawn:
                 return
@@ -443,10 +412,12 @@ class SpawnResidentSystem(System):
             character = create_character(
                 self.world, bundle, life_stage=LifeStage.YoungAdult
             )
+
             generated_characters.append(character)
 
             character_config = character.get_component(GameCharacter).config
 
+            add_character_to_settlement(self.world, character, settlement)
             set_residence(self.world, character, residence.gameobject, True)
 
             spouse: Optional[GameObject] = None
@@ -466,6 +437,7 @@ class SpawnResidentSystem(System):
                 generated_characters.append(spouse)
 
                 # Move them into the home with the first character
+                add_character_to_settlement(self.world, spouse, settlement)
                 set_residence(self.world, spouse, residence.gameobject, True)
 
                 # Configure relationship from character to spouse
@@ -504,6 +476,7 @@ class SpawnResidentSystem(System):
                     generated_characters.append(child)
 
                     # Move them into the home with the first character
+                    add_character_to_settlement(self.world, child, settlement)
                     set_residence(self.world, child, residence.gameobject)
 
                     children.append(child)
@@ -868,12 +841,17 @@ class PregnantStatusSystem(System):
             )
 
 
-class StatusDurationSystem(ISystem):
+class StatusSystem(ISystem):
     """Increases the elapsed time for all statuses by one month"""
 
     def process(self, *args: Any, **kwargs: Any):
         for _, status_duration in self.world.get_component(Status):
             status_duration.time_active += 1
 
+
+class RelationshipStatusSystem(ISystem):
+    """Increases the elapsed time for all statuses by one month"""
+
+    def process(self, *args: Any, **kwargs: Any):
         for _, status_duration in self.world.get_component(RelationshipStatus):
             status_duration.time_active += 1

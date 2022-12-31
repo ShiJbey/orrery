@@ -3,7 +3,7 @@ from orrery.components.character import Departed
 from orrery.components.shared import Active
 from orrery.core.ecs import World
 from orrery.core.event import Event
-from orrery.utils.common import add_status, clear_statuses, end_job, set_residence
+from orrery.utils.common import add_status, clear_statuses, end_job, set_residence, clear_frequented_locations
 
 
 def on_depart_callback(world: World, event: Event) -> None:
@@ -63,3 +63,17 @@ def remove_statuses_from_departed(world: World, event: Event) -> None:
     for c in event.get_all("Character"):
         character = world.get_gameobject(c)
         clear_statuses(world, character)
+
+
+def remove_frequented_locations_from_deceased(world: World, event: Event) -> None:
+    """Remove all active statuses when characters die"""
+    for c in event.get_all("Character"):
+        character = world.get_gameobject(c)
+        clear_frequented_locations(world, character)
+
+
+def remove_frequented_locations_from_departed(world: World, event: Event) -> None:
+    """Remove all active statuses when characters depart"""
+    for c in event.get_all("Character"):
+        character = world.get_gameobject(c)
+        clear_frequented_locations(world, character)

@@ -74,9 +74,9 @@ from orrery.systems import (
     MeetNewPeopleSystem,
     PregnantStatusSystem,
     SpawnResidentSystem,
-    StatusDurationSystem,
+    StatusSystem,
     TimeSystem,
-    UnemployedStatusSystem,
+    UnemployedStatusSystem, RelationshipStatusSystem,
 )
 
 
@@ -158,7 +158,8 @@ class Orrery:
         self.world.add_resource(LifeEventLibrary())
 
         # Add default systems
-        self.world.add_system(StatusDurationSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(StatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(RelationshipStatusSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(PregnantStatusSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(UnemployedStatusSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(UpdateRelationshipsSystem(), CHARACTER_UPDATE_PHASE)
@@ -247,6 +248,14 @@ class Orrery:
 
         self.world.get_resource(EventLog).on(
             "Depart", event_callbacks.remove_statuses_from_departed
+        )
+
+        self.world.get_resource(EventLog).on(
+            "Death", event_callbacks.remove_frequented_locations_from_deceased
+        )
+
+        self.world.get_resource(EventLog).on(
+            "Depart", event_callbacks.remove_frequented_locations_from_departed
         )
 
     def load_plugin(self, plugin: Plugin, **kwargs: Any) -> None:

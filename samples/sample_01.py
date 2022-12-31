@@ -247,7 +247,7 @@ def main():
     add_trait(sim.world, william, hates_robots)
 
     st = time.time()
-    sim.run_for(1000)
+    sim.run_for(100)
     elapsed_time = time.time() - st
 
     print(f"World Date: {str(sim.world.get_resource(SimDateTime))}")

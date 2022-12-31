@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Type
 
 from ordered_set import OrderedSet
 
-from orrery.core.config import ResidenceConfig  # type: ignore
+from orrery.core.config import ResidenceConfig
 from orrery.core.ecs import Component, ComponentBundle, GameObject, World
 
 
