@@ -111,6 +111,19 @@ class Vacant(Component):
 
 
 class ResidenceComponentBundle(ComponentBundle):
+    """
+    ComponentBundle for specifically constructing residence instances
+
+    Attributes
+    ----------
+    name: str
+        The name of the config associated with this bundle
+    units: int
+        The number of residential units in the building (allows for multifamily housing)
+    unit_bundle: ComponentBundle
+        The component bundle used to construct the individual residential units that
+        belong to the building
+    """
 
     __slots__ = "unit_bundle", "units", "name"
 

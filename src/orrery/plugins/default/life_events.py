@@ -10,125 +10,61 @@ from orrery.components.character import (
     Deceased,
     GameCharacter,
     LifeStage,
-    Pregnant,
     Retired,
 )
+from orrery.components.relationship_status import Dating
 from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.shared import Active
 from orrery.core.ecs import GameObject, World
-from orrery.core.event import Event, EventLog, EventRoleType, RoleList
+from orrery.core.event import Event, EventHandler, EventRoleType, RoleList
 from orrery.core.life_event import (
     ILifeEvent,
     LifeEvent,
     LifeEventInstance,
     LifeEventLibrary,
 )
-from orrery.core.query import QueryBuilder, not_, or_
+from orrery.core.query import QueryBuilder, eq_, not_, or_
 from orrery.core.relationship import RelationshipManager, RelationshipTag
 from orrery.core.time import SimDateTime
 from orrery.orrery import Plugin
-from orrery.utils.common import (
-    add_status,
-    depart_town,
-    end_job,
-    has_status,
-    set_residence,
-    shutdown_business,
-)
+from orrery.statuses import Pregnant
+from orrery.utils.common import depart_town, end_job, set_residence, shutdown_business
 from orrery.utils.query import (
-    friendship_gte,
-    friendship_lte,
     from_pattern,
     from_roles,
-    get_friendships_gte,
-    get_friendships_lte,
     get_relationships_with_tags,
     get_romances_gte,
-    has_component,
+    has_component_filter,
     is_single,
     relationship_has_tags,
     romance_gte,
     romance_lte,
 )
-
-
-def become_friends_event(
-    threshold: float = 0.7, probability: float = 1.0
-) -> ILifeEvent:
-    """Defines an event where two characters become friends"""
-
-    def effect(world: World, event: Event):
-        world.get_gameobject(event["Initiator"]).get_component(RelationshipManager).get(
-            event["Other"]
-        ).add_tags(RelationshipTag.Friend)
-
-        world.get_gameobject(event["Other"]).get_component(RelationshipManager).get(
-            event["Initiator"]
-        ).add_tags(RelationshipTag.Friend)
-
-    return LifeEvent(
-        name="BecomeFriends",
-        bind_fn=from_pattern(
-            QueryBuilder("Initiator", "Other")
-            .with_((GameCharacter, Active), "Initiator")
-            .get_(get_friendships_gte(threshold), "Initiator", "Other")
-            .filter_(has_component(Active), "Other")
-            .filter_(friendship_gte(threshold), "Other", "Initiator")
-            .filter_(
-                not_(relationship_has_tags(RelationshipTag.Friend)),
-                "Initiator",
-                "Other",
-            )
-            .build()
-        ),
-        effect=effect,
-        probability=probability,
-    )
-
-
-def become_enemies_event(
-    threshold: float = 0.3, probability: float = 1.0
-) -> ILifeEvent:
-    """Defines an event where two characters become friends"""
-
-    def effect(world: World, event: Event):
-        world.get_gameobject(event["Initiator"]).get_component(RelationshipManager).get(
-            event["Other"]
-        ).add_tags(RelationshipTag.Enemy)
-
-        world.get_gameobject(event["Other"]).get_component(RelationshipManager).get(
-            event["Initiator"]
-        ).add_tags(RelationshipTag.Enemy)
-
-    return LifeEvent(
-        name="BecomeEnemies",
-        bind_fn=from_pattern(
-            QueryBuilder("Initiator", "Other")
-            .with_((GameCharacter, Active), "Initiator")
-            .get_(get_friendships_lte(threshold), "Initiator", "Other")
-            .with_((Active,), "Other")
-            .filter_(friendship_lte(threshold), "Other", "Initiator")
-            .filter_(
-                not_(relationship_has_tags(RelationshipTag.Enemy)), "Initiator", "Other"
-            )
-            .build()
-        ),
-        effect=effect,
-        probability=probability,
-    )
+from orrery.utils.relationships import (
+    add_relationship_status,
+    get_relationship,
+    get_relationship_status,
+    remove_relationship_status,
+)
+from orrery.utils.statuses import add_status, has_status
 
 
 def start_dating_event(threshold: float = 0.7, probability: float = 1.0) -> ILifeEvent:
     """Defines an event where two characters become friends"""
 
     def effect(world: World, event: Event):
-        world.get_gameobject(event["Initiator"]).get_component(RelationshipManager).get(
-            event["Other"]
-        ).add_tags(RelationshipTag.Dating | RelationshipTag.SignificantOther)
+        initiator = world.get_gameobject(event["Initiator"])
+        other = world.get_gameobject(event["Other"])
 
-        world.get_gameobject(event["Other"]).get_component(RelationshipManager).get(
-            event["Initiator"]
-        ).add_tags(RelationshipTag.Dating | RelationshipTag.SignificantOther)
+        get_relationship(initiator, other).add_tags(
+            RelationshipTag.Dating | RelationshipTag.SignificantOther
+        )
+        get_relationship(other, initiator).add_tags(
+            RelationshipTag.Dating | RelationshipTag.SignificantOther
+        )
+
+        add_relationship_status(initiator, other, Dating())
+        add_relationship_status(other, initiator, Dating())
 
     return LifeEvent(
         name="StartDating",
@@ -136,12 +72,18 @@ def start_dating_event(threshold: float = 0.7, probability: float = 1.0) -> ILif
             QueryBuilder("Initiator", "Other")
             .with_((GameCharacter, Active), "Initiator")
             .get_(get_romances_gte(threshold), "Initiator", "Other")
-            .filter_(has_component(Active), "Other")
+            .filter_(has_component_filter(Active), "Other")
             .filter_(romance_gte(threshold), "Other", "Initiator")
             .filter_(
+                not_(eq_),
+                "Initiator",
+                "Other",
+            )
+            .filter_(
                 not_(
-                    relationship_has_tags(
-                        RelationshipTag.SignificantOther | RelationshipTag.Family
+                    or_(
+                        relationship_has_tags(RelationshipTag.SignificantOther),
+                        relationship_has_tags(RelationshipTag.Family),
                     )
                 ),
                 "Initiator",
@@ -149,8 +91,9 @@ def start_dating_event(threshold: float = 0.7, probability: float = 1.0) -> ILif
             )
             .filter_(
                 not_(
-                    relationship_has_tags(
-                        RelationshipTag.SignificantOther | RelationshipTag.Family
+                    or_(
+                        relationship_has_tags(RelationshipTag.SignificantOther),
+                        relationship_has_tags(RelationshipTag.Family),
                     )
                 ),
                 "Other",
@@ -169,13 +112,18 @@ def stop_dating_event(threshold: float = 0.4, probability: float = 1.0) -> ILife
     """Defines an event where two characters become friends"""
 
     def effect(world: World, event: Event):
-        world.get_gameobject(event["Initiator"]).get_component(RelationshipManager).get(
-            event["Other"]
-        ).remove_tags(RelationshipTag.Dating | RelationshipTag.SignificantOther)
+        initiator = world.get_gameobject(event["Initiator"])
+        other = world.get_gameobject(event["Other"])
 
-        world.get_gameobject(event["Other"]).get_component(RelationshipManager).get(
-            event["Initiator"]
-        ).remove_tags(RelationshipTag.Dating | RelationshipTag.SignificantOther)
+        get_relationship(initiator, other).remove_tags(
+            RelationshipTag.Dating | RelationshipTag.SignificantOther
+        )
+        get_relationship(other, initiator).remove_tags(
+            RelationshipTag.Dating | RelationshipTag.SignificantOther
+        )
+
+        remove_relationship_status(initiator, other, Dating)
+        remove_relationship_status(other, initiator, Dating)
 
     return LifeEvent(
         name="DatingBreakUp",
@@ -255,6 +203,19 @@ def marriage_event(threshold: float = 0.7, probability: float = 1.0) -> ILifeEve
                 "Initiator",
                 "Other",
             )
+            .filter_(
+                not_(eq_),
+                "Initiator",
+                "Other",
+            )
+            .filter_(
+                lambda world, *gameobjects: get_relationship_status(
+                    gameobjects[0], gameobjects[1], Dating
+                ).time_active
+                > 36,
+                "Initiator",
+                "Other",
+            )
             .filter_(romance_gte(threshold), "Initiator", "Other")
             .filter_(romance_gte(threshold), "Other", "Initiator")
             .build()
@@ -274,7 +235,6 @@ def pregnancy_event() -> ILifeEvent:
         due_date.increment(months=9)
 
         add_status(
-            world,
             world.get_gameobject(event["PregnantOne"]),
             Pregnant(
                 partner_id=event["Other"],
@@ -306,7 +266,7 @@ def pregnancy_event() -> ILifeEvent:
                 "PregnantOne",
                 "Other",
             )
-            .filter_(has_component(Active), "Other")
+            .filter_(has_component_filter(Active), "Other")
             .filter_(
                 or_(
                     relationship_has_tags(RelationshipTag.Dating),
@@ -446,7 +406,7 @@ def die_of_old_age(probability: float = 0.8) -> ILifeEvent:
         deceased = world.get_gameobject(event["Deceased"])
         deceased.add_component(Deceased())
         deceased.remove_component(Active)
-        world.get_resource(EventLog).record_event(
+        world.get_resource(EventHandler).record_event(
             orrery.events.DeathEvent(world.get_resource(SimDateTime), deceased)
         )
 
@@ -471,7 +431,7 @@ def die_of_old_age(probability: float = 0.8) -> ILifeEvent:
 def go_out_of_business_event() -> ILifeEvent:
     def effect(world: World, event: Event):
         business = world.get_gameobject(event["Business"])
-        shutdown_business(world, business)
+        shutdown_business(business)
 
     def probability_fn(world: World, event: LifeEventInstance) -> float:
         business = world.get_gameobject(event.roles["Business"]).get_component(Business)
@@ -480,7 +440,7 @@ def go_out_of_business_event() -> ILifeEvent:
         elif business.years_in_business < business.config.spawning.lifespan:
             return business.years_in_business / business.config.spawning.lifespan
         else:
-            return 0.8
+            return 0.7
 
     return LifeEvent(
         name="GoOutOfBusiness",
@@ -497,8 +457,6 @@ class DefaultLifeEventPlugin(Plugin):
         life_event_library = world.get_resource(LifeEventLibrary)
 
         life_event_library.add(marriage_event())
-        # LifeEvents.add(become_friends_event())
-        # LifeEvents.add(become_enemies_event())
         life_event_library.add(start_dating_event())
         life_event_library.add(stop_dating_event())
         life_event_library.add(divorce_event())

@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional, Type
 
 from orrery.core.config import CharacterAgingConfig, CharacterConfig
 from orrery.core.ecs import Component, ComponentBundle, IComponentFactory, World
-from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
 
 
@@ -18,17 +17,13 @@ class Departed(Component):
 
 
 class CanAge(Component):
-    """
-    Tags a GameObject as being able to change life stages as time passes
-    """
+    """Tags a GameObject as being able to change life stages as time passes"""
 
     pass
 
 
 class CanDie(Component):
-    """
-    Tags a GameObject as being able to die from natural causes
-    """
+    """Tags a GameObject as being able to die from natural causes"""
 
     pass
 
@@ -73,6 +68,25 @@ class LifeStage(IntEnum):
 
 
 class GameCharacter(Component):
+    """
+    This component is attached to all GameObjects that are characters in the simulation
+
+    Attributes
+    ----------
+    first_name: str
+        The character's first name
+    last_name: str
+        The character's last or family name
+    age: float
+        The age of the character in years
+    life_stage: LifeStage
+        The current life stage of the character (determined by aging config)
+    gender: Gender
+        The gender expression of the character
+    config: CharacterConfig
+        The configuration settings for this character
+    """
+
     __slots__ = "first_name", "last_name", "age", "life_stage", "gender", "config"
 
     def __init__(
@@ -108,10 +122,19 @@ class GameCharacter(Component):
             return LifeStage.Senior
 
     @property
-    def name(self) -> str:
+    def full_name(self) -> str:
+        """Returns the full name of the character"""
         return f"{self.first_name} {self.last_name}"
 
     def increment_age(self, years: float) -> None:
+        """
+        Increments the current age of the character, setting the life_stage accordingly
+
+        Parameters
+        ----------
+        years: float
+            The number of years to increment the character's age by
+        """
         self.age += years
 
         if (
@@ -148,13 +171,21 @@ class GameCharacter(Component):
         }
 
     def __repr__(self) -> str:
-        return f"{self.first_name} {self.last_name}"
+        return "{}({}, age={}, life_stage={}, gender={})".format(
+            self.__class__.__name__,
+            self.full_name,
+            int(self.age),
+            self.life_stage.name,
+            self.gender.name,
+        )
 
     def __str__(self) -> str:
-        return f"{self.first_name} {self.last_name}"
+        return self.full_name
 
 
 class GameCharacterFactory(IComponentFactory):
+    """Constructs instances of GameCharacter components"""
+
     @staticmethod
     def _generate_age_from_life_stage(
         rng: random.Random, aging_config: CharacterAgingConfig, life_stage: LifeStage
@@ -182,9 +213,9 @@ class GameCharacterFactory(IComponentFactory):
 
     def create(self, world: World, **kwargs: Any) -> Component:
         name_generator = world.get_resource(Tracery)
-        first_name_pattern = kwargs["first_name"]
-        last_name_pattern = kwargs["last_name"]
-        config_name = kwargs["config"]
+        first_name_pattern: str = kwargs["first_name"]
+        last_name_pattern: str = kwargs["last_name"]
+        config_name: str = kwargs["config"]
 
         life_stage: Optional[str] = kwargs.get("life_stage")
         age: int = kwargs.get("age", 0)
@@ -216,6 +247,20 @@ class GameCharacterFactory(IComponentFactory):
 
 
 class CharacterComponentBundle(ComponentBundle):
+    """
+    ComponentBundle for specifically constructing GameCharacter instances
+
+    Attributes
+    ----------
+    name: str
+        The name of the config associated with this bundle
+
+    Note
+    ----
+    There really is not an explicit need for this class, but it
+    exists if we ever need to do something specific with bundles
+    that instantiate GameCharacter GameObjects
+    """
 
     __slots__ = "name"
 
@@ -288,16 +333,3 @@ class CharacterLibrary:
             return self._bundles[chosen_config.name]
         else:
             return None
-
-
-class Pregnant(Component):
-    """
-    Pregnant characters give birth when the timeout
-    """
-
-    __slots__ = "partner_id", "due_date"
-
-    def __init__(self, partner_id: int, due_date: SimDateTime) -> None:
-        super(Component, self).__init__()
-        self.partner_id: int = partner_id
-        self.due_date: SimDateTime = due_date

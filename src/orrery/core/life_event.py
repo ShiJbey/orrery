@@ -5,7 +5,7 @@ from abc import abstractmethod
 from typing import Dict, List, Optional, Protocol, Union
 
 from orrery.core.ecs import GameObject, World
-from orrery.core.event import Event, EventLog, RoleBinder, RoleList
+from orrery.core.event import Event, EventHandler, RoleBinder, RoleList
 from orrery.core.time import SimDateTime
 
 
@@ -65,7 +65,7 @@ class LifeEventInstance:
             roles=[r for r in self.roles],
         )
 
-        world.get_resource(EventLog).record_event(event)
+        world.get_resource(EventHandler).record_event(event)
 
         if self.effect is not None:
             self.effect(world, event)

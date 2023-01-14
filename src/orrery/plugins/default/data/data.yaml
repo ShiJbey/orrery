@@ -20,8 +20,8 @@ Characters:
         first_name: "#character::default::first_name::gender-neutral#"
         last_name: "#character::default::last_name#"
       RelationshipManager: {}
-      TraitManager: {}
-      VirtueVector: {}
+      Traits: {}
+      Virtues: {}
       CanAge: {}
       StatusManager: {}
       FrequentedLocations: {}
@@ -68,10 +68,10 @@ Businesses:
       StatusManager: {}
       Services: {}
       Location: {}
-      ActivityManager: {}
       Position2D: {}
   - name: Library
     extends: "business::default"
+    owner_type: Librarian
     employee_types:
       Librarian: 2
     components:
@@ -79,20 +79,21 @@ Businesses:
         name: "Library"
         employees:
           Librarian: 2
-      ActivityManager:
+      Services: { services: ["sells fishing rod"] }
+      Location:
         activities:
           - reading
   - name: "business::default::cafe"
     extends: "business::default"
+    owner_type: Owner
     employee_types:
-      Librarian: 2
+      Barista: 2
     components:
       Business:
         name: "Cafe"
-        owner_type: Owner
         employees:
           Barista: 2
-      ActivityManager:
+      Location:
         activities:
           - reading
           - socializing

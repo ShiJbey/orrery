@@ -3,18 +3,15 @@ from __future__ import annotations
 import random
 from typing import List, Optional, Tuple, Type
 
-from orrery.components.business import Occupation, Unemployed, WorkHistory
-from orrery.components.character import (
-    CollegeGraduate,
-    GameCharacter,
-    Gender,
-    LifeStage,
-)
+from orrery.components.business import Occupation, WorkHistory
+from orrery.components.character import GameCharacter, Gender, LifeStage
 from orrery.core.ecs import Component, GameObject, World
 from orrery.core.event import EventRole, EventRoleType, RoleBinder, RoleList
 from orrery.core.query import Query, QueryContext, QueryFilterFn, QueryGetFn
 from orrery.core.relationship import RelationshipManager, RelationshipTag
+from orrery.core.status import Status
 from orrery.core.time import SimDateTime
+from orrery.utils.statuses import has_status
 
 
 def from_roles(*role_types: EventRoleType) -> RoleBinder:
@@ -74,8 +71,8 @@ def from_pattern(query: Query) -> RoleBinder:
     ) -> Optional[RoleList]:
         result_set = query.execute(
             world,
-            *[gameobject.id for gameobject in args],
-            **{role_name: gameobject.id for role_name, gameobject in kwargs.items()},
+            *[gameobject.uid for gameobject in args],
+            **{role_name: gameobject.uid for role_name, gameobject in kwargs.items()},
         )
 
         if len(result_set):
@@ -106,8 +103,8 @@ def friendship_gte(threshold: float) -> QueryFilterFn:
     def precondition(world: World, *gameobjects: GameObject) -> bool:
         if relationships := gameobjects[0].try_component(RelationshipManager):
             return (
-                gameobjects[1].id in relationships
-                and relationships.get(gameobjects[1].id)[
+                gameobjects[1].uid in relationships
+                and relationships.get(gameobjects[1].uid)[
                     "Friendship"
                 ].get_normalized_value()
                 >= threshold
@@ -126,8 +123,8 @@ def friendship_lte(threshold: float) -> QueryFilterFn:
     def precondition(world: World, *gameobjects: GameObject) -> bool:
         if relationships := gameobjects[0].try_component(RelationshipManager):
             return (
-                gameobjects[1].id in relationships
-                and relationships.get(gameobjects[1].id)[
+                gameobjects[1].uid in relationships
+                and relationships.get(gameobjects[1].uid)[
                     "Friendship"
                 ].get_normalized_value()
                 <= threshold
@@ -146,8 +143,8 @@ def romance_gte(threshold: float) -> QueryFilterFn:
     def precondition(world: World, *gameobjects: GameObject) -> bool:
         if relationships := gameobjects[0].try_component(RelationshipManager):
             return (
-                gameobjects[1].id in relationships
-                and relationships.get(gameobjects[1].id)[
+                gameobjects[1].uid in relationships
+                and relationships.get(gameobjects[1].uid)[
                     "Romance"
                 ].get_normalized_value()
                 >= threshold
@@ -166,8 +163,8 @@ def romance_lte(threshold: float) -> QueryFilterFn:
     def precondition(world: World, *gameobjects: GameObject) -> bool:
         if relationships := gameobjects[0].try_component(RelationshipManager):
             return (
-                gameobjects[1].id in relationships
-                and relationships.get(gameobjects[1].id)[
+                gameobjects[1].uid in relationships
+                and relationships.get(gameobjects[1].uid)[
                     "Romance"
                 ].get_normalized_value()
                 <= threshold
@@ -191,9 +188,9 @@ def get_friendships_gte(threshold: float) -> QueryGetFn:
         results: List[Tuple[int, ...]] = []
         for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):  # type: ignore
             gameobject = world.get_gameobject(subject)  # type: ignore
-            for target, r in gameobject.get_component(RelationshipManager):
+            for r in gameobject.get_component(RelationshipManager):
                 if r["Friendship"].get_normalized_value() >= threshold:
-                    results.append((subject, target))  # type: ignore
+                    results.append((subject, r.target))  # type: ignore
 
         return results
 
@@ -213,9 +210,9 @@ def get_friendships_lte(threshold: float) -> QueryGetFn:
         results: List[Tuple[int, ...]] = []
         for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):  # type: ignore
             gameobject = world.get_gameobject(subject)  # type: ignore
-            for target, r in gameobject.get_component(RelationshipManager):
+            for r in gameobject.get_component(RelationshipManager):
                 if r["Friendship"].get_normalized_value() <= threshold:
-                    results.append((subject, target))  # type: ignore
+                    results.append((subject, r.target))  # type: ignore
 
         return results
 
@@ -233,11 +230,11 @@ def get_romances_gte(threshold: float) -> QueryGetFn:
         ctx: QueryContext, world: World, *variables: str
     ) -> List[Tuple[int, ...]]:
         results: List[Tuple[int, ...]] = []
-        for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):  # type: ignore
-            gameobject = world.get_gameobject(subject)  # type: ignore
-            for target, r in gameobject.get_component(RelationshipManager):
+        for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):
+            gameobject = world.get_gameobject(subject)
+            for r in gameobject.get_component(RelationshipManager):
                 if r["Romance"].get_normalized_value() >= threshold:
-                    results.append((subject, target))  # type: ignore
+                    results.append((subject, r.target))
 
         return results
 
@@ -257,9 +254,9 @@ def get_romances_lte(threshold: float) -> QueryGetFn:
         results: List[Tuple[int, ...]] = []
         for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):  # type: ignore
             gameobject = world.get_gameobject(subject)  # type: ignore
-            for target, r in gameobject.get_component(RelationshipManager):
+            for r in gameobject.get_component(RelationshipManager):
                 if r["Romance"].get_normalized_value() <= threshold:
-                    results.append((subject, target))  # type: ignore
+                    results.append((subject, r.target))  # type: ignore
 
         return results
 
@@ -277,8 +274,8 @@ def relationship_has_tags(tags: RelationshipTag) -> QueryFilterFn:
 
         subject, target = gameobjects
         relationships = subject.get_component(RelationshipManager)
-        if target.id in relationships:
-            return tags in relationships.get(target.id).tags
+        if target.uid in relationships:
+            return tags in relationships.get(target.uid).tags
         else:
             return False
 
@@ -294,9 +291,9 @@ def get_relationships_with_tags(tags: RelationshipTag) -> QueryGetFn:
         results: List[Tuple[int, ...]] = []
         for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):  # type: ignore
             gameobject = world.get_gameobject(subject)  # type: ignore
-            for target, r in gameobject.get_component(RelationshipManager):
+            for r in gameobject.get_component(RelationshipManager):
                 if tags in r.tags:
-                    results.append((subject, target))  # type: ignore
+                    results.append((subject, r.target))  # type: ignore
 
         return results
 
@@ -355,16 +352,6 @@ def is_single(world: World, *gameobjects: GameObject) -> bool:
         )
         == 0
     )
-
-
-def is_unemployed(world: World, *gameobjects: GameObject) -> bool:
-    """Returns True if this entity does not have a job"""
-    return gameobjects[0].has_component(Unemployed)
-
-
-def is_employed(world: World, *gameobjects: GameObject) -> bool:
-    """Returns True if this entity has a job"""
-    return gameobjects[0].has_component(Occupation)
 
 
 def before_year(year: int) -> QueryFilterFn:
@@ -444,12 +431,16 @@ def has_experience_as_a(
     return fn
 
 
-def is_college_graduate(world: World, *gameobject: GameObject) -> bool:
-    """Return True if the entity is a college graduate"""
-    return gameobject[0].has_component(CollegeGraduate)
+def has_status_filter(status_type: Type[Status]) -> QueryFilterFn:
+    """Check if a GameObject has the given status present"""
+
+    def filter_fn(world: World, *gameobject: GameObject) -> bool:
+        return has_status(gameobject[0], status_type)
+
+    return filter_fn
 
 
-def has_component(component_type: Type[Component]) -> QueryFilterFn:
+def has_component_filter(component_type: Type[Component]) -> QueryFilterFn:
     """Return True if the entity has a given component type"""
 
     def precondition(world: World, *gameobject: GameObject) -> bool:

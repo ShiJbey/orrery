@@ -1,65 +1,41 @@
-from dataclasses import dataclass
-from typing import Any, Dict, Iterator, Tuple, Type
+"""
+status.py
 
-from orrery.core.ecs import Component
+Statuses represent temporary states of being for gameobjects. They are updated
+every timestep and may be used to represent things like mood, unemployment,
+or residential status.
 
+Authors need to extend the Status base class to create new status types
+"""
+from abc import ABC
+from typing import Any, Dict, Iterator, Type, TypeVar, cast
 
-@dataclass
-class Status(Component):
-    """
-    Identifies a GameObject as being a status
-
-    Attributes
-    ----------
-    owner: int
-        Who/What owns the status
-    component_type: Type[Component]
-        The component type that hold status-specific data
-    time_active: int
-        The amount of time (in months) that this status has been active
-    """
-
-    owner: int
-    component_type: Type[Component]
-    time_active: int = 0
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "owner": self.owner,
-            "component_type": self.component_type.__name__,
-            "time_active": self.time_active,
-        }
+from orrery.core.ecs import Component, GameObject, World
+from orrery.core.time import TimeDelta
 
 
-@dataclass
-class RelationshipStatus(Component):
-    """
-    Identifies a GameObject as being a RelationshipStatus
+class Status(ABC):
+    def on_add(self, world: World, owner: GameObject) -> None:
+        """Function called when the status is added"""
+        return
 
-    Attributes
-    ----------
-    owner: int
-        Who/What owns the status
-    target: int
-        Who/What the status is directed toward
-    component_type: Type[Component]
-        The component type that hold status-specific data
-    time_active: int
-        The amount of time (in months) that this status has been active
-    """
+    def on_remove(self, world: World, owner: GameObject) -> None:
+        """Function called when the status is removed"""
+        return
 
-    owner: int
-    target: int
-    component_type: Type[Component]
-    time_active: int = 0
+    def on_update(
+        self, world: World, owner: GameObject, elapsed_time: TimeDelta
+    ) -> None:
+        """Update the given status"""
+        return
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "owner": self.owner,
-            "target": self.target,
-            "component_type": self.component_type.__name__,
-            "time_active": self.time_active,
+            "type": self.__class__.__name__,
         }
+
+
+_ST = TypeVar("_ST", bound="Status")
 
 
 class StatusManager(Component):
@@ -68,60 +44,48 @@ class StatusManager(Component):
 
     Attributes
     ----------
-    status_types: Dict[int, Type[StatusType]]
+    statuses: Dict[Type[StatusType], Status]
         List of the StatusTypes attached to the GameObject
     """
 
-    __slots__ = "status_types"
+    __slots__ = "statuses"
 
     def __init__(self) -> None:
         super(Component, self).__init__()
-        self.status_types: Dict[Type[Component], int] = {}
+        self.statuses: Dict[Type[Status], Status] = {}
 
-    def add(self, status_id: int, status_type: Type[Component]) -> None:
+    def add(self, gameobject: GameObject, status: Status) -> None:
+        """Add a status to the manager"""
+        self.statuses[type(status)] = status
+        status.on_add(gameobject.world, gameobject)
+
+    def get(self, status_type: Type[_ST]) -> _ST:
+        """Get the status with the given types"""
+        return cast(_ST, self.statuses[status_type])
+
+    def remove(self, gameobject: GameObject, status_type: Type[Status]) -> None:
+        """Removes the given status"""
+        status = self.statuses[status_type]
+        status.on_remove(gameobject.world, gameobject)
+        del self.statuses[status_type]
+
+    def clear(self, gameobject: GameObject) -> None:
         """
-        Add a status to the manager
+        Removes all statuses from the given gameobject
 
         Parameters
         ----------
-        status_id: int
-            The identifier for the GameObject with the status component
-        status_type: Type[Component]
-            The main component with status information
+        gameobject: GameObject
+            The GameObject to remove the status from
         """
-        self.status_types[status_type] = status_id
+        statuses_types_to_remove = list(self.statuses.keys())
+        for status_type in statuses_types_to_remove:
+            self.remove(gameobject, status_type)
 
-    def get(self, status_type: Type[Component]) -> int:
-        """Get all the present statuses with the given status type"""
-        return self.status_types[status_type]
+    def __contains__(self, item: Type[Status]) -> bool:
+        """Check if a status type is attached to the GameObject"""
+        return item in self.statuses
 
-    def remove(self, status_type: Type[Component]) -> None:
-        """
-        Removes record of status with the given ID
-
-        Parameters
-        ----------
-        status_type: Type[Component]
-            The main component with status information
-        """
-        del self.status_types[status_type]
-
-    def __contains__(self, item: Type[Component]) -> bool:
-        """
-        Check if a status type is attached to the GameObject
-
-        Parameters
-        ----------
-        item: Type[Component]
-            The component type to check for
-
-        Returns
-        -------
-        bool
-            Returns True if there is a status with the given component type
-        """
-        return item in self.status_types.values()
-
-    def __iter__(self) -> Iterator[Tuple[Type[Component], int]]:
+    def __iter__(self) -> Iterator[Status]:
         """Returns an iterator for the status types"""
-        return self.status_types.items().__iter__()
+        return self.statuses.values().__iter__()

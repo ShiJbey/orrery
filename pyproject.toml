@@ -11,14 +11,25 @@ authors = [
 readme = "README.md"
 dynamic = ["version"]
 requires-python = ">=3.8"
-keywords = ["social-simulation", "orrery", "games", "simulation"]
+keywords = [
+    "social simulation",
+    "orrery",
+    "games",
+    "simulation",
+    "artificial intelligence",
+    "agent-based modeling",
+    "multiagent systems",
+    "emergent narrative"
+]
 license = { file = "LICENSE.md" }
 classifiers = [
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Topic :: Games/Entertainment :: Simulation",
+    "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Artificial Life",
     "Topic :: Sociology",
@@ -31,6 +42,12 @@ dependencies = [
     "pyYAML",
     "pydantic",
     "tracery",
+]
+
+[project.optional-dependencies]
+testing = [
+    "pytest",
+    "pytest-cov"
 ]
 
 [project.urls]
@@ -56,3 +73,9 @@ profile = "black"
 default_section = "THIRDPARTY"
 known_first_party = "orrery"
 src_paths = ["src/orrery", "test", "samples"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = [
+    "tests"
+]

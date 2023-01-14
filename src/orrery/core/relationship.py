@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import math
+from abc import ABC
 from dataclasses import dataclass
 from enum import IntFlag, auto
-from typing import Any, Dict, Iterator, List, Protocol, Tuple, Type
+from typing import Any, Dict, Iterator, List, Protocol, Tuple, Type, TypeVar, cast
 
-from orrery.core.ecs import Component, ISystem
+from orrery.core.ecs import Component, GameObject, World
+from orrery.core.time import TimeDelta
 
 
 def lerp(a: float, b: float, f: float) -> float:
@@ -15,29 +17,39 @@ def lerp(a: float, b: float, f: float) -> float:
 class RelationshipStatNotfound(Exception):
     """Exception raised when trying to access a relationship stat that does not exist"""
 
-    __slots__ = "name"
+    __slots__ = "name", "message"
 
     def __init__(self, name: str) -> None:
         super(Exception, self).__init__(name)
         self.name: str = name
+        self.message: str = f"Could not find relationship with name ({self.name}). Check your schema config"
 
     def __str__(self) -> str:
-        return f"Could not find relationship with name ({self.name}). Check your schema config"
+        return self.message
+
+    def __repr__(self) -> str:
+        return "{}(name={})".format(self.__class__.__name__, self.name)
 
 
 class RelationshipNotFound(Exception):
     """Exception raised when trying to access a relationship that does not exist"""
 
-    __slots__ = "subject", "target"
+    __slots__ = "subject", "target", "message"
 
     def __init__(self, subject: str, target: str) -> None:
         super(Exception, self).__init__(target)
-        self.target: str = target
         self.subject: str = subject
+        self.target: str = target
+        self.message: str = (
+            f"Could not find relationship between ({self.subject}) and ({self.target})"
+        )
 
     def __str__(self) -> str:
-        return (
-            f"Could not find relationship between ({self.subject}) and ({self.target})"
+        return self.message
+
+    def __repr__(self) -> str:
+        return "{}(subject={}, target={})".format(
+            self.__class__.__name__, self.subject, self.target
         )
 
 
@@ -242,6 +254,9 @@ class RelationshipTag(IntFlag):
     Married = auto()
 
 
+_RST = TypeVar("_RST", bound="RelationshipStatus")
+
+
 class Relationship:
 
     __slots__ = (
@@ -262,54 +277,33 @@ class Relationship:
             "Interaction": self.interaction_score,
         }
         self.tags: RelationshipTag = RelationshipTag.Empty
-        self.statuses: Dict[Type[Component], int] = {}
+        self.statuses: Dict[Type[RelationshipStatus], RelationshipStatus] = {}
         self.active_modifiers: Dict[str, IRelationshipModifier] = {}
         self._is_dirty = False
 
-    def add_status(self, status_id: int, status_type: Type[Component]) -> None:
-        """
-        Add a relationship status to this relationship
+    def add_status(self, subject: GameObject, status: RelationshipStatus) -> None:
+        """Add a relationship status to this relationship"""
+        self.statuses[type(status)] = status
+        status.on_add(subject.world, subject, self)
 
-        Parameters
-        ----------
-        status_id: int
-            The ID of the GameObject with the status information
-        status_type: Type[Component]
-            The main component associated with the status
-        """
-        self.statuses[status_type] = status_id
+    def get_status(self, status_type: Type[_RST]) -> _RST:
+        """Get the instance of the status with the given RelationshipStatus type"""
+        return cast(_RST, self.statuses[status_type])
 
-    def get_status(self, status_type: Type[Component]) -> int:
-        """
-        Get the ID of the status with this component type
+    def get_statuses(self) -> List[RelationshipStatus]:
+        """Get all the relationship statuses attached to this relationship"""
+        return list(self.statuses.values())
 
-        Parameters
-        ----------
-        status_type: Type[Component]
-            The main component associated with the status
-        """
-        return self.statuses[status_type]
-
-    def remove_status(self, status_type: Type[Component]) -> None:
-        """
-        Remove a relationship status from this relationship
-
-        Parameters
-        ----------
-        status_type: Type[Component]
-            The main component associated with the status
-        """
+    def remove_status(
+        self, subject: GameObject, status_type: Type[RelationshipStatus]
+    ) -> None:
+        """Remove a relationship status from this relationship"""
+        status = self.statuses[status_type]
+        status.on_remove(subject.world, subject, self)
         del self.statuses[status_type]
 
-    def has_status(self, status_type: Type[Component]) -> bool:
-        """
-        Remove a relationship status from this relationship
-
-        Parameters
-        ----------
-        status_type: Type[Component]
-            The mani component associated with the status
-        """
+    def has_status(self, status_type: Type[RelationshipStatus]) -> bool:
+        """Check if the relationship has a status"""
         return status_type in self.statuses.values()
 
     def add_tags(self, tags: RelationshipTag) -> None:
@@ -396,8 +390,8 @@ class RelationshipManager(Component):
     def to_dict(self) -> Dict[str, Any]:
         return {str(t): r.to_dict() for t, r in self._relationships.items()}
 
-    def __iter__(self) -> Iterator[tuple[int, Relationship]]:
-        return self._relationships.items().__iter__()
+    def __iter__(self) -> Iterator[Relationship]:
+        return self._relationships.values().__iter__()
 
     def __contains__(self, target: int) -> bool:
         """Returns True if there is a relationship to the target"""
@@ -456,15 +450,32 @@ class RelationshipModifier:
             relationship[stat].remove_modifier(-buff)
 
 
-class UpdateRelationshipsSystem(ISystem):
-    """Updates the relationship stats between characters using their interaction scores"""
+class RelationshipStatus(ABC):
+    """Abstract base class for statuses attached to relationships"""
 
-    def process(self, *args: Any, **kwargs: Any) -> None:
-        for _, manager in self.world.get_component(RelationshipManager):
-            for _, relationship in manager:
-                for _, stat in relationship:
-                    if stat.changes_with_time:
-                        stat += round(
-                            max(0, relationship.interaction_score.get_raw_value())
-                            * lerp(-3, 3, stat.get_normalized_value())
-                        )
+    def on_add(
+        self, world: World, owner: GameObject, relationship: Relationship
+    ) -> None:
+        """Function called when the status is added"""
+        return
+
+    def on_remove(
+        self, world: World, owner: GameObject, relationship: Relationship
+    ) -> None:
+        """Function called when the status is removed"""
+        return
+
+    def on_update(
+        self,
+        world: World,
+        owner: GameObject,
+        relationship: Relationship,
+        elapsed_time: TimeDelta,
+    ) -> None:
+        """Update the given status"""
+        return
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "type": self.__class__.__name__,
+        }

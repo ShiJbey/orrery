@@ -1,38 +1,38 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterator, List, Set
+from dataclasses import dataclass
+from typing import Any, Dict, Iterator, List, Optional, Set
 
 from orrery.core.ecs import Component, IComponentFactory, World
-from orrery.core.virtues import VirtueVector
+from orrery.core.virtues import Virtues
 
 
-class Activity:
-    """An activity that characters do at a location"""
+@dataclass(frozen=True, slots=True)
+class ActivityInstance:
+    """
+    An activity that characters do at a location
 
-    __slots__ = "_uid", "_name"
+    Attributes
+    ----------
+    uid: int
+        The unique identifier for this activity
+    name: str
+        The name of the activity
+    """
 
-    def __init__(self, uid: int, name: str) -> None:
-        self._uid = uid
-        self._name = name
-
-    @property
-    def uid(self) -> int:
-        return self._uid
-
-    @property
-    def name(self) -> str:
-        return self._name
+    uid: int
+    name: str
 
     def __hash__(self) -> int:
-        return self._uid
+        return self.uid
+
+    def __str__(self) -> str:
+        return self.name
 
     def __eq__(self, other: object) -> bool:
-        if isinstance(other, Activity):
+        if isinstance(other, ActivityInstance):
             return self.uid == other.uid
         raise TypeError(f"Expected Activity but was {type(object)}")
-
-    def __repr__(self) -> str:
-        return f"Activity({self.name})"
 
 
 class ActivityLibrary:
@@ -45,11 +45,8 @@ class ActivityLibrary:
     _next_id: int
         The unique identifier assigned to the next created
         activity instance
-
     _name_to_activity: Dict[str, Activity]
         Map of the names of activities to Activity instances
-
-
     _id_to_name: Dict[int, str]
         Map of the unique ids of activities to their names
 
@@ -64,18 +61,18 @@ class ActivityLibrary:
 
     def __init__(self) -> None:
         self._next_id: int = 0
-        self._name_to_activity: Dict[str, Activity] = {}
+        self._name_to_activity: Dict[str, ActivityInstance] = {}
         self._id_to_name: Dict[int, str] = {}
 
     def __contains__(self, activity_name: str) -> bool:
         """Return True if a service type exists with the given name"""
         return activity_name.lower() in self._name_to_activity
 
-    def __iter__(self) -> Iterator[Activity]:
+    def __iter__(self) -> Iterator[ActivityInstance]:
         """Return iterator for the ActivityLibrary"""
         return self._name_to_activity.values().__iter__()
 
-    def get(self, activity_name: str, create_new: bool = True) -> Activity:
+    def get(self, activity_name: str, create_new: bool = True) -> ActivityInstance:
         """
         Get an Activity instance and create a new one if a
         matching instance does not exist
@@ -90,28 +87,27 @@ class ActivityLibrary:
 
         uid = self._next_id
         self._next_id = self._next_id + 1
-        activity = Activity(uid, lc_activity_name)
+        activity = ActivityInstance(uid, lc_activity_name)
         self._name_to_activity[lc_activity_name] = activity
         self._id_to_name[uid] = lc_activity_name
         return activity
 
 
-class ActivityManager(Component):
+class Activities(Component):
     """
-    A collection of all the activities that characters
-    can engage in at a location
+    A collection of all the activities that characters can engage in at a location
     """
 
     __slots__ = "_activities"
 
-    def __init__(self, activities: Set[Activity]) -> None:
-        super().__init__()
-        self._activities: Set[Activity] = activities
+    def __init__(self, activities: Set[ActivityInstance]) -> None:
+        super(Component, self).__init__()
+        self._activities: Set[ActivityInstance] = activities
 
     def to_dict(self) -> Dict[str, Any]:
-        return {**super().to_dict(), "activities": [a.name for a in self._activities]}
+        return {"activities": [a.name for a in self._activities]}
 
-    def __contains__(self, activity: Activity) -> bool:
+    def __contains__(self, activity: ActivityInstance) -> bool:
         return activity in self._activities
 
     def __str__(self) -> str:
@@ -121,29 +117,40 @@ class ActivityManager(Component):
         return f"{self.__class__.__name__}({self._activities.__repr__()})"
 
 
-class ActivityManagerFactory(IComponentFactory):
-    def create(self, world: World, **kwargs: Any) -> Component:
+class ActivitiesFactory(IComponentFactory):
+    """Creates LikedActivities component instances"""
+
+    def create(
+        self, world: World, activities: Optional[List[str]] = None, **kwargs: Any
+    ) -> Activities:
+
         activity_library = world.get_resource(ActivityLibrary)
 
-        activity_names: List[str] = kwargs.get("activities", [])
+        activity_names: List[str] = activities if activities else []
 
-        return ActivityManager(
-            set([activity_library.get(name) for name in activity_names])
-        )
+        return Activities(set([activity_library.get(name) for name in activity_names]))
 
 
 class LikedActivities(Component):
+    """
+    Collection of activities that a character likes to do
+
+    Attributes
+    ----------
+    activities: Set[Activity]
+        The set of activities that a character likes
+    """
 
     __slots__ = "activities"
 
-    def __init__(self, activities: Set[Activity]) -> None:
+    def __init__(self, activities: Set[ActivityInstance]) -> None:
         super(Component, self).__init__()
-        self.activities: Set[Activity] = activities
+        self.activities: Set[ActivityInstance] = activities
 
     def to_dict(self) -> Dict[str, Any]:
-        return {**super().to_dict(), "activities": [a.name for a in self.activities]}
+        return {"activities": [a.name for a in self.activities]}
 
-    def __contains__(self, activity: Activity) -> bool:
+    def __contains__(self, activity: ActivityInstance) -> bool:
         return activity in self.activities
 
     def __str__(self) -> str:
@@ -151,6 +158,22 @@ class LikedActivities(Component):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.activities.__repr__()})"
+
+
+class LikedActivitiesFactory(IComponentFactory):
+    """Creates LikedActivities component instances"""
+
+    def create(
+        self, world: World, activities: Optional[List[str]] = None, **kwargs: Any
+    ) -> LikedActivities:
+
+        activity_library = world.get_resource(ActivityLibrary)
+
+        activity_names: List[str] = activities if activities else []
+
+        return LikedActivities(
+            set([activity_library.get(name) for name in activity_names])
+        )
 
 
 class ActivityToVirtueMap:
@@ -163,10 +186,10 @@ class ActivityToVirtueMap:
     __slots__ = "mappings"
 
     def __init__(self) -> None:
-        self.mappings: Dict[Activity, VirtueVector] = {}
+        self.mappings: Dict[ActivityInstance, Virtues] = {}
 
     def add_by_name(self, world: World, activity_name: str, *virtues: str) -> None:
         """Add a new virtue to the mapping"""
         activity = world.get_resource(ActivityLibrary).get(activity_name)
 
-        self.mappings[activity] = VirtueVector({v: 1 for v in virtues})
+        self.mappings[activity] = Virtues({v: 1 for v in virtues})

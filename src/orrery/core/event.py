@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Any, Callable, ClassVar, DefaultDict, Dict, List, Optional, Protocol
 
 from orrery.core.ecs import GameObject, World
+from orrery.core.serializable import ISerializable
 
 
 class RoleList:
@@ -141,7 +142,7 @@ class EventRole:
         return f"{self.__class__.__name__}(name={self.name}, gid={self.gid})"
 
 
-class EventLog:
+class EventHandler(ISerializable):
     """
     Global resource that manages all the LifeEvents that have occurred in the simulation.
 
@@ -282,6 +283,9 @@ class EventLog:
         """
         return self._per_gameobject[gid]
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {"events": [e.to_dict() for e in self.event_history]}
+
 
 class RoleBinder(Protocol):
     """Function used to fill a RoleList"""
@@ -317,10 +321,10 @@ class EventRoleType:
             if candidate is None:
                 return None
             else:
-                return EventRole(self.name, candidate.id)
+                return EventRole(self.name, candidate.uid)
 
         if gameobject := self.binder_fn(world, roles, candidate):
-            return EventRole(self.name, gameobject.id)
+            return EventRole(self.name, gameobject.uid)
 
         return None
 

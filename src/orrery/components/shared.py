@@ -1,7 +1,11 @@
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Set
+from __future__ import annotations
 
-from orrery.core.ecs import Component
+import math
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Set, List
+
+from orrery.core.activity import ActivityInstance, ActivityLibrary
+from orrery.core.ecs import Component, IComponentFactory, World
 
 
 class Active(Component):
@@ -29,6 +33,15 @@ class FrequentedLocations(Component):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.locations.__repr__()})"
+
+
+class FrequentedLocationsFactory(IComponentFactory):
+    """Factory that create Location component instances"""
+
+    def create(
+        self, world: World, locations: Optional[List[int]] = None, **kwargs: Any
+    ) -> FrequentedLocations:
+        return FrequentedLocations(set(locations if locations else []))
 
 
 class Building(Component):
@@ -89,17 +102,38 @@ class Name(Component):
 
 class Location(Component):
 
-    __slots__ = "frequented_by"
+    __slots__ = "frequented_by", "activities"
 
-    def __init__(self) -> None:
+    def __init__(self, activities: Optional[Set[ActivityInstance]] = None) -> None:
         super(Component, self).__init__()
         self.frequented_by: Set[int] = set()
+        self.activities: Set[ActivityInstance] = activities if activities else set()
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"frequented_by": list(self.frequented_by)}
+        return {
+            "frequented_by": list(self.frequented_by),
+            "activities": list(self.activities),
+        }
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.frequented_by})"
+        return "{}(activities={}, frequented_by={})".format(
+            self.__class__.__name__,
+            self.activities,
+            self.frequented_by,
+        )
+
+
+class LocationFactory(IComponentFactory):
+    """Factory that create Location component instances"""
+
+    def create(
+        self, world: World, activities: Optional[List[str]] = None, **kwargs: Any
+    ) -> Location:
+        activity_library = world.get_resource(ActivityLibrary)
+
+        activity_names: List[str] = activities if activities else []
+
+        return Location(set([activity_library.get(name) for name in activity_names]))
 
 
 @dataclass
@@ -107,5 +141,10 @@ class Position2D(Component):
     x: float = 0.0
     y: float = 0.0
 
+    @staticmethod
+    def euclidian_distance(a: Position2D, b: Position2D) -> float:
+        """Return the euclidian distance between two points"""
+        return math.sqrt((b.x - a.x) ** 2 - (b.y - a.x) ** 2)
+
     def to_dict(self) -> Dict[str, Any]:
-        return {**super().to_dict(), "x": self.x, "y": self.y}
+        return {"x": self.x, "y": self.y}

@@ -1,54 +1,61 @@
+"""
+virtues.py
+
+Virtues are the most basic way that character personalities are represented.
+They are used in the simulation to determine how compatible characters are,
+thus affecting how their relationship will evolve over time. Virtues may also
+be used to determine how likely a character is to engage in a given event/action.
+"""
 from __future__ import annotations
 
 import enum
+import logging
 import random
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 import numpy.typing as npt
 
-from orrery.core.ecs import Component, IComponentFactory, Optional, World
+from orrery.core.ecs import Component, IComponentFactory, World
+
+logger = logging.getLogger(__name__)
 
 
-class Virtue(enum.Enum):
-    ADVENTURE = "adventure"
-    AMBITION = "ambition"
-    EXCITEMENT = "excitement"
-    COMMERCE = "commerce"
-    CONFIDENCE = "confidence"
-    CURIOSITY = "curiosity"
-    FAMILY = "family"
-    FRIENDSHIP = "friendship"
-    WEALTH = "wealth"
-    HEALTH = "health"
-    INDEPENDENCE = "independence"
-    KNOWLEDGE = "knowledge"
-    LEISURE_TIME = "leisure-time"
-    LOYALTY = "loyalty"
-    LUST = "lust"
-    MATERIAL_THINGS = "material things"
-    NATURE = "nature"
-    PEACE = "peace"
-    POWER = "power"
-    RELIABILITY = "reliability"
-    ROMANCE = "romance"
-    SINGLE_MINDEDNESS = "single mindedness"
-    SOCIALIZING = "socializing"
-    SELF_CONTROL = "self-control"
-    TRADITION = "tradition"
-    TRANQUILITY = "tranquility"
+class VirtueType(enum.IntEnum):
+    ADVENTURE = 0
+    AMBITION = enum.auto()
+    EXCITEMENT = enum.auto()
+    COMMERCE = enum.auto()
+    CONFIDENCE = enum.auto()
+    CURIOSITY = enum.auto()
+    FAMILY = enum.auto()
+    FRIENDSHIP = enum.auto()
+    WEALTH = enum.auto()
+    HEALTH = enum.auto()
+    INDEPENDENCE = enum.auto()
+    KNOWLEDGE = enum.auto()
+    LEISURE_TIME = enum.auto()
+    LOYALTY = enum.auto()
+    LUST = enum.auto()
+    MATERIAL_THINGS = enum.auto()
+    NATURE = enum.auto()
+    PEACE = enum.auto()
+    POWER = enum.auto()
+    RELIABILITY = enum.auto()
+    ROMANCE = enum.auto()
+    SINGLE_MINDEDNESS = enum.auto()
+    SOCIALIZING = enum.auto()
+    SELF_CONTROL = enum.auto()
+    TRADITION = enum.auto()
+    TRANQUILITY = enum.auto()
 
 
-_VIRTUE_UIDS: Dict[str, int] = {
-    str(virtue.value): index for index, virtue in enumerate(Virtue)
-}
-
-
-class VirtueVector(Component):
+class Virtues(Component):
     """
     Values are what an entity believes in. They are used
     for decision-making and relationship compatibility among
     other things.
+
 
     Individual values are integers on the range [-50,50], inclusive.
 
@@ -62,31 +69,27 @@ class VirtueVector(Component):
 
     __slots__ = "_virtues"
 
-    def __init__(
-        self, overrides: Optional[Dict[str, int]] = None, default: int = 0
-    ) -> None:
-        super().__init__()
-        self._virtues: npt.NDArray[np.int32] = np.array(  # type: ignore
-            [default] * len(_VIRTUE_UIDS.keys()), dtype=np.int32
+    def __init__(self, overrides: Optional[Dict[str, int]] = None) -> None:
+        super(Component, self).__init__()
+        self._virtues: npt.NDArray[np.int32] = np.zeros(  # type: ignore
+            len(VirtueType), dtype=np.int32
         )
 
         if overrides:
             for trait, value in overrides.items():
-                self._virtues[_VIRTUE_UIDS[trait]] = max(
-                    self.VIRTUE_MIN, min(self.VIRTUE_MAX, value)
-                )
+                self[VirtueType[trait]] = value
 
-    @property
-    def virtues(self) -> npt.NDArray[np.int32]:
+    def to_array(self) -> npt.NDArray[np.int32]:
+        """Converts the virtue"""
         return self._virtues
 
-    def compatibility(self, other: VirtueVector) -> float:
+    def compatibility(self, other: Virtues) -> float:
         """
         Calculates the cosine similarity between one VirtueVector and an other
 
         Parameters
         ----------
-        other : VirtueVector
+        other : Virtues
             The other set of virtues to compare to
 
         Returns
@@ -95,71 +98,102 @@ class VirtueVector(Component):
             Similarity score on the range [-1.0, 1.0]
         """
         # Cosine similarity is a value between -1 and 1
-        norm_product: float = np.linalg.norm(self.virtues) * np.linalg.norm(other.virtues)  # type: ignore
+        norm_product: float = float(
+            np.linalg.norm(self.to_array()) * np.linalg.norm(other.to_array())  # type: ignore
+        )
 
         if norm_product == 0:
             return 0
         else:
-            return np.dot(self.virtues, other.virtues) / norm_product  # type: ignore
+            return round(
+                float(np.dot(self.to_array(), other.to_array()) / norm_product), 2  # type: ignore
+            )
 
-    def get_high_values(self, n: int = 3) -> List[str]:
-        """Return the virtues names associated with the n values"""
-        # This code is adapted from https://stackoverflow.com/a/23734295
+    def get_high_values(self, n: int = 3) -> List[VirtueType]:
+        """Return the virtues names associated with the n-highest values"""
+        sorted_index_array = np.argsort(self.to_array())[-n:]  # type: ignore
 
-        ind = np.argpartition(self.virtues, -n)[-n:]  # type: ignore
+        value_names = list(VirtueType)
 
-        value_names = list(_VIRTUE_UIDS.keys())
+        return [value_names[i] for i in sorted_index_array]
 
-        return [value_names[i] for i in ind]
+    def get_low_values(self, n: int = 3) -> List[VirtueType]:
+        """Return the virtues names associated with the n-lowest values"""
+        sorted_index_array = np.argsort(self.to_array())[:n]  # type: ignore
 
-    def __getitem__(self, virtue: str) -> int:
-        return self._virtues[_VIRTUE_UIDS[virtue]]  # type: ignore
+        value_names = list(VirtueType)
 
-    def __setitem__(self, virtue: str, value: int) -> None:
-        self._virtues[_VIRTUE_UIDS[virtue]] = max(
-            VirtueVector.VIRTUE_MIN, min(VirtueVector.VIRTUE_MAX, value)
-        )
+        return [value_names[i] for i in sorted_index_array]
+
+    def __getitem__(self, item: int) -> int:
+        return int(self._virtues[item])
+
+    def __setitem__(self, item: int, value: int) -> None:
+        self._virtues[item] = max(Virtues.VIRTUE_MIN, min(Virtues.VIRTUE_MAX, value))
 
     def __str__(self) -> str:
-        return f"Values Most: {self.get_high_values()}"
+        return str(self.to_dict())
 
     def __repr__(self) -> str:
         return "{}({})".format(self.__class__.__name__, self._virtues.__repr__())
 
+    def __iter__(self) -> Iterator[Tuple[VirtueType, int]]:
+        virtue_dict = {
+            virtue: int(self._virtues[i]) for i, virtue in enumerate(list(VirtueType))
+        }
+
+        return virtue_dict.items().__iter__()
+
     def to_dict(self) -> Dict[str, Any]:
         return {
-            **super().to_dict(),
-            **{
+            "virtues": {
                 virtue.name: int(self._virtues[i])
-                for i, virtue in enumerate(list(Virtue))
+                for i, virtue in enumerate(list(VirtueType))
             },
         }
 
 
-class VirtueVectorFactory(IComponentFactory):
+class VirtuesFactory(IComponentFactory):
     def create(
-        self, world: World, n_likes: int = 3, n_dislikes: int = 3, **kwargs: Any
+        self,
+        world: World,
+        n_likes: int = 3,
+        n_dislikes: int = 3,
+        initialization: str = "zeros",
+        overrides: Optional[Dict[str, int]] = None,
+        **kwargs: Any,
     ) -> Component:
         """Generate a new set of character values"""
-        rng = world.get_resource(random.Random)
-
-        # Select Traits
-        total_virtues: int = n_likes + n_dislikes
-        chosen_virtues = [
-            str(virtue.value) for virtue in rng.sample(list(Virtue), total_virtues)
-        ]
-
-        # select likes and dislikes
-        high_values = rng.sample(chosen_virtues, n_likes)
-        low_values = list(set(chosen_virtues) - set(high_values))
-
-        # Generate values for each ([30,50] for high values, [-50,-30] for dislikes)
         values_overrides: Dict[str, int] = {}
 
-        for trait in high_values:
-            values_overrides[trait] = rng.randint(30, 50)
+        if initialization == "zeros":
+            pass
 
-        for trait in low_values:
-            values_overrides[trait] = rng.randint(-50, -30)
+        elif initialization == "random":
+            rng = world.get_resource(random.Random)
 
-        return VirtueVector(values_overrides)
+            # Select Traits
+            total_virtues: int = n_likes + n_dislikes
+            chosen_virtues = [
+                virtue.name for virtue in rng.sample(list(VirtueType), total_virtues)
+            ]
+
+            # select likes and dislikes
+            high_values = rng.sample(chosen_virtues, n_likes)
+            low_values = list(set(chosen_virtues) - set(high_values))
+
+            # Generate values for each ([30,50] for high values, [-50,-30] for dislikes)
+            for trait in high_values:
+                values_overrides[trait] = rng.randint(30, 50)
+
+            for trait in low_values:
+                values_overrides[trait] = rng.randint(-50, -30)
+        else:
+            # Using an unknown virtue doesn't break anything, but we should log it
+            logger.warning(f"Unrecognized Virtues initialization '{initialization}'")
+
+        if overrides is not None:
+            # Override any values with manually-specified values
+            values_overrides = {**values_overrides, **overrides}
+
+        return Virtues(values_overrides)

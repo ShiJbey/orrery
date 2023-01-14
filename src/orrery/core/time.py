@@ -190,22 +190,13 @@ class SimDateTime:
 
     @classmethod
     def from_str(cls, time_str: str) -> SimDateTime:
-        time = cls()
         items = tuple(time_str.split("/"))
 
-        if len(items) == 4:
-            year, month, day = items
-            time._year = int(year)
-            time._month = int(month)
-            time._day = int(day)
-            return time
-
-        elif len(items) == 3:
-            year, month, day = items
-            time._year = int(year)
-            time._month = int(month)
-            time._day = int(day)
-            return time
+        if len(items) == 3:
+            day, month, year = items
+            return cls(year=int(year), month=int(month), day=int(day))
 
         else:
-            raise ValueError(f"Invalid date string: {time_str}")
+            raise ValueError(
+                f"Invalid date string: {time_str}. Need to be form DD/MM/YYYY"
+            )

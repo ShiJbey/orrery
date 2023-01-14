@@ -9,45 +9,45 @@ from orrery.components.business import (
     BusinessLibrary,
     InTheWorkforce,
     Occupation,
+    OccupationType,
     OccupationTypeLibrary,
     OpenForBusiness,
-    Unemployed,
 )
 from orrery.components.character import (
     CanAge,
     CharacterLibrary,
-    Departed,
     GameCharacter,
     LifeStage,
-    Pregnant,
 )
-from orrery.components.residence import Residence, ResidenceLibrary, Resident, Vacant
+from orrery.components.relationship_status import Married
+from orrery.components.residence import Residence, ResidenceLibrary, Vacant
 from orrery.components.shared import Active, Building, FrequentedLocations, Location
 from orrery.core.config import CharacterConfig, OrreryConfig
 from orrery.core.ecs import ComponentBundle, GameObject, ISystem
-from orrery.core.event import Event, EventLog, EventRole
+from orrery.core.event import Event, EventHandler, EventRole
 from orrery.core.life_event import LifeEventLibrary
 from orrery.core.query import QueryBuilder
-from orrery.core.relationship import RelationshipManager, RelationshipTag
+from orrery.core.relationship import RelationshipManager, RelationshipTag, lerp
 from orrery.core.settlement import Settlement
-from orrery.core.status import RelationshipStatus, Status
+from orrery.core.status import StatusManager
 from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
+from orrery.statuses import Unemployed
 from orrery.utils.common import (
     add_business,
-    add_relationship,
+    add_character_to_settlement,
     add_residence,
-    check_share_residence,
     create_business,
     create_character,
     create_residence,
-    fill_open_position,
-    generate_child_bundle,
-    get_relationship,
-    has_status,
-    remove_status,
     set_residence,
-    start_job, add_character_to_settlement,
+    start_job,
 )
+from orrery.utils.relationships import (
+    add_relationship,
+    add_relationship_status,
+    get_relationship,
+)
+from orrery.utils.statuses import has_status
 
 
 class System(ISystem):
@@ -159,16 +159,12 @@ class MeetNewPeopleSystem(ISystem):
                 if acquaintance_id not in character.get_component(RelationshipManager):
                     acquaintance = self.world.get_gameobject(acquaintance_id)
 
-                    add_relationship(self.world, character, acquaintance)
-                    add_relationship(self.world, acquaintance, character)
+                    add_relationship(character, acquaintance)
+                    add_relationship(acquaintance, character)
 
                     # Calculate interaction scores
-                    get_relationship(
-                        self.world, character, acquaintance
-                    ).interaction_score += 1
-                    get_relationship(
-                        self.world, acquaintance, character
-                    ).interaction_score += 1
+                    get_relationship(character, acquaintance).interaction_score += 1
+                    get_relationship(acquaintance, character).interaction_score += 1
 
 
 class FindEmployeesSystem(ISystem):
@@ -176,7 +172,7 @@ class FindEmployeesSystem(ISystem):
 
     def process(self, *args: Any, **kwargs: Any) -> None:
         date = self.world.get_resource(SimDateTime)
-        event_log = self.world.get_resource(EventLog)
+        event_log = self.world.get_resource(EventHandler)
         occupation_types = self.world.get_resource(OccupationTypeLibrary)
         rng = self.world.get_resource(random.Random)
 
@@ -209,11 +205,11 @@ class FindEmployeesSystem(ISystem):
 
                 occupation = Occupation(
                     occupation_type=occupation_name,
-                    business=business.gameobject.id,
+                    business=business.gameobject.uid,
                     level=occupation_type.level,
                 )
 
-                start_job(self.world, business, candidate, occupation)
+                start_job(business, candidate, occupation)
 
                 event_log.record_event(
                     orrery.events.StartJobEvent(
@@ -267,36 +263,32 @@ class BuildBusinessSystem(ISystem):
     """
 
     def find_business_owner(
-        self, business: Business, occupation_types: OccupationTypeLibrary
-    ):
+        self, occupation_type: OccupationType
+    ) -> Optional[GameObject]:
         """Find someone to run the new business"""
         rng = self.world.get_resource(random.Random)
 
-        if business.owner_type is None:
-            return None
+        query_builder = (
+            QueryBuilder()
+            .with_((InTheWorkforce, Active))
+            .filter_(lambda world, *gameobjects: has_status(gameobjects[0], Unemployed))
+        )
 
-        occupation_type = occupation_types.get(business.owner_type)
+        if occupation_type.precondition:
+            query_builder.filter_(occupation_type.precondition)
 
-        result = fill_open_position(self.world, occupation_type, business, rng)
+        q = query_builder.build()
 
-        if result:
-            candidate, occupation = result
+        candidate_list = q.execute(self.world)
 
-            start_job(
-                self.world,
-                business,
-                candidate,
-                occupation,
-                is_owner=True,
-            )
-
-            return candidate
+        if candidate_list:
+            return self.world.get_gameobject(rng.choice(candidate_list)[0])
 
         return None
 
     def process(self, *args: Any, **kwargs: Any) -> None:
         """Build a new business when there is space"""
-        event_log = self.world.get_resource(EventLog)
+        event_log = self.world.get_resource(EventHandler)
         business_library = self.world.get_resource(BusinessLibrary)
         occupation_types = self.world.get_resource(OccupationTypeLibrary)
         rng = self.world.get_resource(random.Random)
@@ -319,20 +311,28 @@ class BuildBusinessSystem(ISystem):
             if bundle is None:
                 return
 
-            business = add_business(
-                create_business(self.world, bundle),
-                self.world.get_gameobject(settlement_id),
-                lot=lot,
-            )
+            business_config = business_library.get(bundle.name)
 
-            # Attempt to find an owner
-            if business.get_component(Business).needs_owner():
-                owner = self.find_business_owner(
-                    business.get_component(Business), occupation_types
-                )
+            if business_config.owner_type is not None:
+                owner_occupation_type = occupation_types.get(business_config.owner_type)
+                owner = self.find_business_owner(owner_occupation_type)
 
                 if owner is None:
-                    return
+                    continue
+
+                business = add_business(
+                    create_business(self.world, bundle),
+                    self.world.get_gameobject(settlement_id),
+                    lot=lot,
+                )
+
+                owner.add_component(
+                    Occupation(
+                        occupation_type=owner_occupation_type.name,
+                        business=business.uid,
+                        level=owner_occupation_type.level,
+                    )
+                )
 
                 event_log.record_event(
                     orrery.events.StartBusinessEvent(
@@ -342,6 +342,17 @@ class BuildBusinessSystem(ISystem):
                         owner.get_component(Occupation).occupation_type,
                         business.get_component(Business).name,
                     )
+                )
+
+            else:
+                business = add_business(
+                    create_business(self.world, bundle),
+                    self.world.get_gameobject(settlement_id),
+                    lot=lot,
+                )
+
+                print(
+                    f"Built new business ({business.uid}) {business.get_component(Business).name}"
                 )
 
 
@@ -384,7 +395,7 @@ class SpawnResidentSystem(System):
     def run(self, *args: Any, **kwargs: Any) -> None:
         rng = self.world.get_resource(random.Random)
         date = self.world.get_resource(SimDateTime)
-        event_logger = self.world.get_resource(EventLog)
+        event_logger = self.world.get_resource(EventHandler)
         character_library = self.world.get_resource(CharacterLibrary)
 
         for _, (residence, _, _, _) in self.world.get_components(
@@ -441,20 +452,22 @@ class SpawnResidentSystem(System):
                 set_residence(self.world, spouse, residence.gameobject, True)
 
                 # Configure relationship from character to spouse
-                add_relationship(self.world, character, spouse)
-                get_relationship(self.world, character, spouse).add_tags(
-                    RelationshipTag.SignificantOther
+                add_relationship(character, spouse)
+                get_relationship(character, spouse).add_tags(
+                    RelationshipTag.SignificantOther | RelationshipTag.Spouse
                 )
-                get_relationship(self.world, character, spouse)["Romance"] += 45
-                get_relationship(self.world, character, spouse)["Friendship"] += 30
+                add_relationship_status(character, spouse, Married())
+                get_relationship(character, spouse)["Romance"] += 45
+                get_relationship(character, spouse)["Friendship"] += 30
 
                 # Configure relationship from spouse to character
-                add_relationship(self.world, spouse, character)
-                get_relationship(self.world, spouse, character).add_tags(
-                    RelationshipTag.SignificantOther
+                add_relationship(spouse, character)
+                get_relationship(spouse, character).add_tags(
+                    RelationshipTag.SignificantOther | RelationshipTag.Spouse
                 )
-                get_relationship(self.world, spouse, character)["Romance"] += 45
-                get_relationship(self.world, spouse, character)["Friendship"] += 30
+                add_relationship_status(spouse, character, Married())
+                get_relationship(spouse, character)["Romance"] += 45
+                get_relationship(spouse, character)["Friendship"] += 30
 
             num_kids = rng.randint(0, character_config.spawning.max_children_at_spawn)
             children: List[GameObject] = []
@@ -482,76 +495,57 @@ class SpawnResidentSystem(System):
                     children.append(child)
 
                     # Relationship of child to character
-                    add_relationship(self.world, child, character)
-                    child.get_component(RelationshipManager).get(character.id).add_tags(
-                        RelationshipTag.Parent
+                    add_relationship(child, character)
+                    get_relationship(child, character).add_tags(
+                        RelationshipTag.Parent | RelationshipTag.Family
                     )
-                    child.get_component(RelationshipManager).get(character.id).add_tags(
-                        RelationshipTag.Family
-                    )
-                    child.get_component(RelationshipManager).get(character.id)[
-                        "Friendship"
-                    ] += 20
+                    get_relationship(child, character)["Friendship"] += 20
 
                     # Relationship of character to child
-                    add_relationship(self.world, character, child)
-                    character.get_component(RelationshipManager).get(child.id).add_tags(
-                        RelationshipTag.Child
+                    add_relationship(character, child)
+                    get_relationship(character, child).add_tags(
+                        RelationshipTag.Child | RelationshipTag.Family
                     )
-                    character.get_component(RelationshipManager).get(child.id).add_tags(
-                        RelationshipTag.Family
-                    )
-                    character.get_component(RelationshipManager).get(child.id)[
-                        "Friendship"
-                    ] += 20
+                    get_relationship(character, child)["Friendship"] += 20
 
                     if spouse:
                         # Relationship of child to spouse
-                        add_relationship(self.world, child, spouse)
-                        child.get_component(RelationshipManager).get(
-                            spouse.id
-                        ).add_tags(RelationshipTag.Parent)
-                        child.get_component(RelationshipManager).get(
-                            spouse.id
-                        ).add_tags(RelationshipTag.Family)
-                        child.get_component(RelationshipManager).get(spouse.id)[
-                            "Friendship"
-                        ] += 20
+                        add_relationship(child, spouse)
+                        get_relationship(child, spouse).add_tags(
+                            RelationshipTag.Parent | RelationshipTag.Family
+                        )
+                        get_relationship(child, spouse)["Friendship"] += 20
 
                         # Relationship of spouse to child
-                        add_relationship(self.world, spouse, child)
-                        spouse.get_component(RelationshipManager).get(
-                            child.id
-                        ).add_tags(RelationshipTag.Child)
-                        spouse.get_component(RelationshipManager).get(
-                            child.id
-                        ).add_tags(RelationshipTag.Family)
-                        spouse.get_component(RelationshipManager).get(child.id)[
-                            "Friendship"
-                        ] += 20
+                        add_relationship(spouse, child)
+                        add_relationship(spouse, child)
+                        get_relationship(spouse, child).add_tags(
+                            RelationshipTag.Child | RelationshipTag.Family
+                        )
+                        get_relationship(spouse, child)["Friendship"] += 20
 
                     for sibling in children:
                         # Relationship of child to sibling
-                        add_relationship(self.world, child, sibling)
+                        add_relationship(child, sibling)
                         child.get_component(RelationshipManager).get(
-                            sibling.id
+                            sibling.uid
                         ).add_tags(RelationshipTag.Sibling)
                         child.get_component(RelationshipManager).get(
-                            sibling.id
+                            sibling.uid
                         ).add_tags(RelationshipTag.Family)
-                        child.get_component(RelationshipManager).get(sibling.id)[
+                        child.get_component(RelationshipManager).get(sibling.uid)[
                             "Friendship"
                         ] += 20
 
                         # Relationship of sibling to child
-                        add_relationship(self.world, sibling, child)
+                        add_relationship(sibling, child)
                         sibling.get_component(RelationshipManager).get(
-                            child.id
+                            child.uid
                         ).add_tags(RelationshipTag.Sibling)
                         sibling.get_component(RelationshipManager).get(
-                            child.id
+                            child.uid
                         ).add_tags(RelationshipTag.Family)
-                        sibling.get_component(RelationshipManager).get(child.id)[
+                        sibling.get_component(RelationshipManager).get(child.uid)[
                             "Friendship"
                         ] += 20
 
@@ -585,7 +579,7 @@ class CharacterAgingSystem(System):
 
     def run(self, *args: Any, **kwargs: Any) -> None:
         current_date = self.world.get_resource(SimDateTime)
-        event_log = self.world.get_resource(EventLog)
+        event_log = self.world.get_resource(EventHandler)
 
         age_increment = float(self.elapsed_time.total_days) / DAYS_PER_YEAR
 
@@ -609,7 +603,7 @@ class CharacterAgingSystem(System):
                         name="BecameAdolescent",
                         timestamp=current_date.to_iso_str(),
                         roles=[
-                            EventRole("Character", character.gameobject.id),
+                            EventRole("Character", character.gameobject.uid),
                         ],
                     ),
                 )
@@ -620,7 +614,7 @@ class CharacterAgingSystem(System):
                         name="BecomeYoungAdult",
                         timestamp=current_date.to_iso_str(),
                         roles=[
-                            EventRole("Character", character.gameobject.id),
+                            EventRole("Character", character.gameobject.uid),
                         ],
                     ),
                 )
@@ -631,7 +625,7 @@ class CharacterAgingSystem(System):
                         name="BecomeAdult",
                         timestamp=current_date.to_iso_str(),
                         roles=[
-                            EventRole("Character", character.gameobject.id),
+                            EventRole("Character", character.gameobject.uid),
                         ],
                     ),
                 )
@@ -642,7 +636,7 @@ class CharacterAgingSystem(System):
                         name="BecomeSenior",
                         timestamp=current_date.to_iso_str(),
                         roles=[
-                            EventRole("Character", character.gameobject.id),
+                            EventRole("Character", character.gameobject.uid),
                         ],
                     ),
                 )
@@ -650,208 +644,36 @@ class CharacterAgingSystem(System):
 
 class EventSystem(ISystem):
     def process(self, *args: Any, **kwargs: Any) -> None:
-        event_log = self.world.get_resource(EventLog)
+        event_log = self.world.get_resource(EventHandler)
         event_log.process_event_queue(self.world)
 
 
-class UnemployedStatusSystem(System):
+class StatusUpdateSystem(System):
+    """Increases the elapsed time for all statuses by one month"""
+
     def run(self, *args: Any, **kwargs: Any):
+        for guid, status_manager in self.world.get_component(StatusManager):
+            gameobject = self.world.get_gameobject(guid)
+            for status in status_manager:
+                status.on_update(self.world, gameobject, self.elapsed_time)
 
-        elapsed_days = self.elapsed_time.total_days
 
-        for status_id, unemployed in self.world.get_component(Unemployed):
-            unemployed.days_to_find_a_job -= elapsed_days
+class RelationshipUpdateSystem(System):
+    """Increases the elapsed time for all statuses by one month"""
 
-            if unemployed.days_to_find_a_job <= 0:
-                status = self.world.get_gameobject(status_id)
-                character = status.parent
-
-                if character is None:
-                    raise TypeError("Parent of status cannot be None")
-
-                spouses = character.get_component(
-                    RelationshipManager
-                ).get_all_with_tags(RelationshipTag.Spouse)
-
-                # Do not depart if one or more of the entity's spouses has a job
-                if any(
-                    [
-                        self.world.get_gameobject(rel.target).has_component(Occupation)
-                        for rel in spouses
-                    ]
-                ):
-                    return
-
-                else:
-                    characters_to_depart: List[GameObject] = [character]
-
-                    # Have all spouses depart
-                    # Allows for polygamy
-                    for rel in spouses:
-                        spouse = self.world.get_gameobject(rel.target)
-                        if spouse.has_component(Active):
-                            characters_to_depart.append(spouse)
-
-                    # Have all children living in the same house depart
-                    children = character.get_component(
-                        RelationshipManager
-                    ).get_all_with_tags(RelationshipTag.Child)
-                    for rel in children:
-                        child = self.world.get_gameobject(rel.target)
-                        if child.has_component(Active) and check_share_residence(
-                            character, child
-                        ):
-                            characters_to_depart.append(child)
-
-                    for c in characters_to_depart:
-                        c.add_component(Departed())
-                        c.remove_component(Active, immediate=True)
-
-                    remove_status(self.world, character, Unemployed)
-                    self.world.delete_gameobject(status.id)
-
-                    event = orrery.events.DepartEvent(
-                        self.world.get_resource(SimDateTime),
-                        characters_to_depart,
-                        "unemployment",
+    def run(self, *args: Any, **kwargs: Any):
+        for guid, relationship_manager in self.world.get_component(RelationshipManager):
+            gameobject = self.world.get_gameobject(guid)
+            for relationship in relationship_manager:
+                # Update stats
+                for _, stat in relationship:
+                    if stat.changes_with_time:
+                        stat += round(
+                            max(0, relationship.interaction_score.get_raw_value())
+                            * lerp(-3, 3, stat.get_normalized_value())
+                        )
+                # Update statuses
+                for status in relationship.get_statuses():
+                    status.on_update(
+                        self.world, gameobject, relationship, self.elapsed_time
                     )
-
-                    self.world.get_resource(EventLog).record_event(event)
-
-
-class PregnantStatusSystem(System):
-    def run(self, *args: Any, **kwargs: Any) -> None:
-        current_date = self.world.get_resource(SimDateTime)
-        for status_id, pregnancy in self.world.get_component(Pregnant):
-
-            if pregnancy.due_date <= current_date:
-                continue
-
-            status = self.world.get_gameobject(status_id)
-            character = status.parent
-
-            if character is None:
-                raise TypeError("Parent of status cannot be None")
-
-            other_parent = self.world.get_gameobject(pregnancy.partner_id)
-
-            baby = create_character(
-                self.world,
-                generate_child_bundle(
-                    self.world,
-                    character,
-                    other_parent,
-                ),
-                last_name=character.get_component(GameCharacter).last_name,
-            )
-
-            set_residence(
-                self.world,
-                baby,
-                self.world.get_gameobject(character.get_component(Resident).residence),
-            )
-
-            # Birthing parent to child
-            add_relationship(self.world, character, baby)
-            character.get_component(RelationshipManager).get(baby.id).add_tags(
-                RelationshipTag.Child
-            )
-
-            # Child to birthing parent
-            add_relationship(self.world, baby, character)
-            baby.get_component(RelationshipManager).get(character.id).add_tags(
-                RelationshipTag.Parent
-            )
-
-            # Other parent to child
-            add_relationship(self.world, other_parent, baby)
-            other_parent.get_component(RelationshipManager).get(baby.id).add_tags(
-                RelationshipTag.Child
-            )
-            other_parent.get_component(RelationshipManager).get(baby.id).add_tags(
-                RelationshipTag.Family
-            )
-
-            # Child to other parent
-            add_relationship(self.world, baby, other_parent)
-            baby.get_component(RelationshipManager).get(other_parent.id).add_tags(
-                RelationshipTag.Parent
-            )
-            baby.get_component(RelationshipManager).get(other_parent.id).add_tags(
-                RelationshipTag.Family
-            )
-
-            # Create relationships with children of birthing parent
-            for rel in character.get_component(RelationshipManager).get_all_with_tags(
-                RelationshipTag.Child
-            ):
-                if rel.target == baby.id:
-                    continue
-
-                sibling = self.world.get_gameobject(rel.target)
-
-                # Baby to sibling
-                add_relationship(self.world, baby, sibling)
-                baby.get_component(RelationshipManager).get(rel.target).add_tags(
-                    RelationshipTag.Sibling
-                )
-                baby.get_component(RelationshipManager).get(rel.target).add_tags(
-                    RelationshipTag.Family
-                )
-
-                # Sibling to baby
-                add_relationship(self.world, sibling, baby)
-                self.world.get_gameobject(rel.target).get_component(
-                    RelationshipManager
-                ).get(baby.id).add_tags(RelationshipTag.Sibling)
-                self.world.get_gameobject(rel.target).get_component(
-                    RelationshipManager
-                ).get(baby.id).add_tags(RelationshipTag.Family)
-
-            # Create relationships with children of other parent
-            for rel in other_parent.get_component(
-                RelationshipManager
-            ).get_all_with_tags(RelationshipTag.Child):
-                if rel.target == baby.id:
-                    continue
-
-                sibling = self.world.get_gameobject(rel.target)
-
-                # Baby to sibling
-                add_relationship(self.world, baby, sibling)
-                baby.get_component(RelationshipManager).get(rel.target).add_tags(
-                    RelationshipTag.Sibling
-                )
-
-                # Sibling to baby
-                add_relationship(self.world, sibling, baby)
-                sibling.get_component(RelationshipManager).get(baby.id).add_tags(
-                    RelationshipTag.Sibling
-                )
-
-            remove_status(self.world, character, Pregnant)
-            self.world.delete_gameobject(status.id)
-
-            # Pregnancy event dates are retro-fit to be the actual date that the
-            # child was due.
-            self.world.get_resource(EventLog).record_event(
-                orrery.events.ChildBirthEvent(
-                    current_date, character, other_parent, baby
-                )
-            )
-
-
-class StatusSystem(ISystem):
-    """Increases the elapsed time for all statuses by one month"""
-
-    def process(self, *args: Any, **kwargs: Any):
-        for _, status_duration in self.world.get_component(Status):
-            status_duration.time_active += 1
-
-
-class RelationshipStatusSystem(ISystem):
-    """Increases the elapsed time for all statuses by one month"""
-
-    def process(self, *args: Any, **kwargs: Any):
-        for _, status_duration in self.world.get_component(RelationshipStatus):
-            status_duration.time_active += 1

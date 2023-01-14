@@ -14,9 +14,9 @@ from orrery.components.business import (
     Occupation,
     OccupationTypeLibrary,
     OpenForBusiness,
+    ServiceLibrary,
     Services,
     ServicesFactory,
-    Unemployed,
     WorkHistory,
 )
 from orrery.components.character import (
@@ -36,7 +36,9 @@ from orrery.components.shared import (
     Active,
     Building,
     FrequentedLocations,
+    FrequentedLocationsFactory,
     Location,
+    LocationFactory,
     Name,
     Position2D,
 )
@@ -47,22 +49,25 @@ from orrery.constants import (
     SETTLEMENT_UPDATE_PHASE,
 )
 from orrery.core.activity import (
+    Activities,
+    ActivitiesFactory,
     ActivityLibrary,
-    ActivityManager,
-    ActivityManagerFactory,
     ActivityToVirtueMap,
+    LikedActivities,
+    LikedActivitiesFactory,
 )
 from orrery.core.config import OrreryConfig
 from orrery.core.ecs import World
-from orrery.core.event import EventLog
+from orrery.core.event import EventHandler
 from orrery.core.life_event import LifeEventLibrary
-from orrery.core.relationship import RelationshipManager, UpdateRelationshipsSystem
+from orrery.core.relationship import RelationshipManager
+from orrery.core.settlement import Settlement
 from orrery.core.social_rule import SocialRuleLibrary
-from orrery.core.status import RelationshipStatus, Status, StatusManager
+from orrery.core.status import StatusManager
 from orrery.core.time import SimDateTime, TimeDelta
 from orrery.core.tracery import Tracery
-from orrery.core.traits import TraitManager
-from orrery.core.virtues import VirtueVector, VirtueVectorFactory
+from orrery.core.traits import TraitLibrary, Traits, TraitsFactory
+from orrery.core.virtues import Virtues, VirtuesFactory
 from orrery.systems import (
     BuildBusinessSystem,
     BuildHousingSystem,
@@ -72,11 +77,10 @@ from orrery.systems import (
     FindEmployeesSystem,
     LifeEventSystem,
     MeetNewPeopleSystem,
-    PregnantStatusSystem,
+    RelationshipUpdateSystem,
     SpawnResidentSystem,
-    StatusSystem,
+    StatusUpdateSystem,
     TimeSystem,
-    UnemployedStatusSystem, RelationshipStatusSystem,
 )
 
 
@@ -142,10 +146,13 @@ class Orrery:
         self.config: OrreryConfig = config
         self.plugins: List[Tuple[Plugin, Dict[str, Any]]] = []
 
+        # Seed RNG for libraries we don't control, like Tracery
+        random.seed(config.seed)
+
         # Add default resources
         self.world.add_resource(config)
-        self.world.add_resource(Tracery())
         self.world.add_resource(random.Random(config.seed))
+        self.world.add_resource(Tracery())
         self.world.add_resource(SocialRuleLibrary())
         self.world.add_resource(CharacterLibrary())
         self.world.add_resource(BusinessLibrary())
@@ -153,16 +160,15 @@ class Orrery:
         self.world.add_resource(ActivityLibrary())
         self.world.add_resource(ActivityToVirtueMap())
         self.world.add_resource(SimDateTime())
-        self.world.add_resource(EventLog())
+        self.world.add_resource(EventHandler())
         self.world.add_resource(OccupationTypeLibrary())
         self.world.add_resource(LifeEventLibrary())
+        self.world.add_resource(ServiceLibrary())
+        self.world.add_resource(TraitLibrary())
 
         # Add default systems
-        self.world.add_system(StatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(RelationshipStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(PregnantStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(UnemployedStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(UpdateRelationshipsSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(StatusUpdateSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(RelationshipUpdateSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(MeetNewPeopleSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(LifeEventSystem(), CORE_SYSTEMS_PHASE)
         self.world.add_system(EventSystem(), CORE_SYSTEMS_PHASE)
@@ -179,11 +185,11 @@ class Orrery:
         self.world.register_component(GameCharacter, factory=GameCharacterFactory())
         self.world.register_component(Name)
         self.world.register_component(RelationshipManager)
-        self.world.register_component(TraitManager)
-        self.world.register_component(Location)
-        self.world.register_component(VirtueVector, factory=VirtueVectorFactory())
-        self.world.register_component(ActivityManager, factory=ActivityManagerFactory())
-        self.world.register_component(RelationshipStatus)
+        self.world.register_component(Traits, factory=TraitsFactory())
+        self.world.register_component(Location, factory=LocationFactory())
+        self.world.register_component(Virtues, factory=VirtuesFactory())
+        self.world.register_component(Activities, factory=ActivitiesFactory())
+        self.world.register_component(LikedActivities, factory=LikedActivitiesFactory())
         self.world.register_component(Occupation)
         self.world.register_component(WorkHistory)
         self.world.register_component(Services, factory=ServicesFactory())
@@ -204,58 +210,70 @@ class Orrery:
         self.world.register_component(Building)
         self.world.register_component(Position2D)
         self.world.register_component(StatusManager)
-        self.world.register_component(FrequentedLocations)
-        self.world.register_component(Status)
-        self.world.register_component(RelationshipStatus)
-        self.world.register_component(Unemployed)
+        self.world.register_component(
+            FrequentedLocations, factory=FrequentedLocationsFactory()
+        )
+        self.world.register_component(Settlement)
 
         # Configure printing every event to the console
         if config.verbose:
-            self.world.get_resource(EventLog).subscribe(lambda e: print(str(e)))
+            self.world.get_resource(EventHandler).subscribe(lambda e: print(str(e)))
 
         # Configure event callback functions
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Depart", event_callbacks.on_depart_callback
         )
 
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Retire", event_callbacks.remove_retired_from_occupation
         )
 
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Retire", event_callbacks.remove_retired_from_occupation
         )
 
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Death", event_callbacks.remove_deceased_from_occupation
         )
 
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Death", event_callbacks.remove_deceased_from_residence
         )
 
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Depart", event_callbacks.remove_departed_from_residence
         )
 
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Depart", event_callbacks.remove_departed_from_occupation
         )
 
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Death", event_callbacks.remove_statuses_from_deceased
         )
 
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Depart", event_callbacks.remove_statuses_from_departed
         )
 
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Death", event_callbacks.remove_frequented_locations_from_deceased
         )
 
-        self.world.get_resource(EventLog).on(
+        self.world.get_resource(EventHandler).on(
             "Depart", event_callbacks.remove_frequented_locations_from_departed
+        )
+
+        self.world.get_resource(EventHandler).on(
+            "LeaveJob", event_callbacks.add_unemployed_status_after_end_job
+        )
+
+        self.world.get_resource(EventHandler).on(
+            "StartJob", event_callbacks.remove_unemployed_status_after_start_job
+        )
+
+        self.world.get_resource(EventHandler).on(
+            "JoinSettlement", event_callbacks.on_join_settlement
         )
 
     def load_plugin(self, plugin: Plugin, **kwargs: Any) -> None:

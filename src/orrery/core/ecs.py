@@ -13,10 +13,10 @@ from __future__ import annotations
 import dataclasses
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, TypeVar
+from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, TypeVar
 
-import esper  # type: ignore
-from ordered_set import OrderedSet  # type: ignore
+import esper
+from ordered_set import OrderedSet
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,10 @@ _ST = TypeVar("_ST", bound="ISystem")
 
 
 class ResourceNotFoundError(Exception):
+    """Exception raised when attempting to access a resource that does not exist"""
+
+    __slots__ = "resource_type"
+
     def __init__(self, resource_type: Type[Any]) -> None:
         super().__init__()
         self.resource_type: Type[Any] = resource_type
@@ -36,33 +40,50 @@ class ResourceNotFoundError(Exception):
         return self.message
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.resource_type})"
+        return "{}(resource_type={})".format(
+            self.__class__.__name__, self.resource_type
+        )
 
 
 class GameObjectNotFoundError(Exception):
-    def __init__(self, gid: int) -> None:
+    """Exception raised when attempting to retrieve a GameObject that does not exist"""
+
+    __slots__ = "gameobject_uid"
+
+    def __init__(self, gameobject_uid: int) -> None:
         super().__init__()
-        self.gid: int = gid
-        self.message = f"Could not find GameObject with id: {gid}."
+        self.gameobject_uid: int = gameobject_uid
+        self.message = f"Could not find GameObject with id: {gameobject_uid}."
 
     def __str__(self) -> str:
         return self.message
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.gid})"
+        return "{}(gameobject_uid={})".format(
+            self.__class__.__name__, self.gameobject_uid
+        )
 
 
 class ComponentNotFoundError(Exception):
+    """Exception raised when attempting to retrieve a component that does not exist"""
+
+    __slots__ = "component_type", "message"
+
     def __init__(self, component_type: Type[Component]) -> None:
         super().__init__()
         self.component_type: Type[Component] = component_type
-        self.message = f"Could not find Component with type: {component_type.__name__}."
+        self.message = "Could not find Component with type {}.".format(
+            component_type.__name__
+        )
 
     def __str__(self) -> str:
         return self.message
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.component_type})"
+        return "{}(component_type={})".format(
+            self.__class__.__name__,
+            self.component_type.__name__,
+        )
 
 
 class GameObject:
@@ -72,12 +93,8 @@ class GameObject:
 
     Attributes
     ----------
-    _id: int
-      unique identifier
-    _name: str
-        name of the GameObject
-    _world: World
-        the World instance this GameObject belongs to
+    name: str
+        The name of the GameObject
     children: List[GameObject]
         Other GameObjects that are below this one in the hierarchy
         and are removed when the parent is removed
@@ -85,7 +102,7 @@ class GameObject:
         The GameObject that this GameObject is a child of
     """
 
-    __slots__ = "_id", "_name", "_world", "children", "parent"
+    __slots__ = "_id", "name", "_world", "children", "parent"
 
     def __init__(
         self,
@@ -94,7 +111,7 @@ class GameObject:
         name: Optional[str] = None,
         components: Optional[Iterable[Component]] = None,
     ) -> None:
-        self._name: str = name if name else f"GameObject ({unique_id})"
+        self.name: str = name if name else f"GameObject ({unique_id})"
         self._id: int = unique_id
         self._world: World = world
         self.parent: Optional[GameObject] = None
@@ -105,70 +122,66 @@ class GameObject:
                 self.add_component(component)
 
     @property
-    def id(self) -> int:
+    def uid(self) -> int:
         """Return GameObject's ID"""
         return self._id
-
-    @property
-    def name(self) -> str:
-        """Get the name of the GameObject"""
-        return self._name
 
     @property
     def world(self) -> World:
         """Return the world that this GameObject belongs to"""
         return self._world
 
-    @property
-    def components(self) -> Tuple[Component, ...]:
+    def get_components(self) -> Tuple[Component, ...]:
         """Returns the component instances associated with this GameObject"""
         try:
-            return self.world.ecs.components_for_entity(self.id)
+            return self.world.ecs.components_for_entity(self.uid)
         except KeyError:
             # Ignore errors if gameobject is not found in esper ecs
             return ()
 
     def get_component_types(self) -> Tuple[Type[Component], ...]:
         """Returns the types of components attached to this character"""
-        return tuple(map(lambda component: type(component), self.components))
+        return tuple(map(lambda component: type(component), self.get_components()))
 
-    def add_component(self, component: Component) -> GameObject:
+    def add_component(self, component: Component) -> None:
         """Add a component to this GameObject"""
         component.set_gameobject(self)
-        self.world.ecs.add_component(self.id, component)
-        return self
+        self.world.ecs.add_component(self.uid, component)
 
     def remove_component(
         self, component_type: Type[Component], immediate: bool = True
     ) -> None:
         """Add a component to this GameObject"""
         try:
-            command = RemoveComponentCommand(self, component_type)
+            command = RemoveComponentCommand(self.uid, component_type)
 
             if immediate:
-                command.run(self.world)
+                command.apply(self.world)
             else:
                 self.world.command_queue.append(command)
         except KeyError:
-            pass
+            return
 
     def get_component(self, component_type: Type[_CT]) -> _CT:
         try:
-            return self.world.ecs.component_for_entity(self.id, component_type)  # type: ignore
+            return self.world.ecs.component_for_entity(self.uid, component_type)  # type: ignore
         except KeyError:
             raise ComponentNotFoundError(component_type)
 
     def has_component(self, *component_type: Type[Component]) -> bool:
         try:
             return all(
-                [self.world.ecs.try_component(self.id, ct) for ct in component_type]
+                [
+                    self.world.ecs.try_component(self.uid, ct) is not None
+                    for ct in component_type
+                ]
             )
         except KeyError:
             return False
 
     def try_component(self, component_type: Type[_CT]) -> Optional[_CT]:
         try:
-            return self.world.ecs.try_component(self.id, component_type)  # type: ignore
+            return self.world.ecs.try_component(self.uid, component_type)  # type: ignore
         except KeyError:
             return None
 
@@ -188,7 +201,7 @@ class GameObject:
         """Get a single instance of a component type attached to a child"""
         for child in self.children:
             if component := child.try_component(component_type):
-                return child.id, component
+                return child.uid, component
         raise ComponentNotFoundError(component_type)
 
     def get_component_in_children(
@@ -198,75 +211,81 @@ class GameObject:
         results: List[Tuple[int, _CT]] = []
         for child in self.children:
             if component := child.try_component(component_type):
-                results.append((child.id, component))
+                results.append((child.uid, component))
         return results
 
     def destroy(self) -> None:
-        self.world.delete_gameobject(self.id)
+        self.world.delete_gameobject(self.uid)
 
     def to_dict(self) -> Dict[str, Any]:
         ret = {
-            "id": self.id,
+            "id": self.uid,
             "name": self.name,
-            "components": {c.__class__.__name__: c.to_dict() for c in self.components},
+            "components": {
+                c.__class__.__name__: c.to_dict() for c in self.get_components()
+            },
         }
 
         return ret
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, GameObject):
-            return self.id == other.id
+            return self.uid == other.uid
         raise TypeError(f"Expected GameObject but was {type(object)}")
 
     def __hash__(self) -> int:
         return self._id
 
     def __str__(self) -> str:
-        return f"GameObject(id={self.id})"
+        return self.name
 
     def __repr__(self) -> str:
-        return f"GameObject(id={self.id})"
+        return f"GameObject(id={self.uid})"
 
 
-class IEcsCommand:
-    """A change that needs to be made to the ECS state"""
+class IECSCommand(Protocol):
+    """A Command object that makes a change to the ECS World instance"""
 
-    @classmethod
-    @abstractmethod
-    def get_type(cls) -> str:
+    def get_type(self) -> str:
+        """Return the type of this command"""
         raise NotImplementedError
 
-    def run(self, world: World) -> None:
+    def apply(self, world: World) -> None:
+        """Apply the affects of this command to the world state"""
         raise NotImplementedError
 
 
-class RemoveComponentCommand(IEcsCommand):
-    __slots__ = "gameobject", "component_type"
-
-    def __init__(self, gameobject: GameObject, component_type: Type[Component]) -> None:
-        super(IEcsCommand, self).__init__()
-        self.gameobject: GameObject = gameobject
-        self.component_type: Type[Component] = component_type
-
-    @classmethod
-    def get_type(cls) -> str:
-        return cls.__name__
-
-    def run(self, world: World) -> None:
-        if not self.gameobject.has_component(self.component_type):
-            return
-        world.ecs.remove_component(self.gameobject.id, self.component_type)
-
-
-class Component(ABC):
+@dataclasses.dataclass(frozen=True)
+class RemoveComponentCommand:
     """
-    Components are collections of related data attached to GameObjects.
+    This command removes a component from a gameobject
 
     Attributes
     ----------
-    _gameobject: Optional[GameObject]
-        Reference to the gameobject this component is attached to
+    gameobject_uid: int
+        The unique identifier of a GameObject
+    component_type: Type[Component]
+        The component type to remove from the GameObject
     """
+
+    gameobject_uid: int
+    component_type: Type[Component]
+
+    def get_type(self) -> str:
+        return self.__class__.__name__
+
+    def apply(self, world: World) -> None:
+        try:
+            gameobject = world.get_gameobject(self.gameobject_uid)
+            if not gameobject.has_component(self.component_type):
+                return
+            world.ecs.remove_component(gameobject.uid, self.component_type)
+        except GameObjectNotFoundError:
+            return
+
+
+class Component(ABC):
+    """Components are collections of related data attached to GameObjects"""
 
     __slots__ = "_gameobject"
 
@@ -372,7 +391,7 @@ class World:
         self._gameobjects: Dict[int, GameObject] = {}
         self._dead_gameobjects: OrderedSet[int] = OrderedSet([])
         self._resources: Dict[Type[Any], Any] = {}
-        self._command_queue: List[IEcsCommand] = []
+        self._command_queue: List[IECSCommand] = []
         self._component_types: Dict[str, ComponentInfo] = {}
         self._component_factories: Dict[Type[Component], IComponentFactory] = {}
 
@@ -381,7 +400,7 @@ class World:
         return self._ecs
 
     @property
-    def command_queue(self) -> List[IEcsCommand]:
+    def command_queue(self) -> List[IECSCommand]:
         return self._command_queue
 
     def spawn_gameobject(
@@ -395,7 +414,7 @@ class World:
             world=self,
             name=(name if name else f"GameObject({entity_id})"),
         )
-        self._gameobjects[gameobject.id] = gameobject
+        self._gameobjects[gameobject.uid] = gameobject
         return gameobject
 
     def get_gameobject(self, gid: int) -> GameObject:
@@ -423,7 +442,7 @@ class World:
 
         # Recursively remove all children
         for child in self._gameobjects[gid].children:
-            self.delete_gameobject(child.id)
+            self.delete_gameobject(child.uid)
 
     def get_component(self, component_type: Type[_CT]) -> List[Tuple[int, _CT]]:
         """Get all the gameobjects that have a given component type"""
@@ -438,7 +457,7 @@ class World:
     def _clear_dead_gameobjects(self) -> None:
         """Delete gameobjects that were removed from the world"""
         for gameobject_id in self._dead_gameobjects:
-            if len(self._gameobjects[gameobject_id].components) > 0:
+            if len(self._gameobjects[gameobject_id].get_components()) > 0:
                 self._ecs.delete_entity(gameobject_id, True)
 
             gameobject = self._gameobjects[gameobject_id]
@@ -452,7 +471,7 @@ class World:
     def clear_command_queue(self) -> None:
         while self._command_queue:
             command = self._command_queue.pop(0)
-            command.run(self)
+            command.apply(self)
 
     def add_system(self, system: ISystem, priority: int = 0) -> None:
         """Add a System instance to the World"""
@@ -545,6 +564,9 @@ class World:
         )
 
 
+_KT = TypeVar("_KT")
+
+
 class ComponentBundle:
     """"""
 
@@ -553,13 +575,48 @@ class ComponentBundle:
     def __init__(self, components: Dict[Type[Component], Dict[str, Any]]) -> None:
         self.components = components
 
+    @staticmethod
+    def _merge_overrides(
+        source: Dict[_KT, Any], other: Dict[_KT, Any]
+    ) -> Dict[_KT, Any]:
+        """
+        Merges two dictionaries of overrides together
+
+        Parameters
+        ----------
+        source: Dict[_KT, Any]
+            Dictionary with initial field values
+
+        other: Dict[_KT, Any]
+            Dictionary with fields to override in the source dict
+
+        Returns
+        -------
+        Dict[_KT, Any]
+            New dictionary with fields in source overwritten
+            with values from the other
+        """
+        merged_dict = {**source}
+
+        for key, value in other.items():
+            if isinstance(value, dict):
+                # get node or create one
+                node = merged_dict.get(key, {})
+                merged_dict[key] = ComponentBundle._merge_overrides(node, value)  # type: ignore
+            else:
+                merged_dict[key] = value
+
+        return merged_dict
+
     def spawn(
         self,
         world: World,
         overrides: Optional[Dict[Type[Component], Dict[str, Any]]] = None,
     ) -> GameObject:
         """Create a new gameobject instance"""
-        merged_options: Dict[Type[Component], Dict[str, Any]] = _deep_merge(
+        merged_options: Dict[
+            Type[Component], Dict[str, Any]
+        ] = ComponentBundle._merge_overrides(
             self.components, (overrides if overrides else {})
         )
 
@@ -575,38 +632,3 @@ class ComponentBundle:
             )
 
         return gameobject
-
-
-_KT = TypeVar("_KT")
-
-
-def _deep_merge(source: Dict[_KT, Any], other: Dict[_KT, Any]) -> Dict[_KT, Any]:
-    """
-    Merges two dictionaries (including any nested dictionaries) by overwriting
-    fields in the source with the fields present in the other
-
-    Parameters
-    ----------
-    source: Dict[_KT, Any]
-        Dictionary with initial field values
-
-    other: Dict[_KT, Any]
-        Dictionary with fields to override in the source dict
-
-    Returns
-    -------
-    Dict[_KT, Any]
-        New dictionary with fields in source overwritten
-        with values from the other
-    """
-    merged_dict = {**source}
-
-    for key, value in other.items():
-        if isinstance(value, dict):
-            # get node or create one
-            node = merged_dict.get(key, {})
-            merged_dict[key] = _deep_merge(node, value)  # type: ignore
-        else:
-            merged_dict[key] = value
-
-    return merged_dict

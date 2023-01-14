@@ -150,6 +150,7 @@ class BusinessConfig(pydantic.BaseModel):
     spawning: BusinessSpawnConfig = pydantic.Field(default_factory=BusinessSpawnConfig)
     template: bool = False
     extends: Optional[str] = None
+    owner_type: Optional[str] = None
     components: Dict[str, Dict[str, Any]] = pydantic.Field(default_factory=dict)
 
 

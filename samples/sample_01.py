@@ -11,24 +11,29 @@ from orrery import Orrery
 from orrery.components.business import BusinessLibrary
 from orrery.components.character import CharacterLibrary
 from orrery.components.shared import Location, Name
-from orrery.core.activity import ActivityManager
+from orrery.core.activity import Activities
 from orrery.core.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
 from orrery.core.ecs import Component, ComponentBundle, GameObject, World
-from orrery.core.relationship import Relationship, RelationshipModifier
-from orrery.core.social_rule import ISocialRule, SocialRule, SocialRuleLibrary
+from orrery.core.relationship import (
+    Relationship,
+    RelationshipModifier,
+    RelationshipStatus,
+)
+from orrery.core.social_rule import ISocialRule, SocialRuleLibrary
 from orrery.core.time import SimDateTime
-from orrery.core.traits import Trait
-from orrery.core.virtues import VirtueVector
+from orrery.core.virtues import Virtues
+from orrery.exporter import export_to_json
 from orrery.loaders import OrreryYamlLoader, load_all_data
 from orrery.utils.common import (
     add_business,
     add_character_to_settlement,
-    add_relationship,
-    add_relationship_status,
-    add_trait,
     create_business,
     create_character,
     create_settlement,
+)
+from orrery.utils.relationships import (
+    add_relationship,
+    add_relationship_status,
     get_relationship,
 )
 
@@ -38,24 +43,8 @@ from orrery.utils.common import (
 
 
 class Robot(Component):
-    pass
 
-
-#######################################
-# Traits
-#######################################
-
-
-hates_robots = Trait(
-    "Hates Robots",
-    [
-        SocialRule(
-            "Hates Robots",
-            lambda world, *gameobjects: gameobjects[1].has_component(Robot),
-            [RelationshipModifier("", {"Friendship": -5, "Romance": -9})],
-        )
-    ],
-)
+    serial_number: str = "182hdyd6s-62"
 
 
 #######################################
@@ -69,7 +58,7 @@ class SimpleLocation(ComponentBundle):
             {
                 Name: {"name": name},
                 Location: {},
-                ActivityManager: {"activities": activities},
+                Activities: {"activities": activities},
             }
         )
 
@@ -86,7 +75,7 @@ class VirtueCompatibilityRule(ISocialRule):
 
     def check_preconditions(self, world: World, *gameobjects: GameObject) -> bool:
         """Return true if a certain condition holds"""
-        return all([g.has_component(VirtueVector) for g in gameobjects])
+        return all([g.has_component(Virtues) for g in gameobjects])
 
     def activate(
         self,
@@ -96,8 +85,8 @@ class VirtueCompatibilityRule(ISocialRule):
         relationship: Relationship,
     ) -> None:
         """Apply any modifiers associated with the social rule"""
-        character_virtues = subject.get_component(VirtueVector)
-        acquaintance_virtues = target.get_component(VirtueVector)
+        character_virtues = subject.get_component(Virtues)
+        acquaintance_virtues = target.get_component(Virtues)
 
         compatibility = character_virtues.compatibility(acquaintance_virtues)
 
@@ -130,11 +119,11 @@ class VirtueCompatibilityRule(ISocialRule):
 
 
 @dataclass
-class InDebt(Component):
+class OwesDebt(RelationshipStatus):
     amount: int
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"amount": self.amount}
+        return {**super().to_dict(), "amount": self.amount}
 
 
 def main():
@@ -161,7 +150,6 @@ def main():
     sim.load_plugin(orrery.plugins.default.life_events.get_plugin())
 
     sim.world.register_component(Robot)
-    sim.world.register_component(InDebt)
 
     OrreryYamlLoader.from_str(
         """
@@ -232,19 +220,18 @@ def main():
 
     add_character_to_settlement(sim.world, william, west_world)
 
-    add_relationship(sim.world, delores, charlotte)
-    get_relationship(sim.world, delores, charlotte)["Friendship"] += -1
-    get_relationship(sim.world, delores, charlotte)["Friendship"] += 1
+    add_relationship(delores, charlotte)
+    get_relationship(delores, charlotte)["Friendship"] += -1
+    get_relationship(delores, charlotte)["Friendship"] += 1
 
-    add_relationship_status(sim.world, delores, charlotte, InDebt(500))
+    add_relationship_status(delores, charlotte, OwesDebt(500))
 
-    add_relationship(sim.world, delores, william)
-    get_relationship(sim.world, delores, william)["Romance"] += 4
-    get_relationship(sim.world, delores, william)["Romance"] += -7
-    get_relationship(sim.world, delores, william)["Interaction"] += 1
+    add_relationship(delores, william)
+    get_relationship(delores, william)["Romance"] += 4
+    get_relationship(delores, william)["Romance"] += -7
+    get_relationship(delores, william)["Interaction"] += 1
 
-    add_relationship(sim.world, william, delores)["Interaction"] += 1
-    add_trait(sim.world, william, hates_robots)
+    add_relationship(william, delores)["Interaction"] += 1
 
     st = time.time()
     sim.run_for(100)
@@ -252,6 +239,9 @@ def main():
 
     print(f"World Date: {str(sim.world.get_resource(SimDateTime))}")
     print("Execution time: ", elapsed_time, "seconds")
+
+    with open(f"orrery_{sim.config.seed}.json", "w") as f:
+        f.write(export_to_json(sim))
 
 
 if __name__ == "__main__":

@@ -1,12 +1,54 @@
-# Orrery: social simulation framework
+<h1 align="center">
+  <img
+    width="100"
+    height="100"
+    src="https://user-images.githubusercontent.com/11076525/211907183-33b69464-1772-4ee7-a39e-c0066ca27e91.png"
+  >
+<br>
+Orrery: social simulation framework (WIP)
+</h1>
 
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+Orrery is a fork of my other simulation Neighborly. This repo is basically a testbed
+for more radical deviations from Neighborly's design.
+
+The largest change between Neighborly and Orrery is the representation of physical
+space. In Neighborly, characters move from one location to the next based on their
+routines, tnd This movement drove relationship development. However, in Orrery,
+characters between discrete locations. Instead, characters have locations that they
+"frequent" based on their likes/dislikes. We then sample potential interlocutors
+from the characters who overlap in their frequented locations. Relationships then
+grow as a function of social rules, the amount of social overlap, and time.
+
+Character movement was an expensive calculation in Neighborly, and it happened
+every timestep. Removing this piece from the simulation has greatly helped runtime
+performance, allowing Orrery to simulate 100+ years in tens of seconds versus minutes.
 
 ## Getting Started
 
-```commandline
-pip install orrery
+### Installation
+
+This package is not on PyPI yet. Until it is uploaded, please follow the directions
+below. You may want to create a new virtual environment before running the
+`pip install` command.
+
+```bash
+# Download the latest changes
+git clone https://github.com/ShiJbey/orrery.git
+# Change into the package directory
+cd orrery
+# Install the package to the active environment
+pip install -e "."
 ```
+
+### Running your first simulation
+
+There are sample simulations available in the `samples/` directory of this project.
+Each one runs a slightly different story world simulation and writes all the data
+to a file for later processing.
+
 
 ## Frequently Asked Questions
 
@@ -65,39 +107,42 @@ when querying for certain types of relationships
 ```python
 @dataclass
 class RelationshipStatus:
-    owner: int
-    target: int
+   owner: int
+   target: int
+
 
 @dataclass
 class StatusDuration:
-    duration: int = -1
-    elapsed: int = 0
+   duration: int = -1
+   elapsed: int = 0
+
 
 @dataclass
 class InDebt:
-    amount: int
+   amount: int
 
 
 class InDeptStatus(ComponentBundle):
 
-    def __init__(self, owner: int, target: int, amount: int) -> None:
-        super().__init__(
-            {
-                RelationshipStatus: {
-                    "owner": owner,
-                    "target": target,
-                },
-                InDebt: {
-                    "amount": amount
-                },
-                StatusDuration {}
-            }
-        )
+   def __init__(self, owner: int, target: int, amount: int) -> None:
+      super().__init__(
+         {
+            RelationshipStatus: {
+               "owner": owner,
+               "target": target,
+            },
+            InDebt: {
+               "amount": amount
+            },
+            StatusDuration: {}
+         }
+      )
+
 
 add_status(
-    world,
-    character,
-    InDeptStatus(character.id, loanshark.id, 1000)
+   world,
+   character,
+   InDeptStatus(character.uid, loanshark.uid, 1000)
 )
 ```
 

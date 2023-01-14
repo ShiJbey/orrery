@@ -277,6 +277,7 @@ def create_business_bundle(
             components[component_type] = {
                 **copy.deepcopy(options),
                 "config": config.name,
+                "owner_type": config.owner_type,
             }
         else:
             components[component_type] = {**copy.deepcopy(options)}
