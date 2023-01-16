@@ -284,3 +284,7 @@ cython_debug/
 
 # Simulation output
 samples/*.json
+
+# Docs NodeJS stuff
+node_modules/
+/docs/node_modules/
