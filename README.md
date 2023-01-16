@@ -49,6 +49,19 @@ There are sample simulations available in the `samples/` directory of this proje
 Each one runs a slightly different story world simulation and writes all the data
 to a file for later processing.
 
+## Documentation
+
+Orrery's documentation is handled by Sphinx. 
+
+I plan to host the HTML version of the documentation on readthedocs.org when
+it is finished.
+
+### Building the docs as HTML
+
+```bash
+sphinx-build -b html docs/source/ docs/build/html 
+```
+
 
 ## Frequently Asked Questions
 
