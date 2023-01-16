@@ -43,6 +43,7 @@ exclude_patterns = []
 
 html_theme = "alabaster"
 html_static_path = ["_static"]
+html_extra_path = [".nojekyll"]
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
