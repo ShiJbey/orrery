@@ -172,7 +172,7 @@ class VirtuesFactory(IComponentFactory):
         elif initialization == "random":
             rng = world.get_resource(random.Random)
 
-            # Select Traits
+            # Select virtues types
             total_virtues: int = n_likes + n_dislikes
             chosen_virtues = [
                 virtue.name for virtue in rng.sample(list(VirtueType), total_virtues)

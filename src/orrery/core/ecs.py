@@ -240,7 +240,7 @@ class GameObject:
         return self.name
 
     def __repr__(self) -> str:
-        return f"GameObject(id={self.uid})"
+        return f"GameObject(id={self.uid}, name={self.name})"
 
 
 class IECSCommand(Protocol):
@@ -253,6 +253,28 @@ class IECSCommand(Protocol):
     def apply(self, world: World) -> None:
         """Apply the affects of this command to the world state"""
         raise NotImplementedError
+
+
+@dataclasses.dataclass(frozen=True)
+class AddComponentCommand:
+    """This command adds a component to a gameobject
+
+    Attributes
+    ----------
+    gameobject_uid: int
+        The unique identifier of a GameObject
+    component: Component
+        The component to add to the GameObject
+    """
+
+    gameobject_uid: int
+    component: Component
+
+    def get_type(self) -> str:
+        return self.__class__.__name__
+
+    def apply(self, world: World) -> None:
+        world.ecs.add_component(self.gameobject_uid, self.component)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -295,13 +317,20 @@ class Component(ABC):
 
     @property
     def gameobject(self) -> GameObject:
-        """Returns the GameObject this component is attached to"""
+        """Return the GameObject this component is attached to"""
         if self._gameobject is None:
             raise TypeError("Component's GameObject is None")
         return self._gameobject
 
     def set_gameobject(self, gameobject: Optional[GameObject]) -> None:
-        """set the gameobject instance for this component"""
+        """
+        Set the gameobject instance for this component
+
+        Parameters
+        ----------
+        gameobject: Optional[GameObject]
+            The GameObject instance or None if being removed from a GameObject
+        """
         self._gameobject = gameobject
 
     def to_dict(self) -> Dict[str, Any]:
@@ -310,14 +339,16 @@ class Component(ABC):
 
 
 class ISystem(ABC, esper.Processor):
-    world: World  # type: ignore
+    """Abstract base class implementation for ECS systems"""
 
-    def __init__(self):
-        super(esper.Processor, self).__init__()
+    # We have to re-type the 'world' class variable because
+    # it is declared as 'Any' by esper, and we need it to
+    # be of type World
+    world: World  # type: ignore
 
 
 class IComponentFactory(ABC):
-    """Abstract base class for creating Component instances"""
+    """Abstract base class for factory object that create Component instances"""
 
     @abstractmethod
     def create(self, world: World, **kwargs: Any) -> Component:
@@ -333,7 +364,7 @@ class IComponentFactory(ABC):
 
         Returns
         -------
-        _CT
+        Component
             Component instance
         """
         raise NotImplementedError
@@ -341,21 +372,45 @@ class IComponentFactory(ABC):
 
 @dataclasses.dataclass(frozen=True)
 class ComponentInfo:
+    """Information about component classes registered with a World instance
+
+    We use this information to lookup string names mapped to component types,
+    and to find the proper factory to use when constructing a component instance
+    from a data file or ComponentBundle
+
+    Attributes
+    ----------
+    name: str
+        The name mapped to this component type
+    component_type: Type[Component]
+        The component class
+    factory: IComponentFactory
+        A factory instance used to construct the given component type
+    """
+
     name: str
     component_type: Type[Component]
     factory: IComponentFactory
 
 
 class DefaultComponentFactory(IComponentFactory):
-    """Constructs instances of a component only using keyword parameters"""
+    """
+    Constructs instances of a component only using keyword parameters
+
+    Attributes
+    ----------
+    component_type: Type[Component]
+        The type of component that this factory will create
+    """
 
     __slots__ = "component_type"
 
     def __init__(self, component_type: Type[Component]) -> None:
-        super(IComponentFactory, self).__init__()
+        super().__init__()
         self.component_type: Type[Component] = component_type
 
     def create(self, world: World, **kwargs: Any) -> Component:
+        """Create a new instance of the component_type using keyword arguments"""
         return self.component_type(**kwargs)
 
 
@@ -410,7 +465,6 @@ class World:
         entity_id = self._ecs.create_entity(*components if components else [])
         gameobject = GameObject(
             unique_id=entity_id,
-            components=components,
             world=self,
             name=(name if name else f"GameObject({entity_id})"),
         )

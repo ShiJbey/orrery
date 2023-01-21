@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import math
-from abc import ABC
 from dataclasses import dataclass
-from enum import IntFlag, auto
-from typing import Any, Dict, Iterator, List, Protocol, Tuple, Type, TypeVar, cast
+from typing import Any, Dict, Iterator, Protocol, Tuple, TypeVar
 
-from orrery.core.ecs import Component, GameObject, World
-from orrery.core.time import TimeDelta
+from orrery.core.ecs import Component
 
 
 def lerp(a: float, b: float, f: float) -> float:
@@ -53,7 +50,7 @@ class RelationshipNotFound(Exception):
         )
 
 
-class IncrementTuple:
+class IncrementCounter:
     def __init__(self, value: Tuple[int, int] = (0, 0)) -> None:
         self._value: Tuple[int, int] = value
 
@@ -70,7 +67,7 @@ class IncrementTuple:
         """Return the number of decrements"""
         return self._value[1]
 
-    def __iadd__(self, value: int) -> IncrementTuple:
+    def __iadd__(self, value: int) -> IncrementCounter:
         """Overrides += operator for relationship stats"""
         if value > 0:
             self._value = (self._value[0] + value, self._value[1])
@@ -78,8 +75,8 @@ class IncrementTuple:
             self._value = (self._value[0], self._value[1] + abs(value))
         return self
 
-    def __add__(self, other: IncrementTuple) -> IncrementTuple:
-        return IncrementTuple(
+    def __add__(self, other: IncrementCounter) -> IncrementCounter:
+        return IncrementCounter(
             (self.increments + other.increments, self.decrements + other.decrements)
         )
 
@@ -122,18 +119,18 @@ class RelationshipStat:
         self._raw_value: int = 0
         self._scaled_value: int = 0
         self._normalized_value: float = 0.5
-        self._base: IncrementTuple = IncrementTuple()
-        self._from_modifiers: IncrementTuple = IncrementTuple()
+        self._base: IncrementCounter = IncrementCounter()
+        self._from_modifiers: IncrementCounter = IncrementCounter()
         self._is_dirty: bool = False
         self.changes_with_time: bool = changes_with_time
 
-    def get_base(self) -> IncrementTuple:
+    def get_base(self) -> IncrementCounter:
         """Return the base value for increments on this relationship stat"""
         return self._base
 
     def set_base(self, value: Tuple[int, int]) -> None:
         """Set the base value for decrements on this relationship stat"""
-        self._base = IncrementTuple(value)
+        self._base = IncrementCounter(value)
 
     def add_modifier(self, value: int) -> None:
         self._from_modifiers += value
@@ -239,78 +236,29 @@ class SimpleRelationshipModifier:
             relationship[stat].remove_modifier(buff)
 
 
-class RelationshipTag(IntFlag):
-    Empty = auto()
-    Family = auto()
-    Parent = auto()
-    Child = auto()
-    Sibling = auto()
-    Coworker = auto()
-    SignificantOther = auto()
-    Spouse = auto()
-    Friend = auto()
-    Enemy = auto()
-    Dating = auto()
-    Married = auto()
-
-
 _RST = TypeVar("_RST", bound="RelationshipStatus")
 
 
-class Relationship:
+class Relationship(Component):
 
     __slots__ = (
         "_stats",
         "interaction_score",
-        "tags",
         "active_modifiers",
         "_is_dirty",
         "target",
-        "statuses",
     )
 
     def __init__(self, target: int, stats: Dict[str, RelationshipStat]) -> None:
+        super().__init__()
         self.target: int = target
         self.interaction_score: RelationshipStat = RelationshipStat(-5, 5, False)
         self._stats: Dict[str, RelationshipStat] = {
             **stats,
             "Interaction": self.interaction_score,
         }
-        self.tags: RelationshipTag = RelationshipTag.Empty
-        self.statuses: Dict[Type[RelationshipStatus], RelationshipStatus] = {}
         self.active_modifiers: Dict[str, IRelationshipModifier] = {}
         self._is_dirty = False
-
-    def add_status(self, subject: GameObject, status: RelationshipStatus) -> None:
-        """Add a relationship status to this relationship"""
-        self.statuses[type(status)] = status
-        status.on_add(subject.world, subject, self)
-
-    def get_status(self, status_type: Type[_RST]) -> _RST:
-        """Get the instance of the status with the given RelationshipStatus type"""
-        return cast(_RST, self.statuses[status_type])
-
-    def get_statuses(self) -> List[RelationshipStatus]:
-        """Get all the relationship statuses attached to this relationship"""
-        return list(self.statuses.values())
-
-    def remove_status(
-        self, subject: GameObject, status_type: Type[RelationshipStatus]
-    ) -> None:
-        """Remove a relationship status from this relationship"""
-        status = self.statuses[status_type]
-        status.on_remove(subject.world, subject, self)
-        del self.statuses[status_type]
-
-    def has_status(self, status_type: Type[RelationshipStatus]) -> bool:
-        """Check if the relationship has a status"""
-        return status_type in self.statuses.values()
-
-    def add_tags(self, tags: RelationshipTag) -> None:
-        self.tags |= tags
-
-    def remove_tags(self, tags: RelationshipTag) -> None:
-        self.tags ^= tags
 
     def add_modifier(self, modifier: IRelationshipModifier) -> None:
         self.active_modifiers[modifier.get_uid()] = modifier
@@ -335,6 +283,7 @@ class Relationship:
         # This function is here to allow user to do (+=) in combination with [] syntax
         # for example: relationship["Friendship"] += 3
         # It's a slight abuse of syntax, but it works
+        self._is_dirty = True
         return self._stats[item]
 
     def __iter__(self) -> Iterator[tuple[str, RelationshipStat]]:
@@ -343,59 +292,28 @@ class Relationship:
     def to_dict(self) -> Dict[str, Any]:
         return {
             **{k: stat.to_dict() for k, stat in self._stats.items()},
-            "tags": str(self.tags),
             "active_modifiers": [m.to_dict() for _, m in self.active_modifiers.items()],
         }
 
 
 class RelationshipManager(Component):
+    """Tracks all relationships associated with a GameObject
 
-    __slots__ = "_relationships"
+    Attributes
+    ----------
+    relationships: Dict[int, int]
+        GameObject ID of relationship targets mapped to the ID of the
+        GameObjects with the relationship data
+    """
+
+    __slots__ = "relationships"
 
     def __init__(self) -> None:
-        super(Component, self).__init__()
-        self._relationships: Dict[int, Relationship] = {}
-
-    def add(self, target: int, relationship: Relationship) -> None:
-        """Adds a new entity to the relationship manager and returns the new relationship between the two"""
-        self._relationships[target] = relationship
-
-    def get(self, target: int) -> Relationship:
-        """
-        Get a relationship toward another entity
-
-        Parameters
-        ----------
-        target: int
-            Unique identifier of the other entity
-
-        Returns
-        -------
-        Relationship
-            The relationship instance toward the other entity
-
-        Throws
-        ------
-        KeyError
-            If no relationship is found for the given target and create_new is False
-        """
-        return self._relationships[target]
-
-    def get_all_with_tags(self, tags: RelationshipTag) -> List[Relationship]:
-        """
-        Get all the relationships between a character and others with specific tags
-        """
-        return [rel for _, rel in self._relationships.items() if tags in rel.tags]
+        super().__init__()
+        self.relationships: Dict[int, int] = {}
 
     def to_dict(self) -> Dict[str, Any]:
-        return {str(t): r.to_dict() for t, r in self._relationships.items()}
-
-    def __iter__(self) -> Iterator[Relationship]:
-        return self._relationships.values().__iter__()
-
-    def __contains__(self, target: int) -> bool:
-        """Returns True if there is a relationship to the target"""
-        return target in self._relationships
+        return {**self.relationships}
 
 
 class IRelationshipModifier(Protocol):
@@ -448,34 +366,3 @@ class RelationshipModifier:
         """Remove this modifier's effects from the given relationship"""
         for stat, buff in self.modifiers.items():
             relationship[stat].remove_modifier(-buff)
-
-
-class RelationshipStatus(ABC):
-    """Abstract base class for statuses attached to relationships"""
-
-    def on_add(
-        self, world: World, owner: GameObject, relationship: Relationship
-    ) -> None:
-        """Function called when the status is added"""
-        return
-
-    def on_remove(
-        self, world: World, owner: GameObject, relationship: Relationship
-    ) -> None:
-        """Function called when the status is removed"""
-        return
-
-    def on_update(
-        self,
-        world: World,
-        owner: GameObject,
-        relationship: Relationship,
-        elapsed_time: TimeDelta,
-    ) -> None:
-        """Update the given status"""
-        return
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "type": self.__class__.__name__,
-        }

@@ -29,6 +29,9 @@ class ActivityInstance:
     def __str__(self) -> str:
         return self.name
 
+    def __repr__(self) -> str:
+        return self.name
+
     def __eq__(self, other: object) -> bool:
         if isinstance(other, ActivityInstance):
             return self.uid == other.uid

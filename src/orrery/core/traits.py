@@ -6,124 +6,111 @@ virtues. Traits were supposed to be one of the additional ways that users could
 add nuance to how characters treat each other what actions/events they engage in,
 and where they choose to frequent within the settlement(s).
 
-Currently, traits are not in use as I have not found the proper representation
-for them that would allow user to write rules.
+Currently, traits are not in use.
 """
+from abc import ABC
+from typing import Dict, Iterator, List, Set, Type
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, List, Optional, Set
+from ordered_set import OrderedSet
 
-from orrery.core.ecs import Component, IComponentFactory, World
+from orrery.core.ecs import Component
 
 
-@dataclass(frozen=True, slots=True)
-class TraitInstance:
+class Trait(Component, ABC):
     """
     A specific trait held by a character
 
-    Attributes
+    Class Attributes
     ----------
-    uid: int
-        A unique identifier for this trait
-    name: str
-        The name of the trait
     excludes: Set[str]
         The set of traits that are not allowed when a character has this trait
     """
 
-    uid: int
-    name: str
-    excludes: Set[str] = field(default_factory=set)
-
-    def __hash__(self) -> int:
-        return self.uid
-
-    def __str__(self) -> str:
-        return self.name
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, TraitInstance):
-            return self.uid == other.uid
-        raise TypeError(f"Expected TraitInstance but was {type(object)}")
+    excludes: Set[str] = set()
 
 
-class TraitLibrary:
-    """
-    Repository of all the various traits that characters can have
+class TraitManager(Component):
+    """Manages the state of statuses attached to the GameObject"""
 
-    _traits: Dict[str, TraitInstance]
-        All the traits present in the library
-
-    Notes
-    -----
-    This classes uses the flyweight design pattern to save  memory space since
-    many traits are shared between characters.
-    """
-
-    __slots__ = "_traits"
+    __slots__ = "_statuses", "_prohibited_traits"
 
     def __init__(self) -> None:
-        self._traits: Dict[str, TraitInstance] = {}
+        super().__init__()
+        self._traits: OrderedSet[Type[Trait]] = OrderedSet([])
+        self._prohibited_traits: Dict[str, Set[str]] = {}
 
-    def __contains__(self, trait_name: str) -> bool:
-        """Return True there is already a trait with the given name"""
-        return trait_name.lower() in self._traits
+    def get_all(self) -> List[Type[Trait]]:
+        """Return all the statuses in the tracker"""
+        return list(self._traits)
 
-    def __iter__(self) -> Iterator[TraitInstance]:
-        """Return iterator for the ActivityLibrary"""
-        return self._traits.values().__iter__()
+    def add(self, trait_type: Type[Trait]) -> None:
+        """Add a trait type to the tracker
 
-    def get(self, trait_name: str, create_new: bool = True) -> TraitInstance:
+        Parameters
+        ----------
+        trait_type: Type[Component]
+            The trait type added to the GameObject
         """
-        Get an Activity instance and create a new one if a
-        matching instance does not exist
+        if trait_type.__name__ in self._prohibited_traits:
+            raise RuntimeError(
+                "Cannot add trait {} it conflicts with existing traits {}".format(
+                    trait_type.__name__, self._prohibited_traits[trait_type.__name__]
+                )
+            )
+
+        self._traits.add(trait_type)
+
+        # Update the prohibited traits list and map the prohibited names
+        # to the traits that prohibit them for debugging
+        for trait_name in trait_type.excludes:
+            if trait_name not in self._prohibited_traits:
+                self._prohibited_traits[trait_name] = set()
+            self._prohibited_traits[trait_name].add(trait_type.__name__)
+
+    def has(self, trait_type: Type[Trait]) -> bool:
+        """Check if a trait type is active
+
+        Parameters
+        ----------
+        trait_type: Type[Component]
+            The trait type added to the GameObject
+
+        Returns
+        -------
+        bool
+            True if the trait is present
         """
-        lc_trait_name = trait_name.lower()
+        return trait_type in self
 
-        if lc_trait_name in self._traits:
-            return self._traits[lc_trait_name]
+    def remove(self, trait_type: Type[Trait]) -> None:
+        """Remove a trait type from the tracker
 
-        if create_new is False:
-            raise KeyError(f"No trait found with name {trait_name}")
+        Parameters
+        ----------
+        trait_type: Type[Component]
+            The trait type to be removed from the GameObject
+        """
+        self._traits.remove(trait_type)
 
-        uid = len(self._traits)
-        trait = TraitInstance(uid, lc_trait_name)
-        self._traits[lc_trait_name] = trait
-        return trait
+        for trait_name in trait_type.excludes:
+            if trait_name in self._prohibited_traits:
+                self._prohibited_traits[trait_name].remove(trait_type.__name__)
 
+                if len(self._prohibited_traits[trait_name]) == 0:
+                    del self._prohibited_traits[trait_name]
 
-class Traits(Component):
-    """Manages the trait instances associated with a character"""
+    def clear(self) -> None:
+        """Removes all statuses from the tracker gameobject"""
+        self._traits.clear()
+        self._prohibited_traits.clear()
 
-    __slots__ = "_traits"
+    def __contains__(self, item: Type[Trait]) -> bool:
+        """Check if a trait type is attached to the GameObject"""
+        return item in self._traits
 
-    def __init__(self, traits: Optional[Set[TraitInstance]] = None) -> None:
-        super(Component, self).__init__()
-        self._traits: Set[TraitInstance] = set(list(traits if traits else set()))
-
-    def add_trait(self, trait: TraitInstance) -> None:
-        self._traits.add(trait)
-
-    def remove_trait(self, trait: TraitInstance) -> None:
-        self._traits.remove(trait)
-
-    def __iter__(self) -> Iterator[TraitInstance]:
+    def __iter__(self) -> Iterator[Type[Trait]]:
+        """Return iterator to active trait types"""
         return self._traits.__iter__()
 
-    def __contains__(self, trait: TraitInstance) -> bool:
-        return trait in self._traits
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {"traits": [str(t) for t in self._traits]}
-
-
-class TraitsFactory(IComponentFactory):
-    """Creates instances of Traits components"""
-
-    def create(
-        self, world: World, traits: Optional[List[str]] = None, **kwargs: Any
-    ) -> Traits:
-        trait_names: List[str] = traits if traits else []
-        library = world.get_resource(TraitLibrary)
-        trait_instances: List[TraitInstance] = [library.get(n) for n in trait_names]
-        return Traits(set(trait_instances))
+    def __repr__(self) -> str:
+        return "{}({})".format(self.__class__.__name__, self._traits)

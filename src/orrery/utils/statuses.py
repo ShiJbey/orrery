@@ -1,12 +1,12 @@
 from typing import Type, TypeVar
 
-from orrery.core.ecs import GameObject
-from orrery.core.status import Status, StatusManager
+from orrery.core.ecs import Component, GameObject
+from orrery.core.status import StatusManager
 
-_ST = TypeVar("_ST", bound=Status)
+_ST = TypeVar("_ST", bound=Component)
 
 
-def add_status(gameobject: GameObject, status: Status) -> None:
+def add_status(gameobject: GameObject, status: Component) -> None:
     """
     Add a status to the given GameObject
 
@@ -17,7 +17,8 @@ def add_status(gameobject: GameObject, status: Status) -> None:
     status: Status
         The status to add
     """
-    gameobject.get_component(StatusManager).add(gameobject, status)
+    gameobject.get_component(StatusManager).add(type(status))
+    gameobject.add_component(status)
 
 
 def get_status(gameobject: GameObject, status_type: Type[_ST]) -> _ST:
@@ -36,10 +37,10 @@ def get_status(gameobject: GameObject, status_type: Type[_ST]) -> _ST:
     Status
         The instance of the desired status type
     """
-    return gameobject.get_component(StatusManager).get(status_type)
+    return gameobject.get_component(status_type)
 
 
-def remove_status(gameobject: GameObject, status_type: Type[Status]) -> None:
+def remove_status(gameobject: GameObject, status_type: Type[Component]) -> None:
     """
     Remove a status from the given GameObject
 
@@ -47,14 +48,15 @@ def remove_status(gameobject: GameObject, status_type: Type[Status]) -> None:
     ----------
     gameobject: GameObject
         The GameObject to add the status to
-    status_type: Type[Status]
+    status_type: Type[StatusComponentBase]
         The status type to remove
     """
     if has_status(gameobject, status_type):
-        gameobject.get_component(StatusManager).remove(gameobject, status_type)
+        gameobject.remove_component(status_type)
+        gameobject.get_component(StatusManager).remove(status_type)
 
 
-def has_status(gameobject: GameObject, status_type: Type[Status]) -> bool:
+def has_status(gameobject: GameObject, status_type: Type[Component]) -> bool:
     """
     Check for a status of a given type
 
@@ -83,4 +85,8 @@ def clear_statuses(gameobject: GameObject) -> None:
     gameobject: GameObject
         The GameObject to clear statuses from
     """
-    gameobject.get_component(StatusManager).clear(gameobject)
+    status_tracker = gameobject.get_component(StatusManager)
+    statuses_to_remove = status_tracker.get_all()
+
+    for status_type in statuses_to_remove:
+        remove_status(gameobject, status_type)

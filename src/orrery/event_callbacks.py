@@ -1,9 +1,9 @@
-from orrery.components.business import InTheWorkforce, Occupation
+from orrery.components.business import Occupation
 from orrery.components.character import Departed, GameCharacter, LifeStage
 from orrery.components.shared import Active
+from orrery.components.statuses import InTheWorkforce, Unemployed
 from orrery.core.ecs import World
 from orrery.core.event import Event
-from orrery.statuses import Unemployed
 from orrery.utils.common import clear_frequented_locations, end_job, set_residence
 from orrery.utils.statuses import add_status, clear_statuses, remove_status
 
@@ -17,20 +17,20 @@ def on_depart_callback(world: World, event: Event) -> None:
 def remove_retired_from_occupation(world: World, event: Event) -> None:
     character = world.get_gameobject(event["Retiree"])
     if character.has_component(Occupation):
-        end_job(world, character, reason=event.name)
+        end_job(character, reason=event.name)
 
 
 def remove_deceased_from_occupation(world: World, event: Event) -> None:
     character = world.get_gameobject(event["Character"])
     if character.has_component(Occupation):
-        end_job(world, character, reason=event.name)
+        end_job(character, reason=event.name)
 
 
 def remove_departed_from_occupation(world: World, event: Event) -> None:
     for gid in event.get_all("Character"):
         character = world.get_gameobject(gid)
         if character.has_component(Occupation):
-            end_job(world, character, reason=event.name)
+            end_job(character, reason=event.name)
 
 
 def remove_deceased_from_residence(world: World, event: Event) -> None:

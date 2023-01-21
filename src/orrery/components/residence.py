@@ -96,7 +96,7 @@ class Resident(Component):
     __slots__ = "residence", "settlement"
 
     def __init__(self, residence: int, settlement: int) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.residence: int = residence
         self.settlement: int = settlement
 

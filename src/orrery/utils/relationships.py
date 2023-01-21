@@ -1,22 +1,23 @@
 from __future__ import annotations
 
-from typing import Type, TypeVar
+from typing import List, Type, TypeVar
 
 from orrery.core.config import OrreryConfig
-from orrery.core.ecs import GameObject
+from orrery.core.ecs import Component, GameObject
 from orrery.core.relationship import (
     Relationship,
     RelationshipManager,
     RelationshipNotFound,
     RelationshipStat,
-    RelationshipStatus,
 )
 from orrery.core.social_rule import SocialRuleLibrary
+from orrery.core.status import StatusManager
+from orrery.utils.statuses import add_status, has_status, remove_status
 
 _RST = TypeVar("_RST", bound="RelationshipStatus")
 
 
-def add_relationship(subject: GameObject, target: GameObject) -> Relationship:
+def add_relationship(subject: GameObject, target: GameObject) -> GameObject:
     """
     Creates a new relationship from the subject to the target
 
@@ -32,27 +33,37 @@ def add_relationship(subject: GameObject, target: GameObject) -> Relationship:
     Relationship
         The new relationship instance
     """
-    schema = subject.world.get_resource(OrreryConfig).relationship_schema
+    world = subject.world
+    schema = world.get_resource(OrreryConfig).relationship_schema
 
-    relationship = Relationship(
-        target=target.uid,
-        stats={
-            name: RelationshipStat(
-                min_value=config.min_value,
-                max_value=config.max_value,
-                changes_with_time=config.changes_with_time,
-            )
-            for name, config in schema.stats.items()
-        },
+    relationship = world.spawn_gameobject(
+        [
+            Relationship(
+                target=target.uid,
+                stats={
+                    name: RelationshipStat(
+                        min_value=config.min_value,
+                        max_value=config.max_value,
+                        changes_with_time=config.changes_with_time,
+                    )
+                    for name, config in schema.stats.items()
+                },
+            ),
+            StatusManager(),
+        ]
     )
+
+    subject.get_component(RelationshipManager).relationships[
+        target.uid
+    ] = relationship.uid
+
+    subject.add_child(relationship)
 
     social_rules = subject.world.get_resource(SocialRuleLibrary).get_active_rules()
 
     for rule in social_rules:
         if rule.check_preconditions(subject.world, subject, target):
             rule.activate(subject.world, subject, target, relationship)
-
-    subject.get_component(RelationshipManager).add(target.uid, relationship)
 
     return relationship
 
@@ -85,16 +96,39 @@ def get_relationship(
         If no relationship is found for the given target and create_new is False
     """
     try:
-        return subject.get_component(RelationshipManager).get(target.uid)
+        world = subject.world
+        relationship_id = subject.get_component(RelationshipManager).relationships[
+            target.uid
+        ]
+        return world.get_gameobject(relationship_id).get_component(Relationship)
     except KeyError:
         if create_new:
-            return add_relationship(subject, target)
+            return add_relationship(subject, target).get_component(Relationship)
         else:
             raise RelationshipNotFound(subject.name, target.name)
 
 
+def has_relationship(subject: GameObject, target: GameObject) -> bool:
+    """Check if there is an existing relationship from the subject to the target
+
+    Parameters
+    ----------
+    subject: GameObject
+        The GameObject to check for a relationship instance on
+    target: GameObject
+        The GameObject to check is the target of an existing relationship instance
+
+    Returns
+    -------
+    bool
+        Returns True if there is an existing Relationship instance with the
+        target as the target
+    """
+    return target.uid in subject.get_component(RelationshipManager)
+
+
 def add_relationship_status(
-    subject: GameObject, target: GameObject, status: RelationshipStatus
+    subject: GameObject, target: GameObject, status: Component
 ) -> None:
     """
     Add a relationship status to the given character
@@ -109,7 +143,7 @@ def add_relationship_status(
         The core component of the status
     """
     relationship = get_relationship(subject, target, create_new=True)
-    relationship.add_status(subject, status)
+    add_status(relationship.gameobject, status)
 
 
 def get_relationship_status(
@@ -130,13 +164,15 @@ def get_relationship_status(
     status_type: Type[RelationshipStatus]
         The type of the status
     """
-    return get_relationship(subject, target, create_new=True).get_status(status_type)
+    return get_relationship(subject, target, create_new=True).gameobject.get_component(
+        status_type
+    )
 
 
 def remove_relationship_status(
     subject: GameObject,
     target: GameObject,
-    status_type: Type[RelationshipStatus],
+    status_type: Type[Component],
 ) -> None:
     """
     Remove a relationship status to the given character
@@ -151,13 +187,13 @@ def remove_relationship_status(
         The type of the relationship status to remove
     """
     relationship = get_relationship(subject, target, create_new=True)
-    relationship.remove_status(subject, status_type)
+    remove_status(relationship.gameobject, status_type)
 
 
 def has_relationship_status(
     subject: GameObject,
     target: GameObject,
-    status_type: Type[RelationshipStatus],
+    *status_type: Type[Component],
 ) -> bool:
     """
     Check if a relationship between characters has a certain status type
@@ -175,4 +211,33 @@ def has_relationship_status(
     -------
         Returns True if relationship has a given status
     """
-    return get_relationship(subject, target, create_new=True).has_status(status_type)
+    relationship = get_relationship(subject, target, create_new=True)
+    return all([has_status(relationship.gameobject, s) for s in status_type])
+
+
+def get_relationships_with_statuses(
+    subject: GameObject, *status_types: Type[Component]
+) -> List[Relationship]:
+    """Get all the relationships with the given status types
+
+    Parameters
+    ----------
+    subject: GameObject
+        The character to check for relationships on
+    *status_types: Type[Component]
+        Status types to check for on relationship instances
+
+    Returns
+    -------
+    List[Relationship]
+        Relationships with the given status types
+    """
+    world = subject.world
+    relationship_manager = subject.get_component(RelationshipManager)
+    matches: List[Relationship] = []
+    for target_id, rel_id in relationship_manager.relationships.items():
+        relationship = world.get_gameobject(rel_id)
+        target = world.get_gameobject(target_id)
+        if has_relationship_status(subject, target, *status_types):
+            matches.append(relationship.get_component(Relationship))
+    return matches

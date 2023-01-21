@@ -1,3 +1,9 @@
+"""
+social_rule.py
+
+This module provides interfaces and classes to assist users in authoring rules that
+influence how characters feel about each other.
+"""
 import re
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Protocol
@@ -42,7 +48,7 @@ class ISocialRule(ABC):
         world: World,
         subject: GameObject,
         target: GameObject,
-        relationship: Relationship,
+        relationship: GameObject,
     ) -> None:
         """
         Apply any modifiers associated with the social rule
@@ -61,7 +67,7 @@ class ISocialRule(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def deactivate(self, relationship: Relationship) -> None:
+    def deactivate(self, relationship: GameObject) -> None:
         """
         Remove the affects of this social rule from the given Relationship
 
@@ -102,7 +108,7 @@ class SocialRule(ISocialRule):
         precondition: SocialRulePreconditionFn,
         modifiers: List[IRelationshipModifier],
     ) -> None:
-        super(ISocialRule, self).__init__()
+        super().__init__()
         self.name: str = name
         self.precondition: SocialRulePreconditionFn = precondition
         self.modifiers: List[IRelationshipModifier] = modifiers
@@ -118,17 +124,18 @@ class SocialRule(ISocialRule):
         world: World,
         subject: GameObject,
         target: GameObject,
-        relationship: Relationship,
+        relationship: GameObject,
     ) -> None:
         for modifier in self.modifiers:
-            relationship.add_modifier(modifier)
-            modifier.activate(relationship)
+            relationship.get_component(Relationship).add_modifier(modifier)
+            modifier.activate(relationship.get_component(Relationship))
 
-    def deactivate(self, relationship: Relationship) -> None:
+    def deactivate(self, relationship: GameObject) -> None:
         for modifier in self.modifiers:
-            if modifier.get_uid() in relationship.active_modifiers:
-                relationship.remove_modifier(modifier)
-                modifier.deactivate(relationship)
+            r = relationship.get_component(Relationship)
+            if modifier.get_uid() in r.active_modifiers:
+                r.remove_modifier(modifier)
+                modifier.deactivate(r)
 
 
 class SocialRuleLibrary:

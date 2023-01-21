@@ -1,35 +1,32 @@
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import orrery.plugins.default.businesses
 import orrery.plugins.default.characters
 import orrery.plugins.default.life_events
 import orrery.plugins.default.names
 import orrery.plugins.default.residences
-from orrery import Orrery
+from orrery import Orrery, decorators
 from orrery.components.business import BusinessLibrary
 from orrery.components.character import CharacterLibrary
-from orrery.components.shared import Location, Name
-from orrery.core.activity import Activities
 from orrery.core.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
-from orrery.core.ecs import Component, ComponentBundle, GameObject, World
-from orrery.core.relationship import (
-    Relationship,
-    RelationshipModifier,
-    RelationshipStatus,
-)
+from orrery.core.ecs import Component, GameObject, World
+from orrery.core.relationship import Relationship, RelationshipModifier
 from orrery.core.social_rule import ISocialRule, SocialRuleLibrary
 from orrery.core.time import SimDateTime
 from orrery.core.virtues import Virtues
 from orrery.exporter import export_to_json
 from orrery.loaders import OrreryYamlLoader, load_all_data
 from orrery.utils.common import (
-    add_business,
     add_character_to_settlement,
     create_business,
     create_character,
     create_settlement,
+    end_job,
+    shutdown_business,
+    start_job,
+    startup_business,
 )
 from orrery.utils.relationships import (
     add_relationship,
@@ -37,30 +34,33 @@ from orrery.utils.relationships import (
     get_relationship,
 )
 
-#######################################
-# Sample Components
-#######################################
-
-
-class Robot(Component):
-
-    serial_number: str = "182hdyd6s-62"
-
-
-#######################################
-# Main Application
-#######################################
-
-
-class SimpleLocation(ComponentBundle):
-    def __init__(self, name: str, activities: List[str]) -> None:
-        super().__init__(
-            {
-                Name: {"name": name},
-                Location: {},
-                Activities: {"activities": activities},
+sim = Orrery(
+    OrreryConfig(
+        seed=3,
+        relationship_schema=RelationshipSchema(
+            stats={
+                "Friendship": RelationshipStatConfig(changes_with_time=True),
+                "Romance": RelationshipStatConfig(changes_with_time=True),
+                "Power": RelationshipStatConfig(
+                    min_value=-50, max_value=50, changes_with_time=False
+                ),
             }
-        )
+        ),
+    )
+)
+
+sim.load_plugin(orrery.plugins.default.names.get_plugin())
+sim.load_plugin(orrery.plugins.default.characters.get_plugin())
+sim.load_plugin(orrery.plugins.default.businesses.get_plugin())
+sim.load_plugin(orrery.plugins.default.residences.get_plugin())
+sim.load_plugin(orrery.plugins.default.life_events.get_plugin())
+
+
+@decorators.component(sim)
+class Robot(Component):
+    """Tags a character as a Robot"""
+
+    pass
 
 
 class VirtueCompatibilityRule(ISocialRule):
@@ -119,7 +119,7 @@ class VirtueCompatibilityRule(ISocialRule):
 
 
 @dataclass
-class OwesDebt(RelationshipStatus):
+class OwesDebt(Component):
     amount: int
 
     def to_dict(self) -> Dict[str, Any]:
@@ -128,28 +128,6 @@ class OwesDebt(RelationshipStatus):
 
 def main():
     """Main entry point for this module"""
-    sim = Orrery(
-        OrreryConfig(
-            seed=3,
-            relationship_schema=RelationshipSchema(
-                stats={
-                    "Friendship": RelationshipStatConfig(changes_with_time=True),
-                    "Romance": RelationshipStatConfig(changes_with_time=True),
-                    "Power": RelationshipStatConfig(
-                        min_value=-50, max_value=50, changes_with_time=False
-                    ),
-                }
-            ),
-        )
-    )
-
-    sim.load_plugin(orrery.plugins.default.names.get_plugin())
-    sim.load_plugin(orrery.plugins.default.characters.get_plugin())
-    sim.load_plugin(orrery.plugins.default.businesses.get_plugin())
-    sim.load_plugin(orrery.plugins.default.residences.get_plugin())
-    sim.load_plugin(orrery.plugins.default.life_events.get_plugin())
-
-    sim.world.register_component(Robot)
 
     OrreryYamlLoader.from_str(
         """
@@ -171,25 +149,9 @@ def main():
 
     west_world = create_settlement(sim.world, "West World")
 
-    add_business(
-        create_business(sim.world, business_library.get_bundle("Library")),
-        west_world,
-    )
+    library = create_business(sim.world, business_library.get_bundle("Library"))
 
-    add_business(
-        create_business(sim.world, business_library.get_bundle("Library")),
-        west_world,
-    )
-
-    add_business(
-        create_business(sim.world, business_library.get_bundle("Library")),
-        west_world,
-    )
-
-    add_business(
-        create_business(sim.world, business_library.get_bundle("Library")),
-        west_world,
-    )
+    startup_business(library, west_world)
 
     delores = create_character(
         sim.world,
@@ -199,7 +161,9 @@ def main():
         age=32,
     )
 
-    add_character_to_settlement(sim.world, delores, west_world)
+    add_character_to_settlement(delores, west_world)
+
+    start_job(delores, library, "Librarian", is_owner=True)
 
     charlotte = create_character(
         sim.world,
@@ -209,7 +173,9 @@ def main():
         age=40,
     )
 
-    add_character_to_settlement(sim.world, charlotte, west_world)
+    add_character_to_settlement(charlotte, west_world)
+
+    start_job(charlotte, library, "Librarian")
 
     william = create_character(
         sim.world,
@@ -218,7 +184,13 @@ def main():
         age=68,
     )
 
-    add_character_to_settlement(sim.world, william, west_world)
+    add_character_to_settlement(william, west_world)
+
+    start_job(william, library, "Librarian")
+
+    end_job(delores, "Quit to take over the world.")
+
+    shutdown_business(library)
 
     add_relationship(delores, charlotte)
     get_relationship(delores, charlotte)["Friendship"] += -1
@@ -231,7 +203,8 @@ def main():
     get_relationship(delores, william)["Romance"] += -7
     get_relationship(delores, william)["Interaction"] += 1
 
-    add_relationship(william, delores)["Interaction"] += 1
+    add_relationship(william, delores)
+    get_relationship(william, delores)["Interaction"] += 1
 
     st = time.time()
     sim.run_for(100)

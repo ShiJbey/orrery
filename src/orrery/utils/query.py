@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import random
-from typing import List, Optional, Tuple, Type
+from typing import List, Literal, Optional, Tuple, Type
 
 from orrery.components.business import Occupation, WorkHistory
 from orrery.components.character import GameCharacter, Gender, LifeStage
+from orrery.components.statuses import Dating, Married
 from orrery.core.ecs import Component, GameObject, World
 from orrery.core.event import EventRole, EventRoleType, RoleBinder, RoleList
 from orrery.core.query import Query, QueryContext, QueryFilterFn, QueryGetFn
-from orrery.core.relationship import RelationshipManager, RelationshipTag
-from orrery.core.status import Status
+from orrery.core.relationship import Relationship, RelationshipManager
 from orrery.core.time import SimDateTime
+from orrery.utils.relationships import (
+    get_relationship,
+    get_relationships_with_statuses,
+    has_relationship,
+    has_relationship_status,
+)
 from orrery.utils.statuses import has_status
 
 
@@ -94,87 +100,71 @@ def from_pattern(query: Query) -> RoleBinder:
     return binder_fn
 
 
-def friendship_gte(threshold: float) -> QueryFilterFn:
+def filter_relationship_stat_gte(
+    stat_name: str,
+    threshold: float,
+    value_type: Literal["raw", "scaled", "norm"] = "raw",
+) -> QueryFilterFn:
     """
     Filter function for an ECS query that returns True if the friendship
     value from one character to another is greater than or equal to a given threshold
     """
 
     def precondition(world: World, *gameobjects: GameObject) -> bool:
-        if relationships := gameobjects[0].try_component(RelationshipManager):
-            return (
-                gameobjects[1].uid in relationships
-                and relationships.get(gameobjects[1].uid)[
-                    "Friendship"
-                ].get_normalized_value()
-                >= threshold
-            )
+        subject, target = gameobjects
+
+        if has_relationship(subject, target):
+            relationship = get_relationship(subject, target)
+            if value_type == "raw":
+                return relationship[stat_name].get_raw_value() >= threshold
+            elif value_type == "clamped":
+                return relationship[stat_name].get_scaled_value() >= threshold
+            elif value_type == "norm":
+                return relationship[stat_name].get_normalized_value() >= threshold
+            else:
+                raise RuntimeError(
+                    f"Unknown relationship stat value type, {value_type}"
+                )
         return False
 
     return precondition
 
 
-def friendship_lte(threshold: float) -> QueryFilterFn:
+def filter_relationship_stat_lte(
+    stat_name: str,
+    threshold: float,
+    value_type: Literal["raw", "scaled", "norm"] = "raw",
+) -> QueryFilterFn:
     """
     Filter function for an ECS query that returns True if the friendship
-    value from one character to another is less than or equal to a given threshold
-    """
-
-    def precondition(world: World, *gameobjects: GameObject) -> bool:
-        if relationships := gameobjects[0].try_component(RelationshipManager):
-            return (
-                gameobjects[1].uid in relationships
-                and relationships.get(gameobjects[1].uid)[
-                    "Friendship"
-                ].get_normalized_value()
-                <= threshold
-            )
-        return False
-
-    return precondition
-
-
-def romance_gte(threshold: float) -> QueryFilterFn:
-    """
-    Filter function for an ECS query that returns True if the romance
     value from one character to another is greater than or equal to a given threshold
     """
 
     def precondition(world: World, *gameobjects: GameObject) -> bool:
-        if relationships := gameobjects[0].try_component(RelationshipManager):
-            return (
-                gameobjects[1].uid in relationships
-                and relationships.get(gameobjects[1].uid)[
-                    "Romance"
-                ].get_normalized_value()
-                >= threshold
-            )
+        subject, target = gameobjects
+
+        if has_relationship(subject, target):
+            relationship = get_relationship(subject, target)
+            if value_type == "raw":
+                return relationship[stat_name].get_raw_value() <= threshold
+            elif value_type == "clamped":
+                return relationship[stat_name].get_scaled_value() <= threshold
+            elif value_type == "norm":
+                return relationship[stat_name].get_normalized_value() <= threshold
+            else:
+                raise RuntimeError(
+                    f"Unknown relationship stat value type, {value_type}"
+                )
         return False
 
     return precondition
 
 
-def romance_lte(threshold: float) -> QueryFilterFn:
-    """
-    Filter function for an ECS query that returns True if the romance
-    value from one character to another is less than or equal to a given threshold
-    """
-
-    def precondition(world: World, *gameobjects: GameObject) -> bool:
-        if relationships := gameobjects[0].try_component(RelationshipManager):
-            return (
-                gameobjects[1].uid in relationships
-                and relationships.get(gameobjects[1].uid)[
-                    "Romance"
-                ].get_normalized_value()
-                <= threshold
-            )
-        return False
-
-    return precondition
-
-
-def get_friendships_gte(threshold: float) -> QueryGetFn:
+def find_with_relationship_stat_gte(
+    stat_name: str,
+    threshold: float,
+    value_type: Literal["raw", "scaled", "norm"] = "raw",
+) -> QueryGetFn:
     """
     Returns QueryGetFn that finds all the relationships of the first variable that have
     friendship scores greater than or equal to the threshold and binds them to the
@@ -186,84 +176,77 @@ def get_friendships_gte(threshold: float) -> QueryGetFn:
     ) -> List[Tuple[int, ...]]:
         # loop through each row in the ctx at the given column
         results: List[Tuple[int, ...]] = []
-        for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):  # type: ignore
-            gameobject = world.get_gameobject(subject)  # type: ignore
-            for r in gameobject.get_component(RelationshipManager):
-                if r["Friendship"].get_normalized_value() >= threshold:
-                    results.append((subject, r.target))  # type: ignore
+
+        subject_id: int
+        for (subject_id,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):
+            subject = world.get_gameobject(subject_id)
+            relationship_manager = subject.get_component(RelationshipManager)
+            for target_id, rel_id in relationship_manager.relationships.items():
+                relationship = world.get_gameobject(rel_id).get_component(Relationship)
+
+                if value_type == "raw":
+                    value = relationship[stat_name].get_raw_value()
+                elif value_type == "clamped":
+                    value = relationship[stat_name].get_scaled_value()
+                elif value_type == "norm":
+                    value = relationship[stat_name].get_normalized_value()
+                else:
+                    raise RuntimeError(
+                        f"Unknown relationship stat value type, {value_type}"
+                    )
+
+                if value >= threshold:
+                    results.append((subject_id, target_id))
 
         return results
 
     return clause
 
 
-def get_friendships_lte(threshold: float) -> QueryGetFn:
+def find_with_relationship_stat_lte(
+    stat_name: str,
+    threshold: float,
+    value_type: Literal["raw", "scaled", "norm"] = "raw",
+) -> QueryGetFn:
     """
     Returns QueryGetFn that finds all the relationships of the first variable that have
-    friendship scores less than or equal to the threshold and binds them to the
+    friendship scores greater than or equal to the threshold and binds them to the
     second variable
     """
 
     def clause(
         ctx: QueryContext, world: World, *variables: str
     ) -> List[Tuple[int, ...]]:
+        # loop through each row in the ctx at the given column
         results: List[Tuple[int, ...]] = []
-        for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):  # type: ignore
-            gameobject = world.get_gameobject(subject)  # type: ignore
-            for r in gameobject.get_component(RelationshipManager):
-                if r["Friendship"].get_normalized_value() <= threshold:
-                    results.append((subject, r.target))  # type: ignore
+
+        subject_id: int
+        for (subject_id,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):
+            subject = world.get_gameobject(subject_id)
+            relationship_manager = subject.get_component(RelationshipManager)
+            for target_id, rel_id in relationship_manager.relationships.items():
+                relationship = world.get_gameobject(rel_id).get_component(Relationship)
+
+                if value_type == "raw":
+                    value = relationship[stat_name].get_raw_value()
+                elif value_type == "clamped":
+                    value = relationship[stat_name].get_scaled_value()
+                elif value_type == "norm":
+                    value = relationship[stat_name].get_normalized_value()
+                else:
+                    raise RuntimeError(
+                        f"Unknown relationship stat value type, {value_type}"
+                    )
+
+                if value <= threshold:
+                    results.append((subject_id, target_id))
 
         return results
 
     return clause
 
 
-def get_romances_gte(threshold: float) -> QueryGetFn:
-    """
-    Returns QueryGetFn that finds all the relationships of the first variable that have
-    romance scores greater than or equal to the threshold and binds them to the
-    second variable
-    """
-
-    def clause(
-        ctx: QueryContext, world: World, *variables: str
-    ) -> List[Tuple[int, ...]]:
-        results: List[Tuple[int, ...]] = []
-        for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):
-            gameobject = world.get_gameobject(subject)
-            for r in gameobject.get_component(RelationshipManager):
-                if r["Romance"].get_normalized_value() >= threshold:
-                    results.append((subject, r.target))
-
-        return results
-
-    return clause
-
-
-def get_romances_lte(threshold: float) -> QueryGetFn:
-    """
-    Returns QueryGetFn that finds all the relationships of the first variable that have
-    romance scores less than or equal to the threshold and binds them to the
-    second variable
-    """
-
-    def clause(
-        ctx: QueryContext, world: World, *variables: str
-    ) -> List[Tuple[int, ...]]:
-        results: List[Tuple[int, ...]] = []
-        for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):  # type: ignore
-            gameobject = world.get_gameobject(subject)  # type: ignore
-            for r in gameobject.get_component(RelationshipManager):
-                if r["Romance"].get_normalized_value() <= threshold:
-                    results.append((subject, r.target))  # type: ignore
-
-        return results
-
-    return clause
-
-
-def relationship_has_tags(tags: RelationshipTag) -> QueryFilterFn:
+def filter_relationship_has_statuses(*status_types: Type[Component]) -> QueryFilterFn:
     """
     Query filter function that returns true if the first of the given game
     objects has a relationship toward the second game object with the given
@@ -273,27 +256,26 @@ def relationship_has_tags(tags: RelationshipTag) -> QueryFilterFn:
     def precondition(world: World, *gameobjects: GameObject) -> bool:
 
         subject, target = gameobjects
-        relationships = subject.get_component(RelationshipManager)
-        if target.uid in relationships:
-            return tags in relationships.get(target.uid).tags
-        else:
-            return False
+        if has_relationship(subject, target):
+            return has_relationship_status(subject, target, *status_types)
+
+        return False
 
     return precondition
 
 
-def get_relationships_with_tags(tags: RelationshipTag) -> QueryGetFn:
+def find_relationships_with_statuses(*status_types: Type[Component]) -> QueryGetFn:
     """
     Returns a list of all the GameObjects with the given component
     """
 
     def fn(ctx: QueryContext, world: World, *variables: str) -> List[Tuple[int, ...]]:
         results: List[Tuple[int, ...]] = []
-        for (subject,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):  # type: ignore
-            gameobject = world.get_gameobject(subject)  # type: ignore
-            for r in gameobject.get_component(RelationshipManager):
-                if tags in r.tags:
-                    results.append((subject, r.target))  # type: ignore
+        subject_id: int
+        for (subject_id,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):
+            subject = world.get_gameobject(subject_id)
+            for r in get_relationships_with_statuses(subject, *status_types):
+                results.append((subject_id, r.target))
 
         return results
 
@@ -342,16 +324,7 @@ def over_age(age: int) -> QueryFilterFn:
 
 def is_single(world: World, *gameobjects: GameObject) -> bool:
     """Return True if this entity has no relationships tagged as significant others"""
-    return (
-        len(
-            [
-                r
-                for _, r in gameobjects[0].get_component(RelationshipManager)
-                if RelationshipTag.SignificantOther in r.tags
-            ]
-        )
-        == 0
-    )
+    return len([get_relationships_with_statuses(gameobjects[0], Married, Dating)]) == 0
 
 
 def before_year(year: int) -> QueryFilterFn:
@@ -383,12 +356,7 @@ def is_gender(gender: Gender) -> QueryFilterFn:
     return fn
 
 
-def has_any_work_experience(world: World, *gameobjects: GameObject) -> bool:
-    """Return True if the entity has any work experience at all"""
-    return len(gameobjects[0].get_component(WorkHistory)) > 0
-
-
-def has_experience_as_a(
+def has_work_experience_filter(
     occupation_type: str, years_experience: int = 0
 ) -> QueryFilterFn:
     """
@@ -431,7 +399,7 @@ def has_experience_as_a(
     return fn
 
 
-def has_status_filter(status_type: Type[Status]) -> QueryFilterFn:
+def has_status_filter(status_type: Type[Component]) -> QueryFilterFn:
     """Check if a GameObject has the given status present"""
 
     def filter_fn(world: World, *gameobject: GameObject) -> bool:

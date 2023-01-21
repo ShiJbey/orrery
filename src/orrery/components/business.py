@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 import random
 import re
 from dataclasses import dataclass
@@ -16,7 +15,6 @@ from orrery.core.ecs import (
     IComponentFactory,
     World,
 )
-from orrery.core.event import Event
 from orrery.core.settlement import Settlement
 from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
@@ -25,65 +23,60 @@ logger = logging.getLogger(__name__)
 
 
 class Occupation(Component):
-    """
-    A character's employment information
+    """Information about a character's employment status"""
 
-    Attributes
-    ----------
-    _occupation_type: str
-        The name of the occupation
-    _business: int
-        The unique ID of the business the character works at
-    _level: int
-        The socio-economic level of this job
-    _years_held: float
-        The number of years the character has held this job
-    """
-
-    __slots__ = "_occupation_type", "_years_held", "_business", "_level"
+    __slots__ = "_occupation_type", "_years_held", "_business"
 
     def __init__(
-        self,
-        occupation_type: str,
-        business: int,
-        level: int,
+        self, occupation_type: str, business: int, years_held: float = 0.0
     ) -> None:
+        """
+        Parameters
+        ----------
+        occupation_type: str
+            The name of the occupation
+        business: int
+            The business that the character is work for
+        years_held: float, optional
+            The number of years the character has held this job
+            (defaults to 0.0)
+        """
+
         super(Component, self).__init__()
         self._occupation_type: str = occupation_type
         self._business: int = business
-        self._level: int = level
-        self._years_held: float = 0.0
+        self._years_held: float = years_held
 
     def to_dict(self) -> Dict[str, Any]:
+        """Return serialized dict representation of an Occupation component"""
         return {
             "occupation_type": self._occupation_type,
-            "level": self._level,
             "business": self._business,
             "years_held": self._years_held,
         }
 
     @property
     def business(self) -> int:
+        """Get the business the character works for"""
         return self._business
 
     @property
-    def years_held(self) -> int:
-        return math.floor(self._years_held)
-
-    @property
-    def level(self) -> int:
-        return self._level
+    def years_held(self) -> float:
+        """Get the number of years this character has worked this job"""
+        return self._years_held
 
     @property
     def occupation_type(self) -> str:
+        """Get the type of occupation this is"""
         return self._occupation_type
 
-    def increment_years_held(self, years: float) -> None:
+    def set_years_held(self, years: float) -> None:
+        """Set the number of years this character has held this job"""
         self._years_held += years
 
     def __repr__(self) -> str:
-        return "Occupation(occupation_type={}, business={}, level={}, years_held={})".format(
-            self.occupation_type, self.business, self.level, self.years_held
+        return "Occupation(occupation_type={}, business={}, years_held={})".format(
+            self.occupation_type, self.business, self.years_held
         )
 
 
@@ -100,14 +93,14 @@ class WorkHistoryEntry:
         The unique ID of the business the character worked at
     years_held: float
         The number of years the character held this job
-    reason_for_leaving: Optional[Event]
-        Optional reference to the event that caused the character to leave this job
+    reason_for_leaving: Optional[str]
+        Name of the event that caused the character to leave this job
     """
 
     occupation_type: str
     business: int
     years_held: float
-    reason_for_leaving: Optional[Event] = None
+    reason_for_leaving: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         """Return dictionary representation for serialization"""
@@ -116,27 +109,13 @@ class WorkHistoryEntry:
             "occupation_type": self.occupation_type,
             "business": self.business,
             "years_held": self.years_held,
+            "reason_for_leaving": self.reason_for_leaving,
         }
-
-        if self.reason_for_leaving:
-            # This should probably point to a unique ID for the
-            # event, but we will leave it as the name of the event for now
-            ret["reason_for_leaving"] = self.reason_for_leaving.name
-
         return ret
 
 
 class WorkHistory(Component):
-    """
-    Component that stores information about all the jobs that a character has held
-
-    Attributes
-    ----------
-    _chronological_history: List[WorkHistoryEntry]
-        List of previous job in order from oldest to most recent
-    _categorical_history: Dict[str, List[WorkHistoryEntry]]
-        References to WorkHistoryEntries grouped by the occupation type
-    """
+    """Stores information about all the jobs that a character has held"""
 
     __slots__ = "_chronological_history", "_categorical_history"
 
@@ -155,7 +134,7 @@ class WorkHistory(Component):
         occupation_type: str,
         business: int,
         years_held: float,
-        reason_for_leaving: Optional[Event] = None,
+        reason_for_leaving: str = "",
     ) -> None:
         """
         Add an entry to the work history
@@ -168,8 +147,8 @@ class WorkHistory(Component):
             The unique ID of the business the character worked at
         years_held: float
             The number of years the character held this job
-        reason_for_leaving: Optional[Event]
-            Optional reference to the event that caused the character to leave this job
+        reason_for_leaving: str, optional
+            Name of the event that caused the character to leave this job
         """
         entry = WorkHistoryEntry(
             occupation_type=occupation_type,
@@ -228,6 +207,12 @@ class ServiceType:
 
     def __hash__(self) -> int:
         return self.uid
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return self.name
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, ServiceType):
@@ -306,6 +291,9 @@ class Services(Component):
         """
         return service in self.services
 
+    def __repr__(self) -> str:
+        return "{}({})".format(self.__class__.__name__, self.services)
+
 
 class ServicesFactory(IComponentFactory):
     """
@@ -369,20 +357,16 @@ class Business(Component):
         owner_type: Optional[str] = None,
         owner: Optional[int] = None,
         open_positions: Optional[Dict[str, int]] = None,
+        years_in_business: float = 0.0,
     ) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.config: BusinessConfig = config
         self.name: str = name
         self.owner_type: Optional[str] = owner_type
         self._open_positions: Dict[str, int] = open_positions if open_positions else {}
-        if owner_type is not None:
-            if owner_type in self._open_positions:
-                self._open_positions[owner_type] += 1
-            else:
-                self._open_positions[owner_type] = 0
         self._employees: Dict[int, str] = {}
         self.owner: Optional[int] = owner
-        self.years_in_business: float = 0.0
+        self.years_in_business: float = years_in_business
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -400,7 +384,9 @@ class Business(Component):
 
     def get_open_positions(self) -> List[str]:
         """Returns all the open job titles"""
-        return [title for title, n in self._open_positions.items() if n > 0]
+        return sum(
+            [[title] * count for title, count in self._open_positions.items()], []
+        )
 
     def get_employees(self) -> List[int]:
         """Return a list of IDs for current employees"""
@@ -452,12 +438,6 @@ class BusinessFactory(IComponentFactory):
             owner_type=owner_type,
             open_positions=employee_types,
         )
-
-
-class InTheWorkforce(Component):
-    """Tags a character as being eligible to work"""
-
-    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -628,3 +608,8 @@ class BusinessLibrary:
             return self._bundles[chosen.name]
 
         return None
+
+
+@dataclass
+class BusinessOwner(Component):
+    business: int

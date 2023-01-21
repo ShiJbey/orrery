@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from orrery import event_callbacks
 from orrery.components.business import (
@@ -10,7 +10,6 @@ from orrery.components.business import (
     BusinessFactory,
     BusinessLibrary,
     ClosedForBusiness,
-    InTheWorkforce,
     Occupation,
     OccupationTypeLibrary,
     OpenForBusiness,
@@ -42,6 +41,7 @@ from orrery.components.shared import (
     Name,
     Position2D,
 )
+from orrery.components.statuses import InTheWorkforce
 from orrery.constants import (
     BUSINESS_UPDATE_PHASE,
     CHARACTER_UPDATE_PHASE,
@@ -66,7 +66,7 @@ from orrery.core.social_rule import SocialRuleLibrary
 from orrery.core.status import StatusManager
 from orrery.core.time import SimDateTime, TimeDelta
 from orrery.core.tracery import Tracery
-from orrery.core.traits import TraitLibrary, Traits, TraitsFactory
+from orrery.core.traits import TraitManager
 from orrery.core.virtues import Virtues, VirtuesFactory
 from orrery.systems import (
     BuildBusinessSystem,
@@ -79,7 +79,6 @@ from orrery.systems import (
     MeetNewPeopleSystem,
     RelationshipUpdateSystem,
     SpawnResidentSystem,
-    StatusUpdateSystem,
     TimeSystem,
 )
 
@@ -141,9 +140,9 @@ class Orrery:
 
     __slots__ = "world", "config", "plugins"
 
-    def __init__(self, config: OrreryConfig) -> None:
+    def __init__(self, config: Optional[OrreryConfig] = None) -> None:
         self.world: World = World()
-        self.config: OrreryConfig = config
+        self.config: OrreryConfig = config if config else OrreryConfig()
         self.plugins: List[Tuple[Plugin, Dict[str, Any]]] = []
 
         # Seed RNG for libraries we don't control, like Tracery
@@ -164,10 +163,8 @@ class Orrery:
         self.world.add_resource(OccupationTypeLibrary())
         self.world.add_resource(LifeEventLibrary())
         self.world.add_resource(ServiceLibrary())
-        self.world.add_resource(TraitLibrary())
 
         # Add default systems
-        self.world.add_system(StatusUpdateSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(RelationshipUpdateSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(MeetNewPeopleSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(LifeEventSystem(), CORE_SYSTEMS_PHASE)
@@ -185,7 +182,7 @@ class Orrery:
         self.world.register_component(GameCharacter, factory=GameCharacterFactory())
         self.world.register_component(Name)
         self.world.register_component(RelationshipManager)
-        self.world.register_component(Traits, factory=TraitsFactory())
+        self.world.register_component(TraitManager)
         self.world.register_component(Location, factory=LocationFactory())
         self.world.register_component(Virtues, factory=VirtuesFactory())
         self.world.register_component(Activities, factory=ActivitiesFactory())
@@ -209,6 +206,7 @@ class Orrery:
         self.world.register_component(Vacant)
         self.world.register_component(Building)
         self.world.register_component(Position2D)
+        self.world.register_component(StatusManager)
         self.world.register_component(StatusManager)
         self.world.register_component(
             FrequentedLocations, factory=FrequentedLocationsFactory()

@@ -287,3 +287,91 @@ class StartBusinessEvent(Event):
 
     def __str__(self) -> str:
         return f"{super().__str__()}, business_name={self.business_name}, occupation={self.occupation}"
+
+
+class BusinessOpenEvent(Event):
+    __slots__ = "business_name"
+
+    def __init__(
+        self,
+        date: SimDateTime,
+        business: GameObject,
+        business_name: str,
+    ) -> None:
+        super().__init__(
+            name="business-open",
+            timestamp=date.to_iso_str(),
+            roles=[
+                EventRole("Business", business.uid),
+            ],
+        )
+        self.business_name: str = business_name
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "business_name": self.business_name,
+        }
+
+    def __str__(self) -> str:
+        return f"{super().__str__()}, business_name={self.business_name}"
+
+
+class NewSettlementEvent(Event):
+    def __init__(
+        self,
+        date: SimDateTime,
+        settlement: GameObject,
+    ) -> None:
+        super().__init__(
+            name="new-settlement",
+            timestamp=date.to_iso_str(),
+            roles=[
+                EventRole("Settlement", settlement.uid),
+            ],
+        )
+
+
+class NewCharacterEvent(Event):
+    def __init__(
+        self,
+        date: SimDateTime,
+        character: GameObject,
+    ) -> None:
+        super().__init__(
+            name="new-character",
+            timestamp=date.to_iso_str(),
+            roles=[
+                EventRole("Character", character.uid),
+            ],
+        )
+
+
+class NewBusinessEvent(Event):
+    def __init__(
+        self,
+        date: SimDateTime,
+        business: GameObject,
+    ) -> None:
+        super().__init__(
+            name="new-business",
+            timestamp=date.to_iso_str(),
+            roles=[
+                EventRole("Business", business.uid),
+            ],
+        )
+
+
+class NewResidenceEvent(Event):
+    def __init__(
+        self,
+        date: SimDateTime,
+        residence: GameObject,
+    ) -> None:
+        super().__init__(
+            name="new-residence",
+            timestamp=date.to_iso_str(),
+            roles=[
+                EventRole("Residence", residence.uid),
+            ],
+        )

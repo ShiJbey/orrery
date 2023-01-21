@@ -3,112 +3,61 @@ test_traits.py
 
 Tests orrery.core.traits
 """
-from orrery.core.ecs import World
-from orrery.core.traits import TraitLibrary, Traits, TraitsFactory
+import pytest
+
+from orrery.core.ecs import ComponentNotFoundError
+from orrery.core.traits import Trait, TraitManager
+from orrery.orrery import Orrery
+from orrery.utils.traits import add_trait, get_trait, has_trait, remove_trait
 
 
-def test_get_trait_from_library() -> None:
-    library = TraitLibrary()
-    kind_hearted = library.get("Kind-Hearted")
-    kind_hearted_other = library.get("kind-hearted")
-    likes_eating = library.get("Likes Eating")
+class Kind(Trait):
+    excludes = {"Mean"}
 
-    assert kind_hearted is kind_hearted_other
-    assert kind_hearted.uid == 0
-    assert likes_eating.uid == 1
-    assert likes_eating.name == "likes eating"
+    pass
 
 
-def test_iterate_library() -> None:
-    library = TraitLibrary()
-    library.get("Kind")
-    library.get("Likes Eating")
-    library.get("Drunkard")
-    library.get("People Person")
-    library.get("Impulsive Shopper")
+class Mean(Trait):
+    excludes = {"Kind"}
 
-    all_traits = set([a.name for a in library])
-    assert all_traits == {
-        "kind",
-        "likes eating",
-        "drunkard",
-        "people person",
-        "impulsive shopper",
-    }
+    pass
 
 
-def test_library_contains() -> None:
-    library = TraitLibrary()
-    library.get("Kind")
-    library.get("Likes Eating")
-    library.get("Drunkard")
-    library.get("People Person")
-    library.get("Impulsive Shopper")
-
-    assert ("kind" in library) is True
-    assert ("likes eating" in library) is True
-    assert ("people person" in library) is False
-    assert ("drunkard" in library) is False
+class Drunkard(Trait):
+    pass
 
 
-def test_traits_contains() -> None:
-    library = TraitLibrary()
-    library.get("Kind")
-    library.get("Likes Eating")
-    library.get("Drunkard")
-    library.get("People Person")
-    library.get("Impulsive Shopper")
-
-    traits = Traits(
-        {
-            library.get("Kind"),
-            library.get("Likes Eating"),
-            library.get("Impulsive Shopper"),
-        }
-    )
-
-    assert library.get("kind") in traits
-    assert library.get("people person") not in traits
+def test_add_trait() -> None:
+    sim = Orrery()
+    character = sim.world.spawn_gameobject([TraitManager()])
+    add_trait(character, Kind())
+    assert has_trait(character, Kind) is True
 
 
-def test_traits_to_dict() -> None:
-
-    library = TraitLibrary()
-    library.get("Kind")
-    library.get("Likes Eating")
-    library.get("Drunkard")
-    library.get("People Person")
-    library.get("Impulsive Shopper")
-
-    traits = Traits(
-        {
-            library.get("Kind"),
-            library.get("Likes Eating"),
-            library.get("Impulsive Shopper"),
-        }
-    )
-
-    assert traits.to_dict() == {"traits": ["kind", "likes eating", "impulsive shopper"]}
+def test_add_incompatible_trait() -> None:
+    sim = Orrery()
+    character = sim.world.spawn_gameobject([TraitManager()])
+    add_trait(character, Kind())
+    assert has_trait(character, Kind) is True
+    with pytest.raises(RuntimeError):
+        add_trait(character, Mean())
 
 
-def test_traits_factory() -> None:
-    world = World()
+def test_remove_trait() -> None:
+    sim = Orrery()
+    character = sim.world.spawn_gameobject([TraitManager()])
+    add_trait(character, Kind())
+    assert has_trait(character, Kind) is True
+    remove_trait(character, Kind)
+    assert has_trait(character, Kind) is False
 
-    library = TraitLibrary()
-    library.get("Kind")
-    library.get("Likes Eating")
-    library.get("Drunkard")
-    library.get("People Person")
-    library.get("Impulsive Shopper")
 
-    world.add_resource(library)
-
-    world.register_component(Traits, factory=TraitsFactory())
-
-    factory = TraitsFactory()
-
-    traits = factory.create(world, activities=["Kind", "Drunkard"])
-
-    assert library.get("People Person") not in traits
-    assert library.get("Drunkard") in traits
-    assert library.get("Kind") in traits
+def test_get_trait() -> None:
+    sim = Orrery()
+    character = sim.world.spawn_gameobject([TraitManager()])
+    add_trait(character, Kind())
+    assert has_trait(character, Kind) is True
+    t = get_trait(character, Kind)
+    assert t.__class__ == Kind
+    with pytest.raises(ComponentNotFoundError):
+        get_trait(character, Drunkard)
