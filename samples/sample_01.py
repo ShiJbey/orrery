@@ -4,11 +4,9 @@ from typing import Any, Dict
 
 import orrery.plugins.default.businesses
 import orrery.plugins.default.characters
-import orrery.plugins.default.life_events
 import orrery.plugins.default.names
 import orrery.plugins.default.residences
 from orrery import Orrery, decorators
-from orrery.components.business import BusinessLibrary
 from orrery.components.character import CharacterLibrary
 from orrery.core.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
 from orrery.core.ecs import Component, GameObject, World
@@ -20,13 +18,8 @@ from orrery.exporter import export_to_json
 from orrery.loaders import OrreryYamlLoader, load_all_data
 from orrery.utils.common import (
     add_character_to_settlement,
-    create_business,
     create_character,
     create_settlement,
-    end_job,
-    shutdown_business,
-    start_job,
-    startup_business,
 )
 from orrery.utils.relationships import (
     add_relationship,
@@ -53,7 +46,6 @@ sim.load_plugin(orrery.plugins.default.names.get_plugin())
 sim.load_plugin(orrery.plugins.default.characters.get_plugin())
 sim.load_plugin(orrery.plugins.default.businesses.get_plugin())
 sim.load_plugin(orrery.plugins.default.residences.get_plugin())
-sim.load_plugin(orrery.plugins.default.life_events.get_plugin())
 
 
 @decorators.component(sim)
@@ -82,7 +74,7 @@ class VirtueCompatibilityRule(ISocialRule):
         world: World,
         subject: GameObject,
         target: GameObject,
-        relationship: Relationship,
+        relationship: GameObject,
     ) -> None:
         """Apply any modifiers associated with the social rule"""
         character_virtues = subject.get_component(Virtues)
@@ -111,11 +103,13 @@ class VirtueCompatibilityRule(ISocialRule):
             {"Friendship": friendship_buff, "Romance": romance_buff},
         )
 
-        relationship.add_modifier(compatibility_mod)
+        relationship.get_component(Relationship).add_modifier(compatibility_mod)
 
-    def deactivate(self, relationship: Relationship) -> None:
+    def deactivate(self, relationship: GameObject) -> None:
         """Apply any modifiers associated with the social rule"""
-        relationship.remove_modifier_by_uid("virtue-compatibility")
+        relationship.get_component(Relationship).remove_modifier_by_uid(
+            "virtue-compatibility"
+        )
 
 
 @dataclass
@@ -145,13 +139,8 @@ def main():
     sim.world.get_resource(SocialRuleLibrary).add(VirtueCompatibilityRule())
 
     character_library = sim.world.get_resource(CharacterLibrary)
-    business_library = sim.world.get_resource(BusinessLibrary)
 
     west_world = create_settlement(sim.world, "West World")
-
-    library = create_business(sim.world, business_library.get_bundle("Library"))
-
-    startup_business(library, west_world)
 
     delores = create_character(
         sim.world,
@@ -163,8 +152,6 @@ def main():
 
     add_character_to_settlement(delores, west_world)
 
-    start_job(delores, library, "Librarian", is_owner=True)
-
     charlotte = create_character(
         sim.world,
         character_library.get_bundle("character::default::female"),
@@ -175,8 +162,6 @@ def main():
 
     add_character_to_settlement(charlotte, west_world)
 
-    start_job(charlotte, library, "Librarian")
-
     william = create_character(
         sim.world,
         character_library.get_bundle("character::default::male"),
@@ -185,12 +170,6 @@ def main():
     )
 
     add_character_to_settlement(william, west_world)
-
-    start_job(william, library, "Librarian")
-
-    end_job(delores, "Quit to take over the world.")
-
-    shutdown_business(library)
 
     add_relationship(delores, charlotte)
     get_relationship(delores, charlotte)["Friendship"] += -1

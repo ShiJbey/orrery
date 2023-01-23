@@ -1,37 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
 
 from orrery.core.ecs import Component
 from orrery.core.time import SimDateTime
 
 
+@dataclass
 class Unemployed(Component):
     """
     Status component that marks a character as being able to work but lacking a job
 
     Attributes
     ----------
-    days_to_find_a_job: int
-        The number of remaining days to find a job
-    grace_period: int
-        The starting number of days to find a job
+    years: float
+        The number of years that the entity has been unemployed
     """
 
-    __slots__ = "days_to_find_a_job", "grace_period"
-
-    def __init__(self, days_to_find_a_job: int) -> None:
-        super().__init__()
-        self.days_to_find_a_job: int = days_to_find_a_job
-        self.grace_period: int = days_to_find_a_job
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            **super().to_dict(),
-            "days_to_find_a_job": self.days_to_find_a_job,
-            "grace_period": self.grace_period,
-        }
+    years: float = 0.0
 
 
 class Pregnant(Component):

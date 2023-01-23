@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Set, List
+from typing import Any, Dict, List, Optional, Set
 
 from orrery.core.activity import ActivityInstance, ActivityLibrary
 from orrery.core.ecs import Component, IComponentFactory, World
@@ -134,6 +134,14 @@ class LocationFactory(IComponentFactory):
         activity_names: List[str] = activities if activities else []
 
         return Location(set([activity_library.get(name) for name in activity_names]))
+
+
+@dataclass
+class CurrentSettlement(Component):
+    settlement_id: int
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.settlement_id})"
 
 
 @dataclass

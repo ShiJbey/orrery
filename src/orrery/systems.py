@@ -1,7 +1,9 @@
 import random
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from collections import Counter
-from typing import Any, List, Optional, cast
+from typing import Any, List, Optional, Type, cast
+
+from ordered_set import OrderedSet
 
 import orrery.events
 from orrery.components.business import (
@@ -20,7 +22,13 @@ from orrery.components.character import (
     LifeStage,
 )
 from orrery.components.residence import Residence, ResidenceLibrary, Resident, Vacant
-from orrery.components.shared import Active, Building, FrequentedLocations, Location
+from orrery.components.shared import (
+    Active,
+    Building,
+    CurrentSettlement,
+    FrequentedLocations,
+    Location,
+)
 from orrery.components.statuses import (
     ChildOf,
     Dating,
@@ -33,16 +41,17 @@ from orrery.components.statuses import (
 )
 from orrery.core.config import CharacterConfig, OrreryConfig
 from orrery.core.ecs import ComponentBundle, GameObject, ISystem
+from orrery.core.ecs.query import QueryBuilder
 from orrery.core.event import Event, EventHandler, EventRole
 from orrery.core.life_event import LifeEventLibrary
-from orrery.core.query import QueryBuilder
-from orrery.core.relationship import Relationship, RelationshipManager, lerp
+from orrery.core.relationship import Relationship, lerp
 from orrery.core.settlement import Settlement
 from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
 from orrery.utils.common import (
     add_character_to_settlement,
     add_residence,
     check_share_residence,
+    clear_frequented_locations,
     create_business,
     create_character,
     create_residence,
@@ -114,22 +123,73 @@ class TimeSystem(ISystem):
         current_date.increment(months=increment)
 
 
+class ISystemGroup(ISystem, ABC):
+    """Abstract base class for all system group classes"""
+
+    @abstractmethod
+    def add_subsystem(self, sub_system: ISystem) -> None:
+        """Add a sub-system to the system group"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def remove_subsystem(self, system_type: Type[ISystem]) -> None:
+        """Remove a sub-system from the group"""
+        raise NotImplementedError
+
+
+class RootSystemGroup(ISystemGroup):
+    """The default system group to which systems are added"""
+
+    name: str = "root"
+    active: bool = True
+
+    __slots__ = "sub_systems"
+
+    def __init__(self) -> None:
+        self.sub_systems: OrderedSet[ISystem] = OrderedSet([])
+
+    @classmethod
+    def get_name(cls) -> str:
+        """Return the name of the system"""
+        return cls.name
+
+    def system_should_run(self) -> bool:
+        """Check if this system should run this simulation step
+
+        Returns
+        -------
+        bool
+            Returns True if the system should run
+        """
+
+        return self.active
+
+    def add_subsystem(self, system: ISystem) -> None:
+        """Add a sub-system to the system group"""
+        self.sub_systems.add(system)
+
+    def remove_subsystem(self, system: ISystem) -> None:
+        """Remove a sub-system from the group"""
+        self.sub_systems.remove(system)
+
+    def process(self, *args, **kwargs) -> None:
+        for s in self.sub_systems:
+            s.process(*args, **kwargs)
+
+
 class LifeEventSystem(System):
     """Fires LifeEvents adding some spice to the simulation data"""
-
-    def __init__(self, interval: Optional[TimeDelta] = None) -> None:
-        super().__init__(interval=interval)
 
     def run(self, *args: Any, **kwarg: Any) -> None:
         """Simulate LifeEvents for characters"""
         rng = self.world.get_resource(random.Random)
         life_events = self.world.get_resource(LifeEventLibrary)
+        all_events = life_events.get_all()
 
-        for _, settlement in self.world.get_component(Settlement):
-            for life_event in rng.choices(life_events.get_all(), k=10):
-                success = life_event.try_execute_event(self.world)
-                if success:
-                    self.world.clear_command_queue()
+        if all_events:
+            for _, settlement in self.world.get_component(Settlement):
+                for life_event in rng.choices(all_events, k=10):
+                    life_event.try_execute_event(self.world)
 
 
 class MeetNewPeopleSystem(ISystem):
@@ -169,8 +229,9 @@ class MeetNewPeopleSystem(ISystem):
 
                 acquaintance_id = rng.choices(options, weights=weights, k=1)[0]
 
-                if acquaintance_id not in character.get_component(RelationshipManager):
-                    acquaintance = self.world.get_gameobject(acquaintance_id)
+                acquaintance = self.world.get_gameobject(acquaintance_id)
+
+                if not has_relationship(character, acquaintance):
 
                     add_relationship(character, acquaintance)
                     add_relationship(acquaintance, character)
@@ -213,7 +274,7 @@ class FindEmployeesSystem(ISystem):
 
                 candidate = self.world.get_gameobject(rng.choice(candidate_list)[0])
 
-                start_job(self.world.get_gameobject(guid), candidate, occupation_name)
+                start_job(candidate, self.world.get_gameobject(guid), occupation_name)
 
 
 class BuildHousingSystem(ISystem):
@@ -343,22 +404,17 @@ class BuildBusinessSystem(ISystem):
                     lot_id=lot,
                 )
 
-                owner.add_component(
-                    Occupation(
-                        occupation_type=owner_occupation_type.name,
-                        business=business.uid,
-                    )
-                )
-
                 event_log.record_event(
                     orrery.events.StartBusinessEvent(
                         self.world.get_resource(SimDateTime),
                         owner,
                         business,
-                        owner.get_component(Occupation).occupation_type,
+                        owner_occupation_type.name,
                         business.get_component(Business).name,
                     )
                 )
+
+                start_job(owner, business, owner_occupation_type.name, is_owner=True)
 
             else:
                 business = create_business(self.world, bundle)
@@ -367,10 +423,6 @@ class BuildBusinessSystem(ISystem):
                     business,
                     self.world.get_gameobject(settlement_id),
                     lot_id=lot,
-                )
-
-                print(
-                    f"Built new business ({business.uid}) {business.get_component(Business).name}"
                 )
 
 
@@ -416,12 +468,13 @@ class SpawnResidentSystem(System):
         event_logger = self.world.get_resource(EventHandler)
         character_library = self.world.get_resource(CharacterLibrary)
 
-        for _, (residence, _, _, _) in self.world.get_components(
+        for guid, (residence_comp, _, _, _) in self.world.get_components(
             Residence, Building, Active, Vacant
         ):
-            residence = cast(Residence, residence)
+            residence = self.world.get_gameobject(guid)
+            residence_comp = cast(Residence, residence_comp)
 
-            settlement = self.world.get_gameobject(residence.settlement)
+            settlement = self.world.get_gameobject(residence_comp.settlement)
 
             # Return early if the random-roll is not sufficient
             if rng.random() > self.chance_spawn:
@@ -447,7 +500,7 @@ class SpawnResidentSystem(System):
             character_config = character.get_component(GameCharacter).config
 
             add_character_to_settlement(character, settlement)
-            set_residence(self.world, character, residence.gameobject, True)
+            set_residence(self.world, character, residence, True)
 
             spouse: Optional[GameObject] = None
 
@@ -467,7 +520,7 @@ class SpawnResidentSystem(System):
 
                 # Move them into the home with the first character
                 add_character_to_settlement(spouse, settlement)
-                set_residence(self.world, spouse, residence.gameobject, True)
+                set_residence(self.world, spouse, residence, True)
 
                 # Configure relationship from character to spouse
                 add_relationship(character, spouse)
@@ -503,7 +556,7 @@ class SpawnResidentSystem(System):
 
                     # Move them into the home with the first character
                     add_character_to_settlement(child, settlement)
-                    set_residence(self.world, child, residence.gameobject)
+                    set_residence(self.world, child, residence)
 
                     children.append(child)
 
@@ -541,9 +594,7 @@ class SpawnResidentSystem(System):
 
             # Record a life event
             event_logger.record_event(
-                orrery.events.MoveIntoTownEvent(
-                    date, residence.gameobject, *generated_characters
-                )
+                orrery.events.MoveIntoTownEvent(date, residence, *generated_characters)
             )
 
 
@@ -583,60 +634,61 @@ class CharacterAgingSystem(System):
 
         age_increment = float(self.elapsed_time.total_days) / DAYS_PER_YEAR
 
-        for _, (character, _, _) in self.world.get_components(
+        for guid, (character_comp, _, _) in self.world.get_components(
             GameCharacter, CanAge, Active
         ):
-            character = cast(GameCharacter, character)
+            character = self.world.get_gameobject(guid)
+            character_comp = cast(GameCharacter, character_comp)
 
-            life_stage_before = character.life_stage
-            character.increment_age(age_increment)
-            life_stage_after = character.life_stage
+            life_stage_before = character_comp.life_stage
+            character_comp.increment_age(age_increment)
+            life_stage_after = character_comp.life_stage
 
             life_stage_changed = life_stage_before != life_stage_after
 
             if life_stage_changed is False:
                 continue
 
-            if character.life_stage == LifeStage.Adolescent:
+            if character_comp.life_stage == LifeStage.Adolescent:
                 event_log.record_event(
                     Event(
                         name="BecameAdolescent",
                         timestamp=current_date.to_iso_str(),
                         roles=[
-                            EventRole("Character", character.gameobject.uid),
+                            EventRole("Character", character.uid),
                         ],
                     ),
                 )
 
-            elif character.life_stage == LifeStage.YoungAdult:
+            elif character_comp.life_stage == LifeStage.YoungAdult:
                 event_log.record_event(
                     Event(
                         name="BecomeYoungAdult",
                         timestamp=current_date.to_iso_str(),
                         roles=[
-                            EventRole("Character", character.gameobject.uid),
+                            EventRole("Character", character.uid),
                         ],
                     ),
                 )
 
-            elif character.life_stage == LifeStage.Adult:
+            elif character_comp.life_stage == LifeStage.Adult:
                 event_log.record_event(
                     Event(
                         name="BecomeAdult",
                         timestamp=current_date.to_iso_str(),
                         roles=[
-                            EventRole("Character", character.gameobject.uid),
+                            EventRole("Character", character.uid),
                         ],
                     ),
                 )
 
-            elif character.life_stage == LifeStage.Senior:
+            elif character_comp.life_stage == LifeStage.Senior:
                 event_log.record_event(
                     Event(
                         name="BecomeSenior",
                         timestamp=current_date.to_iso_str(),
                         roles=[
-                            EventRole("Character", character.gameobject.uid),
+                            EventRole("Character", character.uid),
                         ],
                     ),
                 )
@@ -649,12 +701,14 @@ class EventSystem(ISystem):
 
 
 class UnemployedStatusSystem(System):
+    years_to_find_a_job: float = 5.0
+
     def run(self, *args: Any, **kwargs: Any) -> None:
         for guid, unemployed in self.world.get_component(Unemployed):
             character = self.world.get_gameobject(guid)
-            unemployed.days_to_find_a_job -= self.elapsed_time.total_days
+            unemployed.years += self.elapsed_time.total_days / DAYS_PER_YEAR
 
-            if unemployed.days_to_find_a_job <= 0:
+            if unemployed.years >= self.years_to_find_a_job:
                 spouses = get_relationships_with_statuses(character, Married)
 
                 # Do not depart if one or more of the entity's spouses has a job
@@ -687,7 +741,7 @@ class UnemployedStatusSystem(System):
 
                     for c in characters_to_depart:
                         add_status(c, Departed())
-                        c.remove_component(Active, immediate=True)
+                        c.remove_component(Active)
 
                     remove_status(character, Unemployed)
 
@@ -809,3 +863,22 @@ class RelationshipUpdateSystem(System):
                         max(0, relationship.interaction_score.get_raw_value())
                         * lerp(-3, 3, stat.get_normalized_value())
                     )
+
+
+class MarkUnemployedNewCharactersSystem(System):
+    def run(self, *args: Any, **kwargs: Any) -> None:
+        for guid in self.world.get_added_component(CurrentSettlement):
+            gameobject = self.world.get_gameobject(guid)
+            if game_character := gameobject.try_component(GameCharacter):
+                if game_character.life_stage >= LifeStage.YoungAdult:
+                    gameobject.add_component(InTheWorkforce())
+                    if not gameobject.has_component(Occupation):
+                        add_status(gameobject, Unemployed())
+
+
+class RemoveFrequentedFromDepartedSystem(System):
+    def run(self, *args: Any, **kwargs: Any) -> None:
+        for guid in self.world.get_added_component(Departed):
+            gameobject = self.world.get_gameobject(guid)
+            if gameobject.has_component(GameCharacter):
+                clear_frequented_locations(gameobject)

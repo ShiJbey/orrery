@@ -73,13 +73,18 @@ from orrery.systems import (
     BuildHousingSystem,
     BusinessUpdateSystem,
     CharacterAgingSystem,
+    DatingStatusSystem,
     EventSystem,
     FindEmployeesSystem,
     LifeEventSystem,
+    MarriedStatusSystem,
     MeetNewPeopleSystem,
+    OccupationUpdateSystem,
+    PregnantStatusSystem,
     RelationshipUpdateSystem,
     SpawnResidentSystem,
     TimeSystem,
+    UnemployedStatusSystem,
 )
 
 
@@ -171,6 +176,11 @@ class Orrery:
         self.world.add_system(EventSystem(), CORE_SYSTEMS_PHASE)
         self.world.add_system(TimeSystem(), CORE_SYSTEMS_PHASE)
         self.world.add_system(CharacterAgingSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(DatingStatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(MarriedStatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(PregnantStatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(UnemployedStatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(OccupationUpdateSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(BusinessUpdateSystem(), BUSINESS_UPDATE_PHASE)
         self.world.add_system(FindEmployeesSystem(), BUSINESS_UPDATE_PHASE)
         self.world.add_system(BuildHousingSystem(), SETTLEMENT_UPDATE_PHASE)
@@ -260,14 +270,6 @@ class Orrery:
 
         self.world.get_resource(EventHandler).on(
             "Depart", event_callbacks.remove_frequented_locations_from_departed
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "LeaveJob", event_callbacks.add_unemployed_status_after_end_job
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "StartJob", event_callbacks.remove_unemployed_status_after_start_job
         )
 
         self.world.get_resource(EventHandler).on(

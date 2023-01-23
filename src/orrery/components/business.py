@@ -6,7 +6,6 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Type
 
-from orrery.core import query
 from orrery.core.config import BusinessConfig
 from orrery.core.ecs import (
     Component,
@@ -14,6 +13,7 @@ from orrery.core.ecs import (
     GameObject,
     IComponentFactory,
     World,
+    query,
 )
 from orrery.core.settlement import Settlement
 from orrery.core.time import SimDateTime

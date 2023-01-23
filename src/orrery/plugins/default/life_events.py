@@ -17,6 +17,7 @@ from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.shared import Active
 from orrery.components.statuses import Dating, Pregnant
 from orrery.core.ecs import GameObject, World
+from orrery.core.ecs.query import QueryBuilder, eq_, not_, or_
 from orrery.core.event import Event, EventHandler, EventRoleType, RoleList
 from orrery.core.life_event import (
     ILifeEvent,
@@ -24,7 +25,6 @@ from orrery.core.life_event import (
     LifeEventInstance,
     LifeEventLibrary,
 )
-from orrery.core.query import QueryBuilder, eq_, not_, or_
 from orrery.core.relationship import RelationshipManager
 from orrery.core.time import SimDateTime
 from orrery.orrery import Plugin
@@ -346,16 +346,16 @@ def find_own_place_event(probability: float = 0.1) -> ILifeEvent:
 
         return eligible
 
-    def find_vacant_residences(world: World) -> List[Residence]:
+    def find_vacant_residences(world: World) -> List[GameObject]:
         """Try to find a vacant residence to move into"""
         return list(
             map(
-                lambda pair: cast(Residence, pair[1][0]),
+                lambda pair: world.get_gameobject(pair[0]),
                 world.get_components(Residence, Vacant),
             )
         )
 
-    def choose_random_vacant_residence(world: World) -> Optional[Residence]:
+    def choose_random_vacant_residence(world: World) -> Optional[GameObject]:
         """Randomly chooses a vacant residence to move into"""
         vacancies = find_vacant_residences(world)
         if vacancies:
@@ -368,7 +368,7 @@ def find_own_place_event(probability: float = 0.1) -> ILifeEvent:
         vacant_residence = choose_random_vacant_residence(world)
         if vacant_residence:
             # Move into house with any dependent children
-            set_residence(world, character, vacant_residence.gameobject)
+            set_residence(world, character, vacant_residence)
 
         # Depart if no housing could be found
         else:

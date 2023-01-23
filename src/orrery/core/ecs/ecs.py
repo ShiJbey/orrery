@@ -1,19 +1,28 @@
 """
-Custom Entity-Component implementation that blends
-the Unity-style GameObjects with the ECS logic from the
-Python esper library and the Bevy Game Engine.
+ecs.py
+
+Custom Entity-Component implementation that blends the Unity-style GameObjects with the
+ECS logic from the Python esper library and the Bevy Game Engine.
+
+This ECS implementation is not thread-safe. It assumes that everything happens
+sequentially on the same thread. There some features that were originally designed to
+solve multithreading problems in Unity's Entities package. However, they are used here
+more for adding reactivity.
 
 Sources:
 https://docs.unity3d.com/ScriptReference/GameObject.html
 https://github.com/benmoran56/esper
 https://github.com/bevyengine/bevy
+https://bevy-cheatbook.github.io/programming/change-detection.html
+https://bevy-cheatbook.github.io/programming/removal-detection.html
+https://docs.unity3d.com/Packages/com.unity.entities@0.1/manual/index.html
 """
 from __future__ import annotations
 
 import dataclasses
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, TypeVar
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, TypeVar
 
 import esper
 from ordered_set import OrderedSet
@@ -27,11 +36,25 @@ _ST = TypeVar("_ST", bound="ISystem")
 
 
 class ResourceNotFoundError(Exception):
-    """Exception raised when attempting to access a resource that does not exist"""
+    """Exception raised when attempting to access a resource that does not exist
 
-    __slots__ = "resource_type"
+    Attributes
+    ----------
+    resource_type: Type[Any]
+        The type of the resource
+    message: str
+        An error message
+    """
+
+    __slots__ = "resource_type", "message"
 
     def __init__(self, resource_type: Type[Any]) -> None:
+        """
+        Parameters
+        ----------
+        resource_type: Type[Any]
+            The type of the resource not found
+        """
         super().__init__()
         self.resource_type: Type[Any] = resource_type
         self.message = f"Could not find resource with type: {resource_type.__name__}"
@@ -46,11 +69,25 @@ class ResourceNotFoundError(Exception):
 
 
 class GameObjectNotFoundError(Exception):
-    """Exception raised when attempting to retrieve a GameObject that does not exist"""
+    """Exception raised when attempting to retrieve a GameObject that does not exist
 
-    __slots__ = "gameobject_uid"
+    Attributes
+    ----------
+    gameobject_uid: int
+        The unique ID of the desired GameObject
+    message: str
+        An error message
+    """
+
+    __slots__ = "gameobject_uid", "message"
 
     def __init__(self, gameobject_uid: int) -> None:
+        """
+        Parameters
+        ----------
+        gameobject_uid: int
+            The unique ID of the desired GameObject
+        """
         super().__init__()
         self.gameobject_uid: int = gameobject_uid
         self.message = f"Could not find GameObject with id: {gameobject_uid}."
@@ -65,11 +102,25 @@ class GameObjectNotFoundError(Exception):
 
 
 class ComponentNotFoundError(Exception):
-    """Exception raised when attempting to retrieve a component that does not exist"""
+    """Exception raised when attempting to retrieve a component that does not exist
+
+    Attributes
+    ----------
+    component_type: Type[Component]
+        The type of component not found
+    message: str
+        An error message
+    """
 
     __slots__ = "component_type", "message"
 
     def __init__(self, component_type: Type[Component]) -> None:
+        """
+        Parameters
+        ----------
+        component_type: Type[Component]
+            The desired component type
+        """
         super().__init__()
         self.component_type: Type[Component] = component_type
         self.message = "Could not find Component with type {}.".format(
@@ -87,9 +138,10 @@ class ComponentNotFoundError(Exception):
 
 
 class GameObject:
-    """
-    Collections of components that share are unique identifier
-    and represent entities within the game world
+    """A reference to an entity within the world
+
+    GameObjects wrap a unique integer identifier provide an interface to manipulate
+    an entity, its components, and its hierarchical relationship with other entities.
 
     Attributes
     ----------
@@ -97,29 +149,36 @@ class GameObject:
         The name of the GameObject
     children: List[GameObject]
         Other GameObjects that are below this one in the hierarchy
-        and are removed when the parent is removed
+        and are removed when this GameObject is removed
     parent: Optional[GameObject]
         The GameObject that this GameObject is a child of
     """
 
-    __slots__ = "_id", "name", "_world", "children", "parent"
+    __slots__ = "_id", "name", "_world", "children", "parent", "_is_active"
 
     def __init__(
         self,
         unique_id: int,
         world: World,
-        name: Optional[str] = None,
-        components: Optional[Iterable[Component]] = None,
+        name: str = "",
     ) -> None:
-        self.name: str = name if name else f"GameObject ({unique_id})"
+        """
+        Parameters
+        ----------
+        unique_id: int
+            A unique identifier
+        world: World
+            The world instance that this GameObject belongs to
+        name: str, optional
+            An optional name to give to the GameObject
+            (Defaults to 'GameObject(<unique_id>)')
+        """
+        self.name: str = name if name else f"GameObject({unique_id})"
         self._id: int = unique_id
         self._world: World = world
         self.parent: Optional[GameObject] = None
         self.children: List[GameObject] = []
-
-        if components:
-            for component in components:
-                self.add_component(component)
+        self._is_active: bool = True
 
     @property
     def uid(self) -> int:
@@ -131,10 +190,30 @@ class GameObject:
         """Return the world that this GameObject belongs to"""
         return self._world
 
+    @property
+    def exists(self) -> bool:
+        """Return True if the GameObject still exists in the ECS"""
+        return self.world.has_gameobject(self._id)
+
+    @property
+    def is_active(self) -> bool:
+        """Return if this GameObject is active"""
+        return self._is_active
+
+    def set_active(self, is_active: bool) -> None:
+        """Set the active status of the GameObject
+
+        Parameters
+        ----------
+        is_active: bool
+            desired active state
+        """
+        self._is_active = is_active
+
     def get_components(self) -> Tuple[Component, ...]:
         """Returns the component instances associated with this GameObject"""
         try:
-            return self.world.ecs.components_for_entity(self.uid)
+            return self.world.get_components_for_entity(self.uid)
         except KeyError:
             # Ignore errors if gameobject is not found in esper ecs
             return ()
@@ -144,44 +223,42 @@ class GameObject:
         return tuple(map(lambda component: type(component), self.get_components()))
 
     def add_component(self, component: Component) -> None:
-        """Add a component to this GameObject"""
-        component.set_gameobject(self)
-        self.world.ecs.add_component(self.uid, component)
+        """Add a component to this GameObject
 
-    def remove_component(
-        self, component_type: Type[Component], immediate: bool = True
-    ) -> None:
-        """Add a component to this GameObject"""
-        try:
-            command = RemoveComponentCommand(self.uid, component_type)
+        Parameters
+        ----------
+        component: Component
+            An instance of a component
 
-            if immediate:
-                command.apply(self.world)
-            else:
-                self.world.command_queue.append(command)
-        except KeyError:
-            return
+        Notes
+        -----
+        Adding components is an immediate operation.
+        """
+        self.world.add_component(self.uid, component)
+
+    def remove_component(self, component_type: Type[Component]) -> None:
+        """Remove a component from the GameObject
+
+        Parameters
+        ----------
+        component_type: Type[Component]
+            The type of the component to remove
+        """
+        self.world.remove_component(self.uid, component_type)
 
     def get_component(self, component_type: Type[_CT]) -> _CT:
-        try:
-            return self.world.ecs.component_for_entity(self.uid, component_type)  # type: ignore
-        except KeyError:
-            raise ComponentNotFoundError(component_type)
+        return self.world.get_component_for_entity(self.uid, component_type)
 
-    def has_component(self, *component_type: Type[Component]) -> bool:
-        try:
-            return all(
-                [
-                    self.world.ecs.try_component(self.uid, ct) is not None
-                    for ct in component_type
-                ]
-            )
-        except KeyError:
-            return False
+    def has_components(self, *component_types: Type[Component]) -> bool:
+        return self.world.has_components(self.uid, *component_types)
+
+    def has_component(self, component_type: Type[Component]) -> bool:
+        """Check if this entity has a component of a given type"""
+        return self.world.has_component(self.uid, component_type)
 
     def try_component(self, component_type: Type[_CT]) -> Optional[_CT]:
         try:
-            return self.world.ecs.try_component(self.uid, component_type)  # type: ignore
+            return self.world.try_component_for_entity(self.uid, component_type)
         except KeyError:
             return None
 
@@ -198,10 +275,29 @@ class GameObject:
         gameobject.parent = None
 
     def get_component_in_child(self, component_type: Type[_CT]) -> Tuple[int, _CT]:
-        """Get a single instance of a component type attached to a child"""
-        for child in self.children:
-            if component := child.try_component(component_type):
-                return child.uid, component
+        """Get a single instance of a component type attached to a child
+
+        Performs a depth-first search of the children and their children and
+        returns the first instance of the component type
+        """
+
+        stack = list(*self.children)
+        checked: Set[GameObject] = set()
+
+        while stack:
+            entity = stack.pop()
+
+            if entity in checked:
+                continue
+
+            checked.add(entity)
+
+            if component := entity.try_component(component_type):
+                return entity.uid, component
+
+            for child in entity.children:
+                stack.append(child)
+
         raise ComponentNotFoundError(component_type)
 
     def get_component_in_children(
@@ -209,18 +305,37 @@ class GameObject:
     ) -> List[Tuple[int, _CT]]:
         """Get all the instances of a component type attached to the immediate children of this GameObject"""
         results: List[Tuple[int, _CT]] = []
-        for child in self.children:
-            if component := child.try_component(component_type):
-                results.append((child.uid, component))
+
+        stack = list(*self.children)
+        checked: Set[GameObject] = set()
+
+        while stack:
+            entity = stack.pop()
+
+            if entity in checked:
+                continue
+
+            checked.add(entity)
+
+            if component := entity.try_component(component_type):
+                results.append((entity.uid, component))
+
+            for child in entity.children:
+                stack.append(child)
+
         return results
 
     def destroy(self) -> None:
+        """Remove the GameObject from its World instance"""
         self.world.delete_gameobject(self.uid)
 
     def to_dict(self) -> Dict[str, Any]:
+        """Serialize the GameObject to a Dict"""
         ret = {
             "id": self.uid,
             "name": self.name,
+            "parent": self.parent if self.parent else -1,
+            "children": self.children,
             "components": {
                 c.__class__.__name__: c.to_dict() for c in self.get_components()
             },
@@ -233,6 +348,9 @@ class GameObject:
             return self.uid == other.uid
         raise TypeError(f"Expected GameObject but was {type(object)}")
 
+    def __int__(self) -> int:
+        return self._id
+
     def __hash__(self) -> int:
         return self._id
 
@@ -240,70 +358,91 @@ class GameObject:
         return self.name
 
     def __repr__(self) -> str:
-        return f"GameObject(id={self.uid}, name={self.name})"
+        return "{}(id={}, name={}, parent={}, children={})".format(
+            self.__class__.__name__, self.uid, self.name, self.parent, self.children
+        )
 
 
-class IECSCommand(Protocol):
-    """A Command object that makes a change to the ECS World instance"""
-
-    def get_type(self) -> str:
-        """Return the type of this command"""
-        raise NotImplementedError
-
-    def apply(self, world: World) -> None:
-        """Apply the affects of this command to the world state"""
-        raise NotImplementedError
-
-
-@dataclasses.dataclass(frozen=True)
-class AddComponentCommand:
-    """This command adds a component to a gameobject
-
-    Attributes
-    ----------
-    gameobject_uid: int
-        The unique identifier of a GameObject
-    component: Component
-        The component to add to the GameObject
-    """
-
-    gameobject_uid: int
-    component: Component
-
-    def get_type(self) -> str:
-        return self.__class__.__name__
-
-    def apply(self, world: World) -> None:
-        world.ecs.add_component(self.gameobject_uid, self.component)
-
-
-@dataclasses.dataclass(frozen=True)
-class RemoveComponentCommand:
-    """
-    This command removes a component from a gameobject
-
-    Attributes
-    ----------
-    gameobject_uid: int
-        The unique identifier of a GameObject
-    component_type: Type[Component]
-        The component type to remove from the GameObject
-    """
-
-    gameobject_uid: int
-    component_type: Type[Component]
-
-    def get_type(self) -> str:
-        return self.__class__.__name__
-
-    def apply(self, world: World) -> None:
-        try:
-            gameobject = world.get_gameobject(self.gameobject_uid)
-            if not gameobject.has_component(self.component_type):
-                return
-            world.ecs.remove_component(gameobject.uid, self.component_type)
-        except GameObjectNotFoundError:
-            return
+# class IECSCommand(Protocol):
+#     """A Command object that makes a change to the ECS World instance"""
+#
+#     def get_type(self) -> str:
+#         """Return the type of this command"""
+#         raise NotImplementedError
+#
+#     def apply(self, world: World) -> None:
+#         """Apply the affects of this command to the world state"""
+#         raise NotImplementedError
+#
+#
+# @dataclasses.dataclass(frozen=True)
+# class AddComponentCommand:
+#     """This command adds a component to a gameobject
+#
+#     Attributes
+#     ----------
+#     gameobject_uid: int
+#         The unique identifier of a GameObject
+#     component: Component
+#         The component to add to the GameObject
+#     """
+#
+#     gameobject_uid: int
+#     component: Component
+#
+#     def get_type(self) -> str:
+#         return self.__class__.__name__
+#
+#     def apply(self, world: World) -> None:
+#         world.add_component(self.gameobject_uid, self.component)
+#
+#
+# @dataclasses.dataclass(frozen=True)
+# class RemoveComponentCommand:
+#     """
+#     This command removes a component from a gameobject
+#
+#     Attributes
+#     ----------
+#     gameobject_uid: int
+#         The unique identifier of a GameObject
+#     component_type: Type[Component]
+#         The component type to remove from the GameObject
+#     """
+#
+#     gameobject_uid: int
+#     component_type: Type[Component]
+#
+#     def get_type(self) -> str:
+#         return self.__class__.__name__
+#
+#     def apply(self, world: World) -> None:
+#         try:
+#             gameobject = world.get_gameobject(self.gameobject_uid)
+#             if not gameobject.has_component(self.component_type):
+#                 return
+#             world.remove_component(gameobject.uid, self.component_type)
+#         except GameObjectNotFoundError:
+#             return
+#
+#
+# @dataclasses.dataclass(frozen=True)
+# class DeleteGameObjectCommand:
+#     """This command removes a gameobject from the world
+#
+#     Attributes
+#     ----------
+#     gameobject_uid: int
+#         The unique identifier of a GameObject
+#     """
+#
+#     gameobject_uid: int
+#
+#     def get_type(self) -> str:
+#         return self.__class__.__name__
+#
+#     def apply(self, world: World) -> None:
+#         world.delete_gameobject(self.gameobject_uid)
 
 
 class Component(ABC):
@@ -436,9 +575,10 @@ class World:
         "_gameobjects",
         "_dead_gameobjects",
         "_resources",
-        "_command_queue",
         "_component_types",
         "_component_factories",
+        "_removed_components",
+        "_added_components",
     )
 
     def __init__(self) -> None:
@@ -446,29 +586,32 @@ class World:
         self._gameobjects: Dict[int, GameObject] = {}
         self._dead_gameobjects: OrderedSet[int] = OrderedSet([])
         self._resources: Dict[Type[Any], Any] = {}
-        self._command_queue: List[IECSCommand] = []
         self._component_types: Dict[str, ComponentInfo] = {}
         self._component_factories: Dict[Type[Component], IComponentFactory] = {}
-
-    @property
-    def ecs(self) -> esper.World:
-        return self._ecs
-
-    @property
-    def command_queue(self) -> List[IECSCommand]:
-        return self._command_queue
+        self._removed_components: Dict[Type[Component], OrderedSet[int]] = {}
+        self._added_components: Dict[Type[Component], OrderedSet[int]] = {}
 
     def spawn_gameobject(
         self, components: Optional[List[Component]] = None, name: Optional[str] = None
     ) -> GameObject:
         """Create a new gameobject and attach any given component instances"""
-        entity_id = self._ecs.create_entity(*components if components else [])
+        components_to_add = components if components else []
+
+        entity_id = self._ecs.create_entity(*components_to_add)
+
         gameobject = GameObject(
             unique_id=entity_id,
             world=self,
             name=(name if name else f"GameObject({entity_id})"),
         )
+
         self._gameobjects[gameobject.uid] = gameobject
+
+        # Since we did not add the component through the GameObject's add_component
+        # method, we have to set the references here
+        for c in components_to_add:
+            c.set_gameobject(gameobject)
+
         return gameobject
 
     def get_gameobject(self, gid: int) -> GameObject:
@@ -486,27 +629,117 @@ class World:
         """Check that a GameObject with the given id exists"""
         return gid in self._gameobjects
 
-    def try_gameobject(self, gid: int) -> Optional[GameObject]:
-        """Retrieve the GameObject with the given id"""
-        return self._gameobjects.get(gid)
-
     def delete_gameobject(self, gid: int) -> None:
         """Remove gameobject from world"""
+        gameobject = self._gameobjects[gid]
+
+        gameobject.set_active(False)
+
         self._dead_gameobjects.append(gid)
 
         # Recursively remove all children
-        for child in self._gameobjects[gid].children:
+        for child in gameobject.children:
             self.delete_gameobject(child.uid)
+
+    def add_component(self, gid: int, component: Component) -> None:
+        """Add a component to an entity"""
+        component.set_gameobject(self._gameobjects[gid])
+        component_type = type(component)
+        if component_type not in self._added_components:
+            self._added_components[component_type] = OrderedSet([])
+        self._added_components[component_type].append(int(gid))
+        self._ecs.add_component(int(gid), component)
+
+    def remove_component(self, gid: int, component_type: Type[Component]) -> None:
+        """Remove a component from an entity"""
+        if component_type not in self._removed_components:
+            self._removed_components[component_type] = OrderedSet([])
+        self._removed_components[component_type].append(int(gid))
+        try:
+            self._ecs.remove_component(int(gid), component_type)
+        except KeyError:
+            # This will throw a key error if the GameObject does not
+            # have any components.
+            return
 
     def get_component(self, component_type: Type[_CT]) -> List[Tuple[int, _CT]]:
         """Get all the gameobjects that have a given component type"""
-        return self._ecs.get_component(component_type)  # type: ignore
+        return self._ecs.get_component(component_type)
+
+    def get_component_for_entity(self, guid: int, component_type: Type[_CT]) -> _CT:
+        """Return the component type attached to an entity
+
+        Parameters
+        ----------
+        guid: int
+            The entity to check on
+        component_type: Type[_CT]
+            The component type to retrieve
+
+        Returns
+        -------
+        _CT
+            The instance of the given component type
+        """
+        try:
+            return self._ecs.component_for_entity(guid, component_type)
+        except KeyError:
+            raise ComponentNotFoundError(component_type)
+
+    def try_component_for_entity(
+        self, guid: int, component_type: Type[_CT]
+    ) -> Optional[_CT]:
+        """Attempt to return the component type attached to an entity
+
+        Parameters
+        ----------
+        guid: int
+            The entity to check on
+        component_type: Type[_CT]
+            The component type to retrieve
+
+        Returns
+        -------
+        Optional[_CT]
+            The instance of the given component type
+        """
+        try:
+            return self._ecs.try_component(guid, component_type)
+        except KeyError:
+            return None
 
     def get_components(
         self, *component_types: Type[_CT]
     ) -> List[Tuple[int, List[_CT]]]:
         """Get all game objects with the given components"""
         return self._ecs.get_components(*component_types)  # type: ignore
+
+    def has_components(self, guid: int, *component_types: Type[_CT]) -> bool:
+        try:
+            return self._ecs.has_components(guid, *component_types)
+        except KeyError:
+            return False
+
+    def has_component(self, guid: int, component_type: Type[_CT]) -> bool:
+        try:
+            return self._ecs.has_component(guid, component_type)
+        except KeyError:
+            return False
+
+    def get_components_for_entity(self, guid: int) -> Tuple[_CT, ...]:
+        """Get the instances of the component types on the given entity
+
+        Parameters
+        ----------
+        guid: int
+            The entity to check on
+
+        Returns
+        -------
+        Tuple[Component, ...]
+            Component instances
+        """
+        return self._ecs.components_for_entity(guid)
 
     def _clear_dead_gameobjects(self) -> None:
         """Delete gameobjects that were removed from the world"""
@@ -521,11 +754,6 @@ class World:
 
             del self._gameobjects[gameobject_id]
         self._dead_gameobjects.clear()
-
-    def clear_command_queue(self) -> None:
-        while self._command_queue:
-            command = self._command_queue.pop(0)
-            command.apply(self)
 
     def add_system(self, system: ISystem, priority: int = 0) -> None:
         """Add a System instance to the World"""
@@ -544,7 +772,8 @@ class World:
         """Call the process method on all systems"""
         self._clear_dead_gameobjects()
         self._ecs.process(**kwargs)  # type: ignore
-        self.clear_command_queue()
+        self._removed_components.clear()
+        self._added_components.clear()
 
     def add_resource(self, resource: Any) -> None:
         """Add a global resource to the world"""
@@ -611,78 +840,32 @@ class World:
             factory if factory is not None else DefaultComponentFactory(component_type)
         )
 
-    def __repr__(self) -> str:
-        return "World(gameobjects={}, resources={})".format(
-            len(self._gameobjects),
-            list(self._resources.values()),
-        )
-
-
-_KT = TypeVar("_KT")
-
-
-class ComponentBundle:
-    """"""
-
-    __slots__ = "components"
-
-    def __init__(self, components: Dict[Type[Component], Dict[str, Any]]) -> None:
-        self.components = components
-
-    @staticmethod
-    def _merge_overrides(
-        source: Dict[_KT, Any], other: Dict[_KT, Any]
-    ) -> Dict[_KT, Any]:
-        """
-        Merges two dictionaries of overrides together
+    def get_removed_component(self, component_type: Type[Component]) -> List[int]:
+        """Return the IDs of GameObjects that had the given component type added
 
         Parameters
         ----------
-        source: Dict[_KT, Any]
-            Dictionary with initial field values
-
-        other: Dict[_KT, Any]
-            Dictionary with fields to override in the source dict
+        component_type: Type[Component]
+            The component type to check for
 
         Returns
         -------
-        Dict[_KT, Any]
-            New dictionary with fields in source overwritten
-            with values from the other
+        List[int]
+            The ID of GameObjects
         """
-        merged_dict = {**source}
+        return list(self._removed_components.get(component_type, []))
 
-        for key, value in other.items():
-            if isinstance(value, dict):
-                # get node or create one
-                node = merged_dict.get(key, {})
-                merged_dict[key] = ComponentBundle._merge_overrides(node, value)  # type: ignore
-            else:
-                merged_dict[key] = value
+    def get_added_component(self, component_type: Type[Component]) -> List[int]:
+        """Return the IDs of GameObjects that had the given component type removed
 
-        return merged_dict
+        Parameters
+        ----------
+        component_type: Type[Component]
+            The component type to check for
 
-    def spawn(
-        self,
-        world: World,
-        overrides: Optional[Dict[Type[Component], Dict[str, Any]]] = None,
-    ) -> GameObject:
-        """Create a new gameobject instance"""
-        merged_options: Dict[
-            Type[Component], Dict[str, Any]
-        ] = ComponentBundle._merge_overrides(
-            self.components, (overrides if overrides else {})
-        )
-
-        gameobject = world.spawn_gameobject()
-
-        for component_type, _ in self.components.items():
-            component_factory = world.get_factory(component_type)
-            gameobject.add_component(
-                component_factory.create(
-                    world,
-                    **merged_options.get(component_type, {}),
-                )
-            )
-
-        return gameobject
+        Returns
+        -------
+        List[int]
+            The ID of GameObjects
+        """
+        return list(self._added_components.get(component_type, []))

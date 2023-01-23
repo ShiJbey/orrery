@@ -68,6 +68,7 @@ Businesses:
       StatusManager: {}
       Services: {}
       Location: {}
+
   - name: Library
     extends: "business::default"
     owner_type: Librarian
@@ -81,6 +82,7 @@ Businesses:
       Location:
         activities:
           - reading
+
   - name: "business::default::cafe"
     extends: "business::default"
     owner_type: Owner
@@ -95,6 +97,7 @@ Businesses:
         activities:
           - reading
           - socializing
+
 Activities:
   - name: Rest
     traits:

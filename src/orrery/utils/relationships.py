@@ -68,6 +68,40 @@ def add_relationship(subject: GameObject, target: GameObject) -> GameObject:
     return relationship
 
 
+def get_relationship_entity(
+    subject: GameObject,
+    target: GameObject,
+) -> GameObject:
+    """Return the entity containing the relationship from the subject to the target
+
+    Parameters
+    ----------
+    subject: GameObject
+        The owner of the relationship
+    target: GameObject
+        The character the relationship is directed toward
+
+    Returns
+    -------
+    Relationship
+        The relationship instance toward the other entity
+
+    Throws
+    ------
+    KeyError
+        If no relationship is found for the given target and create_new is False
+    """
+    if not has_relationship(subject, target):
+        relationship = add_relationship(subject, target)
+
+    else:
+        relationship = subject.world.get_gameobject(
+            subject.get_component(RelationshipManager).relationships[target.uid]
+        )
+
+    return relationship
+
+
 def get_relationship(
     subject: GameObject,
     target: GameObject,
@@ -124,7 +158,7 @@ def has_relationship(subject: GameObject, target: GameObject) -> bool:
         Returns True if there is an existing Relationship instance with the
         target as the target
     """
-    return target.uid in subject.get_component(RelationshipManager)
+    return target.uid in subject.get_component(RelationshipManager).relationships
 
 
 def add_relationship_status(
@@ -142,8 +176,8 @@ def add_relationship_status(
     status: Status
         The core component of the status
     """
-    relationship = get_relationship(subject, target, create_new=True)
-    add_status(relationship.gameobject, status)
+    relationship = get_relationship_entity(subject, target)
+    add_status(relationship, status)
 
 
 def get_relationship_status(
@@ -164,9 +198,9 @@ def get_relationship_status(
     status_type: Type[RelationshipStatus]
         The type of the status
     """
-    return get_relationship(subject, target, create_new=True).gameobject.get_component(
-        status_type
-    )
+
+    relationship = get_relationship_entity(subject, target)
+    return relationship.get_component(status_type)
 
 
 def remove_relationship_status(
@@ -186,8 +220,9 @@ def remove_relationship_status(
     status_type: Type[RelationshipStatus]
         The type of the relationship status to remove
     """
-    relationship = get_relationship(subject, target, create_new=True)
-    remove_status(relationship.gameobject, status_type)
+
+    relationship = get_relationship_entity(subject, target)
+    remove_status(relationship, status_type)
 
 
 def has_relationship_status(
@@ -211,8 +246,9 @@ def has_relationship_status(
     -------
         Returns True if relationship has a given status
     """
-    relationship = get_relationship(subject, target, create_new=True)
-    return all([has_status(relationship.gameobject, s) for s in status_type])
+
+    relationship = get_relationship_entity(subject, target)
+    return all([has_status(relationship, s) for s in status_type])
 
 
 def get_relationships_with_statuses(

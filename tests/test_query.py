@@ -7,7 +7,7 @@ from orrery.core.config import (
     CharacterSpawnConfig,
 )
 from orrery.core.ecs import Component, World
-from orrery.core.query import QueryBuilder, Relation, eq_
+from orrery.core.ecs.query import QueryBuilder, Relation, eq_
 from orrery.utils.query import is_gender
 
 

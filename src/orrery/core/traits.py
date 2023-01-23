@@ -32,7 +32,7 @@ class Trait(Component, ABC):
 class TraitManager(Component):
     """Manages the state of statuses attached to the GameObject"""
 
-    __slots__ = "_statuses", "_prohibited_traits"
+    __slots__ = "_traits", "_prohibited_traits"
 
     def __init__(self) -> None:
         super().__init__()

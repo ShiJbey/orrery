@@ -71,9 +71,6 @@ def test_virtue_vect_factory() -> None:
     world = World()
     world.add_resource(random.Random(1234))
     factory = VirtuesFactory()
-    vector = cast(
-        Virtues,
-        factory.create(world, overrides={"ADVENTURE": 10, "POWER": 20}),
-    )
+    vector = factory.create(world, overrides={"ADVENTURE": 10, "POWER": 20})
     assert vector[VirtueType.ADVENTURE] == 10
     assert vector[VirtueType.POWER] == 20

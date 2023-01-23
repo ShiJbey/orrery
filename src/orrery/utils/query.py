@@ -7,8 +7,8 @@ from orrery.components.business import Occupation, WorkHistory
 from orrery.components.character import GameCharacter, Gender, LifeStage
 from orrery.components.statuses import Dating, Married
 from orrery.core.ecs import Component, GameObject, World
+from orrery.core.ecs.query import Query, QueryContext, QueryFilterFn, QueryGetFn
 from orrery.core.event import EventRole, EventRoleType, RoleBinder, RoleList
-from orrery.core.query import Query, QueryContext, QueryFilterFn, QueryGetFn
 from orrery.core.relationship import Relationship, RelationshipManager
 from orrery.core.time import SimDateTime
 from orrery.utils.relationships import (

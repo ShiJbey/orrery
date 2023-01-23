@@ -23,11 +23,19 @@ from orrery.components.residence import (
 from orrery.components.shared import (
     Active,
     Building,
+    CurrentSettlement,
     FrequentedLocations,
     Location,
     Position2D,
 )
-from orrery.components.statuses import BossOf, CoworkerOf, EmployeeOf, Married, ParentOf
+from orrery.components.statuses import (
+    BossOf,
+    CoworkerOf,
+    EmployeeOf,
+    Married,
+    ParentOf,
+    Unemployed,
+)
 from orrery.core.activity import (
     ActivityInstance,
     ActivityLibrary,
@@ -46,7 +54,7 @@ from orrery.utils.relationships import (
     has_relationship_status,
     remove_relationship_status,
 )
-from orrery.utils.statuses import add_status, remove_status
+from orrery.utils.statuses import add_status, has_status, remove_status
 
 
 def create_settlement(
@@ -195,6 +203,8 @@ def add_character_to_settlement(character: GameObject, settlement: GameObject) -
 
     character.add_component(Active())
 
+    character.add_component(CurrentSettlement(settlement.uid))
+
     character.world.get_resource(EventHandler).record_event(
         orrery.events.JoinSettlementEvent(
             character.world.get_resource(SimDateTime), settlement, character
@@ -313,14 +323,13 @@ def set_residence(
     """
     if resident := character.try_component(Resident):
         # This character is currently a resident at another location
-        former_residence = world.get_gameobject(resident.residence).get_component(
-            Residence
-        )
+        former_residence = world.get_gameobject(resident.residence)
+        former_residence_comp = former_residence.get_component(Residence)
 
-        if former_residence.is_owner(character.uid):
-            former_residence.remove_owner(character.uid)
+        if former_residence_comp.is_owner(character.uid):
+            former_residence_comp.remove_owner(character.uid)
 
-        former_residence.remove_resident(character.uid)
+        former_residence_comp.remove_resident(character.uid)
         character.remove_component(Resident)
 
         former_settlement = world.get_gameobject(resident.settlement).get_component(
@@ -328,8 +337,8 @@ def set_residence(
         )
         former_settlement.population -= 1
 
-        if len(former_residence.residents) <= 0:
-            former_residence.gameobject.add_component(Vacant())
+        if len(former_residence_comp.residents) <= 0:
+            former_residence.add_component(Vacant())
 
     if new_residence is None:
         return
@@ -610,6 +619,8 @@ def end_job(
 
     character.remove_component(Occupation)
 
+    add_status(character, Unemployed())
+
     # Update the former employee's work history
     if not character.has_component(WorkHistory):
         character.add_component(WorkHistory())
@@ -669,6 +680,9 @@ def start_job(
 
     character.add_component(occupation)
 
+    if has_status(character, Unemployed):
+        remove_status(character, Unemployed)
+
     if is_owner:
         if business_comp.owner is not None:
             # The old owner needs to be removed before setting a new one
@@ -714,7 +728,7 @@ def start_job(
     character.world.get_resource(EventHandler).record_event(
         orrery.events.StartJobEvent(
             character.world.get_resource(SimDateTime),
-            business=business_comp.gameobject,
+            business=business,
             character=character,
             occupation=occupation.occupation_type,
         )
@@ -892,7 +906,7 @@ def set_frequented_locations(
     max_locations: int
         The max number of locations to sample
     """
-    clear_frequented_locations(world, character)
+    clear_frequented_locations(character)
 
     liked_activities = [
         a.name for a in character.get_component(LikedActivities).activities
@@ -912,17 +926,16 @@ def set_frequented_locations(
         )
 
 
-def clear_frequented_locations(world: World, character: GameObject) -> None:
+def clear_frequented_locations(character: GameObject) -> None:
     """
     Un-mark any locations as frequented by the given character
 
     Parameters
     ----------
-    world: World
-        The World instance of the simulation
     character: GameObject
         The GameObject to remove as a frequenter
     """
+    world = character.world
     if frequented_locations := character.try_component(FrequentedLocations):
         for location_id in frequented_locations.locations:
             location = world.get_gameobject(location_id).get_component(Location)
