@@ -9,7 +9,7 @@ and where they choose to frequent within the settlement(s).
 Currently, traits are not in use.
 """
 from abc import ABC
-from typing import Dict, Iterator, List, Set, Type
+from typing import Any, Dict, Iterator, List, Set, Type
 
 from ordered_set import OrderedSet
 
@@ -114,3 +114,6 @@ class TraitManager(Component):
 
     def __repr__(self) -> str:
         return "{}({})".format(self.__class__.__name__, self._traits)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"traits": [t.__name__ for t in self._traits]}

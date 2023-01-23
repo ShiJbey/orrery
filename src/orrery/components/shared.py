@@ -19,7 +19,7 @@ class FrequentedLocations(Component):
     __slots__ = "locations"
 
     def __init__(self, locations: Optional[Set[int]] = None) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.locations: Set[int] = locations if locations else set()
 
     def to_dict(self) -> Dict[str, Any]:
@@ -60,7 +60,7 @@ class Building(Component):
     __slots__ = "building_type", "lot", "settlement"
 
     def __init__(self, building_type: str, lot: int, settlement: int) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.building_type: str = building_type
         self.lot: int = lot
         self.settlement: int = settlement
@@ -87,7 +87,7 @@ class Name(Component):
     __slots__ = "name"
 
     def __init__(self, name: str) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.name: str = name
 
     def to_dict(self) -> Dict[str, Any]:
@@ -105,14 +105,14 @@ class Location(Component):
     __slots__ = "frequented_by", "activities"
 
     def __init__(self, activities: Optional[Set[ActivityInstance]] = None) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.frequented_by: Set[int] = set()
         self.activities: Set[ActivityInstance] = activities if activities else set()
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "frequented_by": list(self.frequented_by),
-            "activities": list(self.activities),
+            "activities": [str(a) for a in self.activities],
         }
 
     def __repr__(self):

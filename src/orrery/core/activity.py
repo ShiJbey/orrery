@@ -104,7 +104,7 @@ class Activities(Component):
     __slots__ = "_activities"
 
     def __init__(self, activities: Set[ActivityInstance]) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self._activities: Set[ActivityInstance] = activities
 
     def to_dict(self) -> Dict[str, Any]:
@@ -147,7 +147,7 @@ class LikedActivities(Component):
     __slots__ = "activities"
 
     def __init__(self, activities: Set[ActivityInstance]) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.activities: Set[ActivityInstance] = activities
 
     def to_dict(self) -> Dict[str, Any]:

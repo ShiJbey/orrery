@@ -238,7 +238,7 @@ class GridSettlementMap(ISettlementMap):
             "type": self.__class__.__name__,
             "width": self.get_size()[0],
             "height": self.get_size()[1],
-            "cells": self._grid.get_cells(),
+            "cells": [cell if cell else -1 for cell in self._grid.get_cells()],
         }
 
 

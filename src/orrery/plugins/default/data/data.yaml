@@ -50,6 +50,7 @@ Residences:
       Residence: {}
       Location: {}
       Position2D: {}
+      StatusManager: {}
 
 Occupations:
   - name: Librarian

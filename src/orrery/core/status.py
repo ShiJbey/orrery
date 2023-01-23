@@ -5,7 +5,7 @@ Statuses represent temporary states of being for gameobjects. They are meant to
 be paired with systems and updated every timestep and may be used to represent
 temporary states like mood, unemployment, pregnancies, etc.
 """
-from typing import Iterator, List, Type
+from typing import Any, Dict, Iterator, List, Type
 
 from ordered_set import OrderedSet
 
@@ -74,3 +74,6 @@ class StatusManager(Component):
 
     def __repr__(self) -> str:
         return "{}({})".format(self.__class__.__name__, self._statuses)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"statuses": [s.__name__ for s in self._statuses]}

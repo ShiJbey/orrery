@@ -201,7 +201,7 @@ def add_character_to_settlement(character: GameObject, settlement: GameObject) -
     set_liked_activities(character.world, character)
     set_frequented_locations(character.world, character, settlement)
 
-    character.add_component(Active())
+    add_status(character, Active())
 
     character.add_component(CurrentSettlement(settlement.uid))
 
@@ -228,7 +228,7 @@ def remove_character_from_settlement(
     set_liked_activities(character.world, character)
     set_frequented_locations(character.world, character, settlement)
 
-    character.remove_component(Active)
+    remove_status(character, Active)
 
     character.world.get_resource(EventHandler).record_event(
         orrery.events.LeaveSettlementEvent(
@@ -274,8 +274,9 @@ def add_residence(
     residence.add_component(
         Building(building_type="residential", lot=lot, settlement=settlement.uid)
     )
-    residence.add_component(Vacant())
-    residence.add_component(Active())
+
+    add_status(residence, Vacant())
+    add_status(residence, Active())
 
     return residence
 
@@ -330,7 +331,7 @@ def set_residence(
             former_residence_comp.remove_owner(character.uid)
 
         former_residence_comp.remove_resident(character.uid)
-        character.remove_component(Resident)
+        remove_status(character, Resident)
 
         former_settlement = world.get_gameobject(resident.settlement).get_component(
             Settlement
@@ -338,7 +339,7 @@ def set_residence(
         former_settlement.population -= 1
 
         if len(former_residence_comp.residents) <= 0:
-            former_residence.add_component(Vacant())
+            add_status(former_residence, Vacant())
 
     if new_residence is None:
         return
@@ -352,12 +353,12 @@ def set_residence(
     if is_owner:
         new_residence.get_component(Residence).add_owner(character.uid)
 
-    character.add_component(
-        Resident(residence=new_residence.uid, settlement=new_settlement.uid)
+    add_status(
+        character, Resident(residence=new_residence.uid, settlement=new_settlement.uid)
     )
 
     if new_residence.has_component(Vacant):
-        new_residence.remove_component(Vacant)
+        remove_status(new_residence, Vacant)
 
     new_settlement.get_component(Settlement).population += 1
 
@@ -496,7 +497,7 @@ def startup_business(
     )
 
     # Mark the business as an active GameObject
-    business.add_component(Active())
+    add_status(business, Active())
     add_status(business, OpenForBusiness())
 
     # Add the business as a location within the town if it has a location component
@@ -558,7 +559,7 @@ def shutdown_business(business: GameObject) -> None:
 
     # Un-mark the business as active so it doesn't appear in queries
     business.remove_component(Location)
-    business.remove_component(Active)
+    remove_status(business, Active)
 
     world.get_resource(EventHandler).record_event(event)
 
@@ -582,7 +583,7 @@ def end_job(
     business_comp = business.get_component(Business)
 
     if character.has_component(BusinessOwner):
-        character.remove_component(BusinessOwner)
+        remove_status(character, BusinessOwner)
         business_comp.set_owner(None)
 
         # Update relationships boss/employee relationships
@@ -696,7 +697,7 @@ def start_job(
             )
 
         business_comp.set_owner(character.uid)
-        character.add_component(BusinessOwner(business.uid))
+        add_status(character, BusinessOwner(business.uid))
 
         for employee_id in business.get_component(Business).get_employees():
             employee = world.get_gameobject(employee_id)

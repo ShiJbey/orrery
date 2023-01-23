@@ -97,7 +97,7 @@ class GameCharacter(Component):
         age: int = 0,
         gender: Gender = Gender.NotSpecified,
     ) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.config: CharacterConfig = config
         self.first_name: str = first_name
         self.last_name: str = last_name

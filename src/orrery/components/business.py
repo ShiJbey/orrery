@@ -42,7 +42,7 @@ class Occupation(Component):
             (defaults to 0.0)
         """
 
-        super(Component, self).__init__()
+        super().__init__()
         self._occupation_type: str = occupation_type
         self._business: int = business
         self._years_held: float = years_held
@@ -72,7 +72,7 @@ class Occupation(Component):
 
     def set_years_held(self, years: float) -> None:
         """Set the number of years this character has held this job"""
-        self._years_held += years
+        self._years_held = years
 
     def __repr__(self) -> str:
         return "Occupation(occupation_type={}, business={}, years_held={})".format(
@@ -99,7 +99,7 @@ class WorkHistoryEntry:
 
     occupation_type: str
     business: int
-    years_held: float
+    years_held: float = 0
     reason_for_leaving: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
@@ -120,7 +120,7 @@ class WorkHistory(Component):
     __slots__ = "_chronological_history", "_categorical_history"
 
     def __init__(self) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self._chronological_history: List[WorkHistoryEntry] = []
         self._categorical_history: Dict[str, List[WorkHistoryEntry]] = {}
 
@@ -372,9 +372,13 @@ class Business(Component):
         return {
             "name": self.name,
             "open_positions": self._open_positions,
-            "employees": self.get_employees(),
-            "owner": self.owner if self.owner is not None else -1,
-            "owner_type": self.owner_type if self.owner_type is not None else "",
+            "employees": [
+                {"title": title, "uid": uid} for uid, title in self._employees.items()
+            ],
+            "owner": {
+                "title": self.config.owner_type if self.config.owner_type else "",
+                "uid": self.owner if self.owner is not None else -1,
+            },
             "years_in_business": self.years_in_business,
         }
 
@@ -613,3 +617,6 @@ class BusinessLibrary:
 @dataclass
 class BusinessOwner(Component):
     business: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"business": self.business}

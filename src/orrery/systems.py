@@ -741,7 +741,7 @@ class UnemployedStatusSystem(System):
 
                     for c in characters_to_depart:
                         add_status(c, Departed())
-                        c.remove_component(Active)
+                        remove_status(c, Active)
 
                     remove_status(character, Unemployed)
 
@@ -871,7 +871,7 @@ class MarkUnemployedNewCharactersSystem(System):
             gameobject = self.world.get_gameobject(guid)
             if game_character := gameobject.try_component(GameCharacter):
                 if game_character.life_stage >= LifeStage.YoungAdult:
-                    gameobject.add_component(InTheWorkforce())
+                    add_status(gameobject, InTheWorkforce())
                     if not gameobject.has_component(Occupation):
                         add_status(gameobject, Unemployed())
 

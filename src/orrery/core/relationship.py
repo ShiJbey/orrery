@@ -247,10 +247,14 @@ class Relationship(Component):
         "active_modifiers",
         "_is_dirty",
         "target",
+        "owner",
     )
 
-    def __init__(self, target: int, stats: Dict[str, RelationshipStat]) -> None:
+    def __init__(
+        self, owner: int, target: int, stats: Dict[str, RelationshipStat]
+    ) -> None:
         super().__init__()
+        self.owner: int = owner
         self.target: int = target
         self.interaction_score: RelationshipStat = RelationshipStat(-5, 5, False)
         self._stats: Dict[str, RelationshipStat] = {
@@ -291,6 +295,8 @@ class Relationship(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "owner": self.owner,
+            "target": self.target,
             **{k: stat.to_dict() for k, stat in self._stats.items()},
             "active_modifiers": [m.to_dict() for _, m in self.active_modifiers.items()],
         }

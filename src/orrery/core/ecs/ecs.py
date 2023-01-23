@@ -334,8 +334,8 @@ class GameObject:
         ret = {
             "id": self.uid,
             "name": self.name,
-            "parent": self.parent if self.parent else -1,
-            "children": self.children,
+            "parent": self.parent.uid if self.parent else -1,
+            "children": [c.uid for c in self.children],
             "components": {
                 c.__class__.__name__: c.to_dict() for c in self.get_components()
             },

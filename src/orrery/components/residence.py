@@ -38,7 +38,7 @@ class Residence(Component):
     )
 
     def __init__(self, config: ResidenceConfig, settlement: int) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.config: ResidenceConfig = config
         self.settlement: int = settlement
         self.owners: OrderedSet[int] = OrderedSet([])

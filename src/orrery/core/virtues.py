@@ -70,7 +70,7 @@ class Virtues(Component):
     __slots__ = "_virtues"
 
     def __init__(self, overrides: Optional[Dict[str, int]] = None) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self._virtues: npt.NDArray[np.int32] = np.zeros(  # type: ignore
             len(VirtueType), dtype=np.int32
         )
@@ -146,7 +146,7 @@ class Virtues(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "virtues": {
+            **{
                 virtue.name: int(self._virtues[i])
                 for i, virtue in enumerate(list(VirtueType))
             },

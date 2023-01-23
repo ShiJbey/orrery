@@ -117,7 +117,7 @@ class OwesDebt(Component):
     amount: int
 
     def to_dict(self) -> Dict[str, Any]:
-        return {**super().to_dict(), "amount": self.amount}
+        return {"amount": self.amount}
 
 
 def main():

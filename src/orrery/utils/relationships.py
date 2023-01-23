@@ -39,6 +39,7 @@ def add_relationship(subject: GameObject, target: GameObject) -> GameObject:
     relationship = world.spawn_gameobject(
         [
             Relationship(
+                owner=subject.uid,
                 target=target.uid,
                 stats={
                     name: RelationshipStat(
