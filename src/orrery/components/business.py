@@ -16,6 +16,7 @@ from orrery.core.ecs import (
     query,
 )
 from orrery.core.settlement import Settlement
+from orrery.core.status import StatusComponent
 from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
 
@@ -294,6 +295,9 @@ class Services(Component):
     def __repr__(self) -> str:
         return "{}({})".format(self.__class__.__name__, self.services)
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {"services": [str(s) for s in self.services]}
+
 
 class ServicesFactory(IComponentFactory):
     """
@@ -306,13 +310,13 @@ class ServicesFactory(IComponentFactory):
         return Services(set([service_library.get(s) for s in service_list]))
 
 
-class ClosedForBusiness(Component):
+class ClosedForBusiness(StatusComponent):
     """Tags a business as being closed and no longer active"""
 
     pass
 
 
-class OpenForBusiness(Component):
+class OpenForBusiness(StatusComponent):
     """Tags a business as being open and active in the simulation"""
 
     pass
@@ -615,7 +619,9 @@ class BusinessLibrary:
 
 
 @dataclass
-class BusinessOwner(Component):
+class BusinessOwner(StatusComponent):
+
+    created: str
     business: int
 
     def to_dict(self) -> Dict[str, Any]:

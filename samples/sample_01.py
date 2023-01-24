@@ -1,5 +1,4 @@
 import time
-from dataclasses import dataclass
 from typing import Any, Dict
 
 import orrery.plugins.default.businesses
@@ -12,6 +11,7 @@ from orrery.core.config import OrreryConfig, RelationshipSchema, RelationshipSta
 from orrery.core.ecs import Component, GameObject, World
 from orrery.core.relationship import Relationship, RelationshipModifier
 from orrery.core.social_rule import ISocialRule, SocialRuleLibrary
+from orrery.core.status import StatusComponent
 from orrery.core.time import SimDateTime
 from orrery.core.virtues import Virtues
 from orrery.exporter import export_to_json
@@ -112,9 +112,12 @@ class VirtueCompatibilityRule(ISocialRule):
         )
 
 
-@dataclass
-class OwesDebt(Component):
-    amount: int
+class OwesDebt(StatusComponent):
+    """Marks a character as owing money to another character"""
+
+    def __init__(self, created: str, amount: int) -> None:
+        super().__init__(created)
+        self.amount: int = amount
 
     def to_dict(self) -> Dict[str, Any]:
         return {"amount": self.amount}
@@ -141,6 +144,8 @@ def main():
     character_library = sim.world.get_resource(CharacterLibrary)
 
     west_world = create_settlement(sim.world, "West World")
+
+    current_date = sim.world.get_resource(SimDateTime)
 
     delores = create_character(
         sim.world,
@@ -175,7 +180,9 @@ def main():
     get_relationship(delores, charlotte)["Friendship"] += -1
     get_relationship(delores, charlotte)["Friendship"] += 1
 
-    add_relationship_status(delores, charlotte, OwesDebt(500))
+    add_relationship_status(
+        delores, charlotte, OwesDebt(current_date.to_iso_str(), 500)
+    )
 
     add_relationship(delores, william)
     get_relationship(delores, william)["Romance"] += 4

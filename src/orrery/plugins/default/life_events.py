@@ -58,11 +58,12 @@ def start_dating_event(threshold: float = 0.7, probability: float = 1.0) -> ILif
     """Defines an event where two characters become friends"""
 
     def effect(world: World, event: Event):
+        current_date = world.get_resource(SimDateTime).to_iso_str()
         initiator = world.get_gameobject(event["Initiator"])
         other = world.get_gameobject(event["Other"])
 
-        add_relationship_status(initiator, other, Dating())
-        add_relationship_status(other, initiator, Dating())
+        add_relationship_status(initiator, other, Dating(current_date))
+        add_relationship_status(other, initiator, Dating(current_date))
 
     return LifeEvent(
         name="StartDating",
@@ -182,13 +183,14 @@ def marriage_event(threshold: float = 0.7, probability: float = 1.0) -> ILifeEve
     """Defines an event where two characters become friends"""
 
     def effect(world: World, event: Event):
+        current_date = world.get_resource(SimDateTime).to_iso_str()
         initiator = world.get_gameobject(event["Initiator"])
         other = world.get_gameobject(event["Other"])
 
         remove_relationship_status(initiator, other, Dating)
         remove_relationship_status(other, initiator, Dating)
-        add_relationship_status(initiator, other, Married())
-        add_relationship_status(other, initiator, Married())
+        add_relationship_status(initiator, other, Married(current_date))
+        add_relationship_status(other, initiator, Married(current_date))
 
     return LifeEvent(
         name="GetMarried",
@@ -230,6 +232,7 @@ def pregnancy_event() -> ILifeEvent:
     """Defines an event where two characters stop dating"""
 
     def execute(world: World, event: Event):
+        current_date = world.get_resource(SimDateTime)
         due_date = SimDateTime.from_iso_str(
             world.get_resource(SimDateTime).to_iso_str()
         )
@@ -238,6 +241,7 @@ def pregnancy_event() -> ILifeEvent:
         add_status(
             world.get_gameobject(event["PregnantOne"]),
             Pregnant(
+                created=current_date.to_iso_str(),
                 partner_id=event["Other"],
                 due_date=due_date,
             ),
@@ -330,8 +334,9 @@ def retire_event(probability: float = 0.4) -> ILifeEvent:
         return None
 
     def execute(world: World, event: Event):
+        date = world.get_resource(SimDateTime)
         retiree = world.get_gameobject(event["Retiree"])
-        add_status(retiree, Retired())
+        add_status(retiree, Retired(date.to_iso_str()))
         end_job(retiree, event.name)
 
     return LifeEvent(
@@ -403,8 +408,9 @@ def find_own_place_event(probability: float = 0.1) -> ILifeEvent:
 
 def die_of_old_age(probability: float = 0.8) -> ILifeEvent:
     def execute(world: World, event: Event) -> None:
+        current_date = world.get_resource(SimDateTime)
         deceased = world.get_gameobject(event["Deceased"])
-        add_status(deceased, Deceased())
+        add_status(deceased, Deceased(current_date.to_iso_str()))
         remove_status(deceased, Active)
         world.get_resource(EventHandler).record_event(
             DeathEvent(world.get_resource(SimDateTime), deceased)

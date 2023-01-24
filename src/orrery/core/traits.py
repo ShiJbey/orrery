@@ -28,6 +28,9 @@ class Trait(Component, ABC):
 
     excludes: Set[str] = set()
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
+
 
 class TraitManager(Component):
     """Manages the state of statuses attached to the GameObject"""

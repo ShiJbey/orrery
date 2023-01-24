@@ -486,6 +486,8 @@ class SpawnResidentSystem(System):
             if bundle is None:
                 return
 
+            current_date = self.world.get_resource(SimDateTime).to_iso_str()
+
             # Track all the characters generated
             generated_characters: List[GameObject] = []
 
@@ -524,14 +526,14 @@ class SpawnResidentSystem(System):
 
                 # Configure relationship from character to spouse
                 add_relationship(character, spouse)
-                add_relationship_status(character, spouse, Married())
-                add_relationship_status(character, spouse, Married())
+                add_relationship_status(character, spouse, Married(current_date))
+                add_relationship_status(character, spouse, Married(current_date))
                 get_relationship(character, spouse)["Romance"] += 45
                 get_relationship(character, spouse)["Friendship"] += 30
 
                 # Configure relationship from spouse to character
                 add_relationship(spouse, character)
-                add_relationship_status(spouse, character, Married())
+                add_relationship_status(spouse, character, Married(current_date))
                 get_relationship(spouse, character)["Romance"] += 45
                 get_relationship(spouse, character)["Friendship"] += 30
 
@@ -562,34 +564,34 @@ class SpawnResidentSystem(System):
 
                     # Relationship of child to character
                     add_relationship(child, character)
-                    add_relationship_status(child, character, ChildOf())
+                    add_relationship_status(child, character, ChildOf(current_date))
                     get_relationship(child, character)["Friendship"] += 20
 
                     # Relationship of character to child
                     add_relationship(character, child)
-                    add_relationship_status(character, child, ParentOf())
+                    add_relationship_status(character, child, ParentOf(current_date))
                     get_relationship(character, child)["Friendship"] += 20
 
                     if spouse:
                         # Relationship of child to spouse
                         add_relationship(child, spouse)
-                        add_relationship_status(child, spouse, ChildOf())
+                        add_relationship_status(child, spouse, ChildOf(current_date))
                         get_relationship(child, spouse)["Friendship"] += 20
 
                         # Relationship of spouse to child
                         add_relationship(spouse, child)
-                        add_relationship_status(spouse, child, ParentOf())
+                        add_relationship_status(spouse, child, ParentOf(current_date))
                         get_relationship(spouse, child)["Friendship"] += 20
 
                     for sibling in children:
                         # Relationship of child to sibling
                         add_relationship(child, sibling)
-                        add_relationship_status(child, sibling, SiblingOf())
+                        add_relationship_status(child, sibling, SiblingOf(current_date))
                         get_relationship(child, sibling)["Friendship"] += 20
 
                         # Relationship of sibling to child
                         add_relationship(sibling, child)
-                        add_relationship_status(sibling, child, SiblingOf())
+                        add_relationship_status(sibling, child, SiblingOf(current_date))
                         get_relationship(sibling, child)["Friendship"] += 20
 
             # Record a life event
@@ -704,6 +706,7 @@ class UnemployedStatusSystem(System):
     years_to_find_a_job: float = 5.0
 
     def run(self, *args: Any, **kwargs: Any) -> None:
+        current_date = self.world.get_resource(SimDateTime)
         for guid, unemployed in self.world.get_component(Unemployed):
             character = self.world.get_gameobject(guid)
             unemployed.years += self.elapsed_time.total_days / DAYS_PER_YEAR
@@ -740,7 +743,7 @@ class UnemployedStatusSystem(System):
                             characters_to_depart.append(child)
 
                     for c in characters_to_depart:
-                        add_status(c, Departed())
+                        add_status(c, Departed(current_date.to_iso_str()))
                         remove_status(c, Active)
 
                     remove_status(character, Unemployed)
@@ -784,19 +787,25 @@ class PregnantStatusSystem(System):
 
             # Birthing parent to child
             add_relationship(character, baby)
-            add_relationship_status(character, baby, ParentOf())
+            add_relationship_status(
+                character, baby, ParentOf(current_date.to_iso_str())
+            )
 
             # Child to birthing parent
             add_relationship(baby, character)
-            add_relationship_status(baby, character, ChildOf())
+            add_relationship_status(baby, character, ChildOf(current_date.to_iso_str()))
 
             # Other parent to child
             add_relationship(other_parent, baby)
-            add_relationship_status(other_parent, baby, ParentOf())
+            add_relationship_status(
+                other_parent, baby, ParentOf(current_date.to_iso_str())
+            )
 
             # Child to other parent
             add_relationship(baby, other_parent)
-            add_relationship_status(baby, other_parent, ChildOf())
+            add_relationship_status(
+                baby, other_parent, ChildOf(current_date.to_iso_str())
+            )
 
             # Create relationships with children of birthing parent
             for rel in get_relationships_with_statuses(character, ParentOf):
@@ -807,11 +816,15 @@ class PregnantStatusSystem(System):
 
                 # Baby to sibling
                 add_relationship(baby, sibling)
-                add_relationship_status(baby, sibling, SiblingOf())
+                add_relationship_status(
+                    baby, sibling, SiblingOf(current_date.to_iso_str())
+                )
 
                 # Sibling to baby
                 add_relationship(sibling, baby)
-                add_relationship_status(sibling, baby, SiblingOf())
+                add_relationship_status(
+                    sibling, baby, SiblingOf(current_date.to_iso_str())
+                )
 
             # Create relationships with children of other parent
             for rel in get_relationships_with_statuses(other_parent, ParentOf):
@@ -822,11 +835,15 @@ class PregnantStatusSystem(System):
 
                 # Baby to sibling
                 add_relationship(baby, sibling)
-                add_relationship_status(baby, sibling, SiblingOf())
+                add_relationship_status(
+                    baby, sibling, SiblingOf(current_date.to_iso_str())
+                )
 
                 # Sibling to baby
                 add_relationship(sibling, baby)
-                add_relationship_status(sibling, baby, SiblingOf())
+                add_relationship_status(
+                    sibling, baby, SiblingOf(current_date.to_iso_str())
+                )
 
             remove_status(character, Pregnant)
 
@@ -867,13 +884,14 @@ class RelationshipUpdateSystem(System):
 
 class MarkUnemployedNewCharactersSystem(System):
     def run(self, *args: Any, **kwargs: Any) -> None:
+        current_date = self.world.get_resource(SimDateTime)
         for guid in self.world.get_added_component(CurrentSettlement):
             gameobject = self.world.get_gameobject(guid)
             if game_character := gameobject.try_component(GameCharacter):
                 if game_character.life_stage >= LifeStage.YoungAdult:
-                    add_status(gameobject, InTheWorkforce())
+                    add_status(gameobject, InTheWorkforce(current_date.to_iso_str()))
                     if not gameobject.has_component(Occupation):
-                        add_status(gameobject, Unemployed())
+                        add_status(gameobject, Unemployed(current_date.to_iso_str()))
 
 
 class RemoveFrequentedFromDepartedSystem(System):

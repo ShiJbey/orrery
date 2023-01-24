@@ -6,7 +6,8 @@ TODO: Fill in the placeholder tests with actual tests
 from dataclasses import dataclass
 
 from orrery.core.ecs import Component, World
-from orrery.core.status import StatusManager
+from orrery.core.status import StatusComponent, StatusManager
+from orrery.core.time import SimDateTime
 from orrery.utils.statuses import add_status, remove_status
 
 
@@ -16,19 +17,21 @@ class Stats(Component):
     defense: int = 0
 
 
-class SuperStrength(Component):
+class SuperStrength(StatusComponent):
     pass
 
 
 def test_status_on_add() -> None:
     """Test calling the Status.on_add method"""
     world = World()
+    world.add_resource(SimDateTime())
+    current_date = world.get_resource(SimDateTime).to_iso_str()
 
     gameobject = world.spawn_gameobject([Stats(), StatusManager()])
 
     assert gameobject.get_component(Stats).strength == 0
 
-    add_status(gameobject, SuperStrength())
+    add_status(gameobject, SuperStrength(current_date))
 
     assert gameobject.get_component(Stats).strength == 10
 
@@ -36,11 +39,14 @@ def test_status_on_add() -> None:
 def test_status_on_remove() -> None:
     """Test calling the Status.on_remove method"""
     world = World()
+    world.add_resource(SimDateTime())
+    current_date = world.get_resource(SimDateTime).to_iso_str()
+
     gameobject = world.spawn_gameobject([Stats(), StatusManager()])
 
     assert gameobject.get_component(Stats).strength == 0
 
-    add_status(gameobject, SuperStrength())
+    add_status(gameobject, SuperStrength(current_date))
 
     assert gameobject.get_component(Stats).strength == 10
 

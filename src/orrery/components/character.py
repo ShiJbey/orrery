@@ -7,10 +7,11 @@ from typing import Any, Dict, List, Optional, Type
 
 from orrery.core.config import CharacterAgingConfig, CharacterConfig
 from orrery.core.ecs import Component, ComponentBundle, IComponentFactory, World
+from orrery.core.status import StatusComponent
 from orrery.core.tracery import Tracery
 
 
-class Departed(Component):
+class Departed(StatusComponent):
     """Tags a character as departed from the simulation"""
 
     pass
@@ -19,34 +20,37 @@ class Departed(Component):
 class CanAge(Component):
     """Tags a GameObject as being able to change life stages as time passes"""
 
-    pass
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 class CanDie(Component):
     """Tags a GameObject as being able to die from natural causes"""
 
-    pass
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 class CanGetPregnant(Component):
     """Tags a character as capable of giving birth"""
 
-    pass
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
-class Deceased(Component):
+class Deceased(StatusComponent):
     """Tags a character as deceased"""
 
     pass
 
 
-class Retired(Component):
+class Retired(StatusComponent):
     """Tags a character as retired"""
 
     pass
 
 
-class CollegeGraduate(Component):
+class CollegeGraduate(StatusComponent):
     """Tags a character as having graduated from college"""
 
     pass

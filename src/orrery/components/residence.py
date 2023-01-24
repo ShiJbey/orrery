@@ -8,6 +8,7 @@ from ordered_set import OrderedSet
 
 from orrery.core.config import ResidenceConfig
 from orrery.core.ecs import Component, ComponentBundle, GameObject, World
+from orrery.core.status import StatusComponent
 
 
 class Residence(Component):
@@ -81,7 +82,7 @@ class Residence(Component):
         return character in self.residents
 
 
-class Resident(Component):
+class Resident(StatusComponent):
     """
     Component attached to characters indicating that they live in the town
 
@@ -95,8 +96,8 @@ class Resident(Component):
 
     __slots__ = "residence", "settlement"
 
-    def __init__(self, residence: int, settlement: int) -> None:
-        super().__init__()
+    def __init__(self, created: str, residence: int, settlement: int) -> None:
+        super().__init__(created)
         self.residence: int = residence
         self.settlement: int = settlement
 
@@ -104,7 +105,7 @@ class Resident(Component):
         return {"residence": self.residence, "settlement": self.settlement}
 
 
-class Vacant(Component):
+class Vacant(StatusComponent):
     """Tags a residence that does not currently have anyone living there"""
 
     pass

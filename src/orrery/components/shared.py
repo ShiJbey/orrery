@@ -6,9 +6,10 @@ from typing import Any, Dict, List, Optional, Set
 
 from orrery.core.activity import ActivityInstance, ActivityLibrary
 from orrery.core.ecs import Component, IComponentFactory, World
+from orrery.core.status import StatusComponent
 
 
-class Active(Component):
+class Active(StatusComponent):
     """Tags a GameObject as active within the simulation"""
 
     pass
@@ -142,6 +143,9 @@ class CurrentSettlement(Component):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.settlement_id})"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"settlement_id": self.settlement_id}
 
 
 @dataclass

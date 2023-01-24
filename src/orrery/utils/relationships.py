@@ -11,10 +11,10 @@ from orrery.core.relationship import (
     RelationshipStat,
 )
 from orrery.core.social_rule import SocialRuleLibrary
-from orrery.core.status import StatusManager
+from orrery.core.status import StatusComponent, StatusManager
 from orrery.utils.statuses import add_status, has_status, remove_status
 
-_RST = TypeVar("_RST", bound="RelationshipStatus")
+_RST = TypeVar("_RST", bound=StatusComponent)
 
 
 def add_relationship(subject: GameObject, target: GameObject) -> GameObject:
@@ -163,7 +163,7 @@ def has_relationship(subject: GameObject, target: GameObject) -> bool:
 
 
 def add_relationship_status(
-    subject: GameObject, target: GameObject, status: Component
+    subject: GameObject, target: GameObject, status: StatusComponent
 ) -> None:
     """
     Add a relationship status to the given character
@@ -207,7 +207,7 @@ def get_relationship_status(
 def remove_relationship_status(
     subject: GameObject,
     target: GameObject,
-    status_type: Type[Component],
+    status_type: Type[StatusComponent],
 ) -> None:
     """
     Remove a relationship status to the given character
@@ -229,7 +229,7 @@ def remove_relationship_status(
 def has_relationship_status(
     subject: GameObject,
     target: GameObject,
-    *status_type: Type[Component],
+    *status_type: Type[StatusComponent],
 ) -> bool:
     """
     Check if a relationship between characters has a certain status type
@@ -253,7 +253,7 @@ def has_relationship_status(
 
 
 def get_relationships_with_statuses(
-    subject: GameObject, *status_types: Type[Component]
+    subject: GameObject, *status_types: Type[StatusComponent]
 ) -> List[Relationship]:
     """Get all the relationships with the given status types
 

@@ -1,12 +1,12 @@
 from typing import Type, TypeVar
 
-from orrery.core.ecs import Component, GameObject
-from orrery.core.status import StatusManager
+from orrery.core.ecs import GameObject
+from orrery.core.status import StatusComponent, StatusManager
 
-_ST = TypeVar("_ST", bound=Component)
+_ST = TypeVar("_ST", bound=StatusComponent)
 
 
-def add_status(gameobject: GameObject, status: Component) -> None:
+def add_status(gameobject: GameObject, status: StatusComponent) -> None:
     """
     Add a status to the given GameObject
 
@@ -40,7 +40,7 @@ def get_status(gameobject: GameObject, status_type: Type[_ST]) -> _ST:
     return gameobject.get_component(status_type)
 
 
-def remove_status(gameobject: GameObject, status_type: Type[Component]) -> None:
+def remove_status(gameobject: GameObject, status_type: Type[StatusComponent]) -> None:
     """
     Remove a status from the given GameObject
 
@@ -56,7 +56,7 @@ def remove_status(gameobject: GameObject, status_type: Type[Component]) -> None:
         gameobject.get_component(StatusManager).remove(status_type)
 
 
-def has_status(gameobject: GameObject, status_type: Type[Component]) -> bool:
+def has_status(gameobject: GameObject, status_type: Type[StatusComponent]) -> bool:
     """
     Check for a status of a given type
 

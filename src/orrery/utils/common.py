@@ -197,11 +197,11 @@ def add_character_to_settlement(character: GameObject, settlement: GameObject) -
     settlement: GameObject
         The settlement to add the character to
     """
-
+    current_date = character.world.get_resource(SimDateTime).to_iso_str()
     set_liked_activities(character.world, character)
     set_frequented_locations(character.world, character, settlement)
 
-    add_status(character, Active())
+    add_status(character, Active(current_date))
 
     character.add_component(CurrentSettlement(settlement.uid))
 
@@ -260,6 +260,7 @@ def create_residence(
 def add_residence(
     residence: GameObject, settlement: GameObject, lot: int
 ) -> GameObject:
+    current_date = residence.world.get_resource(SimDateTime).to_iso_str()
     settlement_comp = settlement.get_component(Settlement)
 
     # Reserve the space
@@ -275,8 +276,8 @@ def add_residence(
         Building(building_type="residential", lot=lot, settlement=settlement.uid)
     )
 
-    add_status(residence, Vacant())
-    add_status(residence, Active())
+    add_status(residence, Vacant(current_date))
+    add_status(residence, Active(current_date))
 
     return residence
 
@@ -322,6 +323,8 @@ def set_residence(
     """
     Moves a character into a new permanent residence
     """
+    current_date = world.get_resource(SimDateTime).to_iso_str()
+
     if resident := character.try_component(Resident):
         # This character is currently a resident at another location
         former_residence = world.get_gameobject(resident.residence)
@@ -339,7 +342,7 @@ def set_residence(
         former_settlement.population -= 1
 
         if len(former_residence_comp.residents) <= 0:
-            add_status(former_residence, Vacant())
+            add_status(former_residence, Vacant(current_date))
 
     if new_residence is None:
         return
@@ -354,7 +357,12 @@ def set_residence(
         new_residence.get_component(Residence).add_owner(character.uid)
 
     add_status(
-        character, Resident(residence=new_residence.uid, settlement=new_settlement.uid)
+        character,
+        Resident(
+            created=current_date,
+            residence=new_residence.uid,
+            settlement=new_settlement.uid,
+        ),
     )
 
     if new_residence.has_component(Vacant):
@@ -470,6 +478,7 @@ def startup_business(
     lot_id: int, optional
         The lot to place the business on (defaults to None)
     """
+    current_date = settlement.world.get_resource(SimDateTime).to_iso_str()
 
     settlement_comp = settlement.get_component(Settlement)
 
@@ -497,8 +506,8 @@ def startup_business(
     )
 
     # Mark the business as an active GameObject
-    add_status(business, Active())
-    add_status(business, OpenForBusiness())
+    add_status(business, Active(current_date))
+    add_status(business, OpenForBusiness(current_date))
 
     # Add the business as a location within the town if it has a location component
     if business.has_component(Location):
@@ -527,7 +536,7 @@ def shutdown_business(business: GameObject) -> None:
 
     # Update the business as no longer active
     remove_status(business, OpenForBusiness)
-    add_status(business, ClosedForBusiness())
+    add_status(business, ClosedForBusiness(date.to_iso_str()))
 
     # Remove all the employees
     for employee in business_comp.get_employees():
@@ -578,6 +587,7 @@ def end_job(
         The reason for them leaving their job (defaults to "")
     """
     world = character.world
+    current_date = world.get_resource(SimDateTime).to_iso_str()
     occupation = character.get_component(Occupation)
     business = world.get_gameobject(occupation.business)
     business_comp = business.get_component(Business)
@@ -620,7 +630,7 @@ def end_job(
 
     character.remove_component(Occupation)
 
-    add_status(character, Unemployed())
+    add_status(character, Unemployed(current_date))
 
     # Update the former employee's work history
     if not character.has_component(WorkHistory):
@@ -672,6 +682,7 @@ def start_job(
         and the business owner is not None
     """
     world = character.world
+    current_date = world.get_resource(SimDateTime).to_iso_str()
     business_comp = business.get_component(Business)
     occupation = Occupation(occupation_name, business.uid)
 
@@ -697,12 +708,14 @@ def start_job(
             )
 
         business_comp.set_owner(character.uid)
-        add_status(character, BusinessOwner(business.uid))
+        add_status(
+            character, BusinessOwner(business=business.uid, created=current_date)
+        )
 
         for employee_id in business.get_component(Business).get_employees():
             employee = world.get_gameobject(employee_id)
-            add_relationship_status(character, employee, BossOf())
-            add_relationship_status(employee, character, EmployeeOf())
+            add_relationship_status(character, employee, BossOf(current_date))
+            add_relationship_status(employee, character, EmployeeOf(current_date))
             get_relationship(character, employee).interaction_score += 1
             get_relationship(employee, character).interaction_score += 1
 
@@ -710,8 +723,8 @@ def start_job(
         # Update boss/employee relationships if needed
         if business_comp.owner is not None:
             owner = world.get_gameobject(business_comp.owner)
-            add_relationship_status(owner, character, BossOf())
-            add_relationship_status(character, owner, EmployeeOf())
+            add_relationship_status(owner, character, BossOf(current_date))
+            add_relationship_status(character, owner, EmployeeOf(current_date))
 
             get_relationship(character, owner).interaction_score += 1
             get_relationship(owner, character).interaction_score += 1
@@ -719,8 +732,8 @@ def start_job(
         # Update employee/employee relationships
         for employee_id in business.get_component(Business).get_employees():
             employee = world.get_gameobject(employee_id)
-            add_relationship_status(character, employee, CoworkerOf())
-            add_relationship_status(employee, character, CoworkerOf())
+            add_relationship_status(character, employee, CoworkerOf(current_date))
+            add_relationship_status(employee, character, CoworkerOf(current_date))
             get_relationship(character, employee).interaction_score += 1
             get_relationship(employee, character).interaction_score += 1
 

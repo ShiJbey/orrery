@@ -10,6 +10,7 @@ from orrery.core.ecs import Component, GameObject, World
 from orrery.core.ecs.query import Query, QueryContext, QueryFilterFn, QueryGetFn
 from orrery.core.event import EventRole, EventRoleType, RoleBinder, RoleList
 from orrery.core.relationship import Relationship, RelationshipManager
+from orrery.core.status import StatusComponent
 from orrery.core.time import SimDateTime
 from orrery.utils.relationships import (
     get_relationship,
@@ -399,7 +400,7 @@ def has_work_experience_filter(
     return fn
 
 
-def has_status_filter(status_type: Type[Component]) -> QueryFilterFn:
+def has_status_filter(status_type: Type[StatusComponent]) -> QueryFilterFn:
     """Check if a GameObject has the given status present"""
 
     def filter_fn(world: World, *gameobject: GameObject) -> bool:

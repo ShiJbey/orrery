@@ -472,9 +472,10 @@ class Component(ABC):
         """
         self._gameobject = gameobject
 
+    @abstractmethod
     def to_dict(self) -> Dict[str, Any]:
         """Serialize the component to a dict"""
-        return {}
+        raise NotImplementedError
 
 
 class ISystem(ABC, esper.Processor):

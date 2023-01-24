@@ -5,11 +5,32 @@ Statuses represent temporary states of being for gameobjects. They are meant to
 be paired with systems and updated every timestep and may be used to represent
 temporary states like mood, unemployment, pregnancies, etc.
 """
+from abc import ABC
 from typing import Any, Dict, Iterator, List, Type
 
 from ordered_set import OrderedSet
 
 from orrery.core.ecs import Component
+
+
+class StatusComponent(Component, ABC):
+    """
+    A component that tracks a temporary state of being for an entity
+
+    Attributes
+    ----------
+    created: str
+        A timestamp of when this status was created
+    """
+
+    __slots__ = "created"
+
+    def __init__(self, created: str) -> None:
+        super().__init__()
+        self.created: str = created
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"created": self.created}
 
 
 class StatusManager(Component):
@@ -19,13 +40,13 @@ class StatusManager(Component):
 
     def __init__(self) -> None:
         super().__init__()
-        self._statuses: OrderedSet[Type[Component]] = OrderedSet([])
+        self._statuses: OrderedSet[Type[StatusComponent]] = OrderedSet([])
 
-    def get_all(self) -> List[Type[Component]]:
+    def get_all(self) -> List[Type[StatusComponent]]:
         """Return all the statuses in the tracker"""
         return list(self._statuses)
 
-    def add(self, status_type: Type[Component]) -> None:
+    def add(self, status_type: Type[StatusComponent]) -> None:
         """Add a status type to the tracker
 
         Parameters
@@ -35,7 +56,7 @@ class StatusManager(Component):
         """
         self._statuses.add(status_type)
 
-    def has(self, status_type: Type[Component]) -> bool:
+    def has(self, status_type: Type[StatusComponent]) -> bool:
         """Check if a status type is active
 
         Parameters
@@ -50,7 +71,7 @@ class StatusManager(Component):
         """
         return status_type in self
 
-    def remove(self, status_type: Type[Component]) -> None:
+    def remove(self, status_type: Type[StatusComponent]) -> None:
         """Remove a status type from the tracker
 
         Parameters
@@ -64,11 +85,11 @@ class StatusManager(Component):
         """Removes all statuses from the tracker gameobject"""
         self._statuses.clear()
 
-    def __contains__(self, item: Type[Component]) -> bool:
+    def __contains__(self, item: Type[StatusComponent]) -> bool:
         """Check if a status type is attached to the GameObject"""
         return item in self._statuses
 
-    def __iter__(self) -> Iterator[Type[Component]]:
+    def __iter__(self) -> Iterator[Type[StatusComponent]]:
         """Return iterator to active status types"""
         return self._statuses.__iter__()
 
