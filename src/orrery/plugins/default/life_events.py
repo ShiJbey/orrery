@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from typing import Any, List, Optional, Tuple, cast
+from typing import Any, List, Optional, Tuple
 
 from orrery.components.business import Business, Occupation, OpenForBusiness
 from orrery.components.character import (
@@ -313,10 +313,11 @@ def retire_event(probability: float = 0.4) -> ILifeEvent:
             return None
 
         eligible_characters: List[GameObject] = []
+
+        character: GameCharacter
         for gid, (character, _, _) in world.get_components(
             GameCharacter, Occupation, Active
         ):
-            character = cast(GameCharacter, character)
 
             if character.life_stage < LifeStage.Senior:
                 continue
@@ -345,11 +346,11 @@ def find_own_place_event(probability: float = 0.1) -> ILifeEvent:
     def bind_potential_mover(world: World) -> List[Tuple[Any, ...]]:
         eligible: List[Tuple[Any, ...]] = []
 
+        character: GameCharacter
+        resident: Resident
         for gid, (character, _, resident, _) in world.get_components(
             GameCharacter, Occupation, Resident, Active
         ):
-            character = cast(GameCharacter, character)
-            resident = cast(Resident, resident)
 
             if character.life_stage < LifeStage.YoungAdult:
                 continue

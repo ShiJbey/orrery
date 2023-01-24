@@ -1,7 +1,7 @@
 import random
 from abc import ABC, abstractmethod
 from collections import Counter
-from typing import Any, List, Optional, Type, cast
+from typing import Any, List, Optional, Type
 
 from ordered_set import OrderedSet
 
@@ -253,8 +253,8 @@ class FindEmployeesSystem(ISystem):
         occupation_types = self.world.get_resource(OccupationTypeLibrary)
         rng = self.world.get_resource(random.Random)
 
+        business: Business
         for guid, (business, _) in self.world.get_components(Business, OpenForBusiness):
-            business = cast(Business, business)
             open_positions = business.get_open_positions()
 
             for occupation_name in open_positions:
@@ -468,11 +468,11 @@ class SpawnResidentSystem(System):
         event_logger = self.world.get_resource(EventHandler)
         character_library = self.world.get_resource(CharacterLibrary)
 
+        residence_comp: Residence
         for guid, (residence_comp, _, _, _) in self.world.get_components(
             Residence, Building, Active, Vacant
         ):
             residence = self.world.get_gameobject(guid)
-            residence_comp = cast(Residence, residence_comp)
 
             settlement = self.world.get_gameobject(residence_comp.settlement)
 
@@ -601,8 +601,8 @@ class SpawnResidentSystem(System):
 class BusinessUpdateSystem(System):
     def run(self, *args: Any, **kwargs: Any) -> None:
         time_increment = float(self.elapsed_time.total_days) / DAYS_PER_YEAR
+        business: Business
         for _, (business, _) in self.world.get_components(Business, OpenForBusiness):
-            business = cast(Business, business)
             # Increment how long the business has been open for business
             business.years_in_business += time_increment
 
@@ -634,11 +634,11 @@ class CharacterAgingSystem(System):
 
         age_increment = float(self.elapsed_time.total_days) / DAYS_PER_YEAR
 
+        character_comp: GameCharacter
         for guid, (character_comp, _, _) in self.world.get_components(
             GameCharacter, CanAge, Active
         ):
             character = self.world.get_gameobject(guid)
-            character_comp = cast(GameCharacter, character_comp)
 
             life_stage_before = character_comp.life_stage
             character_comp.increment_age(age_increment)

@@ -1,5 +1,3 @@
-from typing import cast
-
 from orrery.core.activity import (
     Activities,
     ActivitiesFactory,
@@ -108,8 +106,8 @@ def test_activity_manager_factory() -> None:
 
     factory = ActivitiesFactory()
 
-    activity_manager = cast(
-        Activities, factory.create(world, activities=["Shopping", "Eating"])
+    activity_manager: Activities = factory.create(
+        world, activities=["Shopping", "Eating"]
     )
 
     assert activity_library.get("Drinking") not in activity_manager

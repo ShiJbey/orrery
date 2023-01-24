@@ -162,7 +162,7 @@ class VirtuesFactory(IComponentFactory):
         initialization: str = "zeros",
         overrides: Optional[Dict[str, int]] = None,
         **kwargs: Any,
-    ) -> Component:
+    ) -> Virtues:
         """Generate a new set of character values"""
         values_overrides: Dict[str, int] = {}
 
