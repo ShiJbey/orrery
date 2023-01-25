@@ -8,20 +8,27 @@ from ordered_set import OrderedSet
 import orrery.events
 from orrery.components.business import (
     Business,
-    BusinessLibrary,
+    InTheWorkforce,
     Occupation,
     OccupationType,
-    OccupationTypeLibrary,
     OpenForBusiness,
+    Unemployed,
 )
 from orrery.components.character import (
     CanAge,
-    CharacterLibrary,
+    ChildOf,
+    Dating,
     Departed,
     GameCharacter,
     LifeStage,
+    Married,
+    ParentOf,
+    Pregnant,
+    SiblingOf,
 )
-from orrery.components.residence import Residence, ResidenceLibrary, Resident, Vacant
+from orrery.components.relationship import Relationship, lerp
+from orrery.components.residence import Residence, Resident, Vacant
+from orrery.components.settlement import Settlement
 from orrery.components.shared import (
     Active,
     Building,
@@ -29,24 +36,18 @@ from orrery.components.shared import (
     FrequentedLocations,
     Location,
 )
-from orrery.components.statuses import (
-    ChildOf,
-    Dating,
-    InTheWorkforce,
-    Married,
-    ParentOf,
-    Pregnant,
-    SiblingOf,
-    Unemployed,
+from orrery.config import CharacterConfig, OrreryConfig
+from orrery.content_management import (
+    BusinessLibrary,
+    CharacterLibrary,
+    LifeEventLibrary,
+    OccupationTypeLibrary,
+    ResidenceLibrary,
 )
-from orrery.core.config import CharacterConfig, OrreryConfig
-from orrery.core.ecs import ComponentBundle, GameObject, ISystem
-from orrery.core.ecs.query import QueryBuilder
+from orrery.core.ecs import GameObject, ISystem, QueryBuilder
 from orrery.core.event import Event, EventHandler, EventRole
-from orrery.core.life_event import LifeEventLibrary
-from orrery.core.relationship import Relationship, lerp
-from orrery.core.settlement import Settlement
 from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
+from orrery.prefabs import CharacterPrefab
 from orrery.utils.common import (
     add_character_to_settlement,
     add_residence,
@@ -55,7 +56,7 @@ from orrery.utils.common import (
     create_business,
     create_character,
     create_residence,
-    generate_child_bundle,
+    generate_child_prefab,
     set_residence,
     start_job,
     startup_business,
@@ -301,13 +302,13 @@ class BuildHousingSystem(ISystem):
             # Pick a random lot from those available
             lot = rng.choice(vacancies)
 
-            bundle = residence_library.choose_random(rng)
+            prefab = residence_library.choose_random(rng)
 
-            if bundle is None:
+            if prefab is None:
                 continue
 
             add_residence(
-                create_residence(self.world, bundle, settlement_id),
+                create_residence(self.world, prefab),
                 settlement=self.world.get_gameobject(settlement_id),
                 lot=lot,
             )
@@ -378,25 +379,23 @@ class BuildBusinessSystem(ISystem):
             lot = rng.choice(vacancies)
 
             # Pick random eligible business archetype
-            bundle = business_library.choose_random(
+            prefab = business_library.choose_random(
                 self.world, self.world.get_gameobject(settlement_id)
             )
 
             # Return early if none of the businesses entries' preconditions
             # are satisfied
-            if bundle is None:
+            if prefab is None:
                 return
 
-            business_config = business_library.get(bundle.name)
-
-            if business_config.owner_type is not None:
-                owner_occupation_type = occupation_types.get(business_config.owner_type)
+            if prefab.config.owner_type is not None:
+                owner_occupation_type = occupation_types.get(prefab.config.owner_type)
                 owner = self.find_business_owner(owner_occupation_type)
 
                 if owner is None:
                     continue
 
-                business = create_business(self.world, bundle)
+                business = create_business(self.world, prefab)
 
                 startup_business(
                     business,
@@ -417,7 +416,7 @@ class BuildBusinessSystem(ISystem):
                 start_job(owner, business, owner_occupation_type.name, is_owner=True)
 
             else:
-                business = create_business(self.world, bundle)
+                business = create_business(self.world, prefab)
 
                 startup_business(
                     business,
@@ -446,19 +445,19 @@ class SpawnResidentSystem(System):
         self.chance_spawn: float = chance_spawn
 
     @staticmethod
-    def _try_get_spouse_bundle(
+    def _try_get_spouse_prefab(
         rng: random.Random,
         character_config: CharacterConfig,
         character_library: CharacterLibrary,
-    ) -> Optional[ComponentBundle]:
+    ) -> Optional[CharacterPrefab]:
         if rng.random() < character_config.spawning.chance_spawn_with_spouse:
             # Create another character to be their spouse
-            potential_spouse_bundles = character_library.get_matching_bundles(
+            potential_spouse_prefabs = character_library.get_matching_prefabs(
                 *character_config.spawning.spouse_archetypes
             )
 
-            if potential_spouse_bundles:
-                return rng.choice(potential_spouse_bundles)
+            if potential_spouse_prefabs:
+                return rng.choice(potential_spouse_prefabs)
 
         return None
 
@@ -469,21 +468,28 @@ class SpawnResidentSystem(System):
         character_library = self.world.get_resource(CharacterLibrary)
 
         residence_comp: Residence
-        for guid, (residence_comp, _, _, _) in self.world.get_components(
-            Residence, Building, Active, Vacant
+        current_settlement: CurrentSettlement
+        for guid, (
+            residence_comp,
+            _,
+            _,
+            _,
+            current_settlement,
+        ) in self.world.get_components(
+            Residence, Building, Active, Vacant, CurrentSettlement
         ):
             residence = self.world.get_gameobject(guid)
 
-            settlement = self.world.get_gameobject(residence_comp.settlement)
+            settlement = self.world.get_gameobject(current_settlement.settlement)
 
             # Return early if the random-roll is not sufficient
             if rng.random() > self.chance_spawn:
                 return
 
-            bundle = character_library.choose_random(rng)
+            prefab = character_library.choose_random(rng)
 
             # There are no archetypes available to spawn
-            if bundle is None:
+            if prefab is None:
                 return
 
             current_date = self.world.get_resource(SimDateTime).to_iso_str()
@@ -494,7 +500,7 @@ class SpawnResidentSystem(System):
             # Create a new entity using the archetype
 
             character = create_character(
-                self.world, bundle, life_stage=LifeStage.YoungAdult
+                self.world, prefab, life_stage=LifeStage.YoungAdult
             )
 
             generated_characters.append(character)
@@ -506,14 +512,14 @@ class SpawnResidentSystem(System):
 
             spouse: Optional[GameObject] = None
 
-            spouse_bundle = self._try_get_spouse_bundle(
+            spouse_prefab = self._try_get_spouse_prefab(
                 rng, character_config, character_library
             )
 
-            if spouse_bundle:
+            if spouse_prefab:
                 spouse = create_character(
                     self.world,
-                    spouse_bundle,
+                    spouse_prefab,
                     last_name=character.get_component(GameCharacter).last_name,
                     life_stage=LifeStage.Adult,
                 )
@@ -540,17 +546,17 @@ class SpawnResidentSystem(System):
             num_kids = rng.randint(0, character_config.spawning.max_children_at_spawn)
             children: List[GameObject] = []
 
-            potential_child_bundles = character_library.get_matching_bundles(
+            potential_child_prefabs = character_library.get_matching_prefabs(
                 *character_config.spawning.child_archetypes
             )
 
-            if potential_child_bundles:
-                chosen_child_bundles = rng.sample(potential_child_bundles, num_kids)
+            if potential_child_prefabs:
+                chosen_child_prefabs = rng.sample(potential_child_prefabs, num_kids)
 
-                for child_bundle in chosen_child_bundles:
+                for child_prefab in chosen_child_prefabs:
                     child = create_character(
                         self.world,
-                        child_bundle,
+                        child_prefab,
                         last_name=character.get_component(GameCharacter).last_name,
                         life_stage=LifeStage.Child,
                     )
@@ -771,7 +777,7 @@ class PregnantStatusSystem(System):
 
             baby = create_character(
                 self.world,
-                generate_child_bundle(
+                generate_child_prefab(
                     self.world,
                     character,
                     other_parent,

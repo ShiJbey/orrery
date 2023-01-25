@@ -1,24 +1,12 @@
 from __future__ import annotations
 
 import logging
-import random
-import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Type
+from typing import Any, Dict, List, Optional, Set
 
-from orrery.core.config import BusinessConfig
-from orrery.core.ecs import (
-    Component,
-    ComponentBundle,
-    GameObject,
-    IComponentFactory,
-    World,
-    query,
-)
-from orrery.core.settlement import Settlement
+from orrery.config import BusinessConfig
+from orrery.core.ecs import Component, query
 from orrery.core.status import StatusComponent
-from orrery.core.time import SimDateTime
-from orrery.core.tracery import Tracery
 
 logger = logging.getLogger(__name__)
 
@@ -221,45 +209,6 @@ class ServiceType:
         raise TypeError(f"Expected ServiceType but was {type(object)}")
 
 
-class ServiceLibrary:
-    """
-    Repository of various services offered by a business
-
-    Attributes
-    ----------
-    _next_id: int
-        The next ID assigned to a new ServiceType instance
-    _services: List[ServiceType]
-        A list of all the possible services a business could have
-    _name_to_id: Dict[str, int]
-        Mapping of service names to indexes into the _services list
-    """
-
-    __slots__ = "_next_id", "_services", "_name_to_id"
-
-    def __init__(self) -> None:
-        self._next_id: int = 0
-        self._services: List[ServiceType] = []
-        self._name_to_id: Dict[str, int] = {}
-
-    def __contains__(self, service_name: str) -> bool:
-        """Return True if a service type exists with the given name"""
-        return service_name.lower() in self._name_to_id
-
-    def get(self, service_name: str) -> ServiceType:
-        lc_service_name = service_name.lower()
-
-        if lc_service_name in self._name_to_id:
-            return self._services[self._name_to_id[lc_service_name]]
-
-        uid = self._next_id
-        self._next_id += 1
-        service_type = ServiceType(uid, lc_service_name)
-        self._services.append(service_type)
-        self._name_to_id[lc_service_name] = uid
-        return service_type
-
-
 class Services(Component):
     """
     Tracks the services offered by a business
@@ -297,17 +246,6 @@ class Services(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {"services": [str(s) for s in self.services]}
-
-
-class ServicesFactory(IComponentFactory):
-    """
-    Factory class that creates instances of Services components
-    """
-
-    def create(self, world: World, **kwargs: Any) -> Component:
-        service_list: List[str] = kwargs.get("services", [])
-        service_library = world.get_resource(ServiceLibrary)
-        return Services(set([service_library.get(s) for s in service_list]))
 
 
 class ClosedForBusiness(StatusComponent):
@@ -426,28 +364,6 @@ class Business(Component):
         )
 
 
-class BusinessFactory(IComponentFactory):
-    """Constructs instances of Business components"""
-
-    def create(self, world: World, **kwargs: Any) -> Component:
-        name_pattern: str = kwargs["name"]
-        owner_type: str = kwargs.get("owner_type", None)
-        employee_types: Dict[str, int] = {**kwargs.get("employees", {})}
-
-        config_name = kwargs["config"]
-
-        config = world.get_resource(BusinessLibrary).get(config_name)
-
-        name_generator = world.get_resource(Tracery)
-
-        return Business(
-            config=config,
-            name=name_generator.generate(name_pattern),
-            owner_type=owner_type,
-            open_positions=employee_types,
-        )
-
-
 @dataclass(frozen=True, slots=True)
 class OccupationType:
     """
@@ -470,154 +386,6 @@ class OccupationType:
     precondition: Optional[query.QueryFilterFn] = None
 
 
-class OccupationTypeLibrary:
-    """Collection OccupationType information for lookup at runtime"""
-
-    __slots__ = "_registry"
-
-    def __init__(self) -> None:
-        self._registry: Dict[str, OccupationType] = {}
-
-    def add(
-        self,
-        occupation_type: OccupationType,
-    ) -> None:
-        """
-        Add a new occupation type to the library
-
-        Parameters
-        ----------
-        occupation_type: OccupationType
-            The occupation type instance to add
-        """
-        if occupation_type.name in self._registry:
-            logger.debug(f"Overwriting OccupationType: ({occupation_type.name})")
-        self._registry[occupation_type.name] = occupation_type
-
-    def get(self, name: str) -> OccupationType:
-        """
-        Get an OccupationType by name
-
-        Parameters
-        ----------
-        name: str
-            The registered name of the OccupationType
-
-        Returns
-        -------
-        OccupationType
-
-        Raises
-        ------
-        KeyError
-            When there is not an OccupationType
-            registered to that name
-        """
-        return self._registry[name]
-
-
-class BusinessComponentBundle(ComponentBundle):
-    """
-    ComponentBundle for specifically constructing business instances
-
-    Attributes
-    ----------
-    name: str
-        The name of the config associated with this bundle
-
-    Note
-    ----
-    There really is not an explicit need for this class, but it
-    exists if we ever need to do something specific with bundles
-    that instantiate business GameObjects
-    """
-
-    __slots__ = "name"
-
-    def __init__(
-        self, name: str, components: Dict[Type[Component], Dict[str, Any]]
-    ) -> None:
-        super().__init__(components)
-        self.name: str = name
-
-
-class BusinessLibrary:
-    """Collection BusinessComponentBundles and configurations that create business GameObjects"""
-
-    __slots__ = "_registry", "_bundles"
-
-    def __init__(self) -> None:
-        self._registry: Dict[str, BusinessConfig] = {}
-        self._bundles: Dict[str, BusinessComponentBundle] = {}
-
-    def add(
-        self, config: BusinessConfig, bundle: Optional[BusinessComponentBundle] = None
-    ) -> None:
-        """Register a new archetype by name"""
-        self._registry[config.name] = config
-        if bundle:
-            self._bundles[config.name] = bundle
-
-    def get_all(self) -> List[BusinessConfig]:
-        """Get all stored archetypes"""
-        return list(self._registry.values())
-
-    def get(self, name: str) -> BusinessConfig:
-        """Get an archetype by name"""
-        return self._registry[name]
-
-    def get_bundle(self, name: str) -> BusinessComponentBundle:
-        """Retrieve the ComponentBundle mapped to the given name"""
-        return self._bundles[name]
-
-    def get_matching_bundles(self, *bundle_names: str) -> List[BusinessComponentBundle]:
-        """Get all component bundles that match the given regex strings"""
-
-        matches: List[BusinessComponentBundle] = []
-
-        for name, bundle in self._bundles.items():
-            if any([re.match(pattern, name) for pattern in bundle_names]):
-                matches.append(bundle)
-
-        return matches
-
-    def choose_random(
-        self, world: World, settlement: GameObject
-    ) -> Optional[BusinessComponentBundle]:
-        """
-        Return all business archetypes that may be built
-        given the state of the simulation
-        """
-        settlement_comp = settlement.get_component(Settlement)
-        date = world.get_resource(SimDateTime)
-        rng = world.get_resource(random.Random)
-
-        choices: List[BusinessConfig] = []
-        weights: List[int] = []
-
-        for config in self.get_all():
-            if (
-                settlement_comp.business_counts[config.name]
-                < config.spawning.max_instances
-                and settlement_comp.population >= config.spawning.min_population
-                and (
-                    config.spawning.year_available
-                    <= date.year
-                    < config.spawning.year_obsolete
-                )
-                and not config.template
-            ):
-                choices.append(config)
-                weights.append(config.spawning.spawn_frequency)
-
-        if choices:
-            # Choose an archetype at random
-            chosen = rng.choices(population=choices, weights=weights, k=1)[0]
-            return self._bundles[chosen.name]
-
-        return None
-
-
 @dataclass
 class BusinessOwner(StatusComponent):
 
@@ -626,3 +394,41 @@ class BusinessOwner(StatusComponent):
 
     def to_dict(self) -> Dict[str, Any]:
         return {"business": self.business}
+
+
+class Unemployed(StatusComponent):
+    """
+    Status component that marks a character as being able to work but lacking a job
+
+    Attributes
+    ----------
+    years: float
+        The number of years that the entity has been unemployed
+    """
+
+    __slots__ = "years"
+
+    def __init__(self, created: str, years: int = 0.0) -> None:
+        super().__init__(created)
+        self.years: float = years
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {**super().to_dict(), "years": self.years}
+
+
+class InTheWorkforce(StatusComponent):
+    """Tags a character as being eligible to work"""
+
+    pass
+
+
+class BossOf(StatusComponent):
+    pass
+
+
+class EmployeeOf(StatusComponent):
+    pass
+
+
+class CoworkerOf(StatusComponent):
+    pass

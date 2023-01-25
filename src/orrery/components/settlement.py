@@ -114,7 +114,7 @@ class Settlement(Component):
         The number of characters who are residents of the settlement
     business_counts: DefaultDict[str, int]
         A count of the number of types of businesses that exist in the town.
-        The dict key is the name of the BusinessComponentBundle used to construct
+        The dict key is the name of the BusinessPrefab used to construct
         the business GameObject
     locations: Set[int]
         The GameObject IDs of all the GameObjects with Location components that belong

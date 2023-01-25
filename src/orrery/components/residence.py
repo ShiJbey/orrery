@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import random
-import re
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict
 
 from ordered_set import OrderedSet
 
-from orrery.core.config import ResidenceConfig
-from orrery.core.ecs import Component, ComponentBundle, GameObject, World
+from orrery.config import ResidenceConfig
+from orrery.core.ecs import Component
 from orrery.core.status import StatusComponent
 
 
@@ -25,8 +23,6 @@ class Residence(Component):
         All the characters who live at the residence (including non-owners)
     former_residents: OrderedSet[int]
         Characters who lived at this residence in the past
-    settlement: int
-        ID of the Settlement this residence belongs to
     """
 
     __slots__ = (
@@ -34,14 +30,12 @@ class Residence(Component):
         "former_owners",
         "residents",
         "former_residents",
-        "settlement",
         "config",
     )
 
-    def __init__(self, config: ResidenceConfig, settlement: int) -> None:
+    def __init__(self, config: ResidenceConfig) -> None:
         super().__init__()
         self.config: ResidenceConfig = config
-        self.settlement: int = settlement
         self.owners: OrderedSet[int] = OrderedSet([])
         self.former_owners: OrderedSet[int] = OrderedSet([])
         self.residents: OrderedSet[int] = OrderedSet([])
@@ -49,7 +43,6 @@ class Residence(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "settlement": self.settlement,
             "owners": list(self.owners),
             "former_owners": list(self.former_owners),
             "residents": list(self.residents),
@@ -90,128 +83,19 @@ class Resident(StatusComponent):
     ----------
     residence: int
         Unique ID of the Residence GameObject that the resident belongs to
-    settlement: int
-        Unique ID of the settlement that the resident's residence belongs to
     """
 
-    __slots__ = "residence", "settlement"
+    __slots__ = "residence"
 
-    def __init__(self, created: str, residence: int, settlement: int) -> None:
+    def __init__(self, created: str, residence: int) -> None:
         super().__init__(created)
         self.residence: int = residence
-        self.settlement: int = settlement
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"residence": self.residence, "settlement": self.settlement}
+        return {"residence": self.residence}
 
 
 class Vacant(StatusComponent):
     """Tags a residence that does not currently have anyone living there"""
 
     pass
-
-
-class ResidenceComponentBundle(ComponentBundle):
-    """
-    ComponentBundle for specifically constructing residence instances
-
-    Attributes
-    ----------
-    name: str
-        The name of the config associated with this bundle
-    units: int
-        The number of residential units in the building (allows for multifamily housing)
-    unit_bundle: ComponentBundle
-        The component bundle used to construct the individual residential units that
-        belong to the building
-    """
-
-    __slots__ = "unit_bundle", "units", "name"
-
-    def __init__(
-        self,
-        name: str,
-        building_components: Dict[Type[Component], Dict[str, Any]],
-        unit_components: Dict[Type[Component], Dict[str, Any]],
-        units: int = 1,
-    ) -> None:
-        super().__init__(building_components)
-        self.name: str = name
-        self.unit_bundle: ComponentBundle = ComponentBundle(unit_components)
-        self.units: int = units
-
-    def spawn(
-        self,
-        world: World,
-        overrides: Optional[Dict[Type[Component], Dict[str, Any]]] = None,
-    ) -> GameObject:
-        building = super().spawn(world, overrides)
-
-        for _ in range(self.units):
-            building.add_child(self.unit_bundle.spawn(world))
-
-        return building
-
-
-class ResidenceLibrary:
-    """Collection factories that create residence entities"""
-
-    __slots__ = "_registry", "_bundles"
-
-    def __init__(self) -> None:
-        self._registry: Dict[str, ResidenceConfig] = {}
-        self._bundles: Dict[str, ResidenceComponentBundle] = {}
-
-    def add(
-        self, config: ResidenceConfig, bundle: Optional[ResidenceComponentBundle] = None
-    ) -> None:
-        """Register a new archetype by name"""
-        self._registry[config.name] = config
-        if bundle:
-            self._bundles[config.name] = bundle
-
-    def get_all(self) -> List[ResidenceConfig]:
-        """Get all stored archetypes"""
-        return list(self._registry.values())
-
-    def get(self, name: str) -> ResidenceConfig:
-        """Get an archetype by name"""
-        return self._registry[name]
-
-    def get_bundle(self, name: str) -> ResidenceComponentBundle:
-        """Retrieve the ComponentBundle mapped to the given name"""
-        return self._bundles[name]
-
-    def get_matching_bundles(
-        self, *bundle_names: str
-    ) -> List[ResidenceComponentBundle]:
-        """Get all component bundles that match the given regex strings"""
-
-        matches: List[ResidenceComponentBundle] = []
-
-        for name, bundle in self._bundles.items():
-            if any([re.match(pattern, name) for pattern in bundle_names]):
-                matches.append(bundle)
-
-        return matches
-
-    def choose_random(
-        self,
-        rng: random.Random,
-    ) -> Optional[ResidenceComponentBundle]:
-        """Performs a weighted random selection across all character archetypes"""
-        choices: List[ResidenceConfig] = []
-        weights: List[int] = []
-
-        for config in self.get_all():
-            if config.template is False:
-                choices.append(config)
-                weights.append(config.spawning.spawn_frequency)
-
-        if choices:
-            # Choose an archetype at random
-            chosen_config = rng.choices(population=choices, weights=weights, k=1)[0]
-
-            return self._bundles[chosen_config.name]
-        else:
-            return None

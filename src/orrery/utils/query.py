@@ -4,12 +4,17 @@ import random
 from typing import List, Literal, Optional, Tuple, Type
 
 from orrery.components.business import Occupation, WorkHistory
-from orrery.components.character import GameCharacter, Gender, LifeStage
-from orrery.components.statuses import Dating, Married
+from orrery.components.character import (
+    Dating,
+    GameCharacter,
+    Gender,
+    LifeStage,
+    Married,
+)
+from orrery.components.relationship import Relationship, RelationshipManager
 from orrery.core.ecs import Component, GameObject, World
 from orrery.core.ecs.query import Query, QueryContext, QueryFilterFn, QueryGetFn
 from orrery.core.event import EventRole, EventRoleType, RoleBinder, RoleList
-from orrery.core.relationship import Relationship, RelationshipManager
 from orrery.core.status import StatusComponent
 from orrery.core.time import SimDateTime
 from orrery.utils.relationships import (

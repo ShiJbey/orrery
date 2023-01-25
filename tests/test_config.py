@@ -1,4 +1,4 @@
-from orrery.core.config import OrreryCLIConfig
+from orrery.config import OrreryCLIConfig
 
 
 def test_cli_config_from_partial() -> None:

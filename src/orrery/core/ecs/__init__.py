@@ -15,5 +15,5 @@ from orrery.core.ecs.ecs import (
     ResourceNotFoundError,
     World,
 )
-from orrery.core.ecs.prefab import ComponentBundle
+from orrery.core.ecs.prefab import EntityPrefab
 from orrery.core.ecs.query import Query, QueryBuilder

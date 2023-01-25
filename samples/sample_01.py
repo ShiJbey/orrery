@@ -5,17 +5,16 @@ import orrery.plugins.default.businesses
 import orrery.plugins.default.characters
 import orrery.plugins.default.names
 import orrery.plugins.default.residences
-from orrery import Orrery, decorators
-from orrery.components.character import CharacterLibrary
-from orrery.core.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
+from orrery import Orrery
+from orrery.components.relationship import Relationship, RelationshipModifier
+from orrery.components.virtues import Virtues
+from orrery.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
+from orrery.content_management import CharacterLibrary, SocialRuleLibrary
 from orrery.core.ecs import Component, GameObject, World
-from orrery.core.relationship import Relationship, RelationshipModifier
-from orrery.core.social_rule import ISocialRule, SocialRuleLibrary
+from orrery.core.social_rule import ISocialRule
 from orrery.core.status import StatusComponent
 from orrery.core.time import SimDateTime
-from orrery.core.virtues import Virtues
 from orrery.exporter import export_to_json
-from orrery.loaders import OrreryYamlLoader, load_all_data
 from orrery.utils.common import (
     add_character_to_settlement,
     create_character,
@@ -48,11 +47,12 @@ sim.load_plugin(orrery.plugins.default.businesses.get_plugin())
 sim.load_plugin(orrery.plugins.default.residences.get_plugin())
 
 
-@decorators.component(sim)
+@sim.component()
 class Robot(Component):
     """Tags a character as a Robot"""
 
-    pass
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 class VirtueCompatibilityRule(ISocialRule):
@@ -126,19 +126,6 @@ class OwesDebt(StatusComponent):
 def main():
     """Main entry point for this module"""
 
-    OrreryYamlLoader.from_str(
-        """
-        Characters:
-            - name: "character::robot"
-              extends: "character::default"
-              components:
-                GameCharacter:
-                    first_name: "#character::default::first_name::gender-neutral#"
-                    last_name: "#character::default::last_name#"
-                Robot: {}
-        """
-    ).load(sim.world, [load_all_data])
-
     sim.world.get_resource(SocialRuleLibrary).add(VirtueCompatibilityRule())
 
     character_library = sim.world.get_resource(CharacterLibrary)
@@ -149,17 +136,19 @@ def main():
 
     delores = create_character(
         sim.world,
-        character_library.get_bundle("character::robot"),
+        character_library.get("character::default::female"),
         first_name="Delores",
         last_name="Abernathy",
         age=32,
     )
 
+    delores.add_component(Robot())
+
     add_character_to_settlement(delores, west_world)
 
     charlotte = create_character(
         sim.world,
-        character_library.get_bundle("character::default::female"),
+        character_library.get("character::default::female"),
         first_name="Charlotte",
         last_name="Hale",
         age=40,
@@ -169,7 +158,7 @@ def main():
 
     william = create_character(
         sim.world,
-        character_library.get_bundle("character::default::male"),
+        character_library.get("character::default::male"),
         first_name="William",
         age=68,
     )

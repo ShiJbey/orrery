@@ -1,25 +1,31 @@
 import json
 import random
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, TypeVar
+from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar
 
 import orrery.events
+from orrery.components.activity import ActivityInstance, LikedActivities
 from orrery.components.business import (
+    BossOf,
     Business,
     BusinessOwner,
     ClosedForBusiness,
+    CoworkerOf,
+    EmployeeOf,
     Occupation,
     OpenForBusiness,
-    ServiceLibrary,
     Services,
+    Unemployed,
     WorkHistory,
 )
-from orrery.components.character import CharacterLibrary, GameCharacter, LifeStage
-from orrery.components.residence import (
-    Residence,
-    ResidenceComponentBundle,
-    Resident,
-    Vacant,
+from orrery.components.character import (
+    GameCharacter,
+    Gender,
+    LifeStage,
+    Married,
+    ParentOf,
 )
+from orrery.components.residence import Residence, Resident, Vacant
+from orrery.components.settlement import GridSettlementMap, Settlement
 from orrery.components.shared import (
     Active,
     Building,
@@ -28,26 +34,18 @@ from orrery.components.shared import (
     Location,
     Position2D,
 )
-from orrery.components.statuses import (
-    BossOf,
-    CoworkerOf,
-    EmployeeOf,
-    Married,
-    ParentOf,
-    Unemployed,
-)
-from orrery.core.activity import (
-    ActivityInstance,
+from orrery.components.virtues import Virtues
+from orrery.content_management import (
     ActivityLibrary,
     ActivityToVirtueMap,
-    LikedActivities,
+    CharacterLibrary,
+    ServiceLibrary,
 )
-from orrery.core.ecs import Component, ComponentBundle, GameObject, World
+from orrery.core.ecs import GameObject, World
 from orrery.core.event import EventHandler
-from orrery.core.settlement import GridSettlementMap, Settlement
 from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
-from orrery.core.virtues import Virtues
+from orrery.prefabs import BusinessPrefab, CharacterPrefab, ResidencePrefab
 from orrery.utils.relationships import (
     add_relationship_status,
     get_relationship,
@@ -128,12 +126,12 @@ def remove_location_from_settlement(
 
 def create_character(
     world: World,
-    bundle: ComponentBundle,
+    prefab: CharacterPrefab,
     first_name: Optional[str] = None,
     last_name: Optional[str] = None,
     age: Optional[int] = None,
     life_stage: Optional[LifeStage] = None,
-    gender: Optional[str] = None,
+    gender: Optional[Gender] = None,
 ) -> GameObject:
     """Create a new GameCharacter GameObject and add it to the world
 
@@ -141,7 +139,7 @@ def create_character(
     ----------
     world: World
         The world instance to add the character to
-    bundle: ComponentBundle
+    prefab: CharacterPrefab
         A bundle used to construct the character
     first_name: str, optional
         first name override (defaults to None)
@@ -159,24 +157,22 @@ def create_character(
     GameObject
         The newly constructed character
     """
-    overrides: Dict[Type[Component], Dict[str, Any]] = {GameCharacter: {}}
+    character = prefab.spawn(world)
 
     if first_name:
-        overrides[GameCharacter]["first_name"] = first_name
+        character.get_component(GameCharacter).first_name = first_name
 
     if last_name:
-        overrides[GameCharacter]["last_name"] = last_name
+        character.get_component(GameCharacter).last_name = last_name
 
     if age:
-        overrides[GameCharacter]["age"] = age
+        character.get_component(GameCharacter).overwrite_age(age)
 
     if life_stage:
-        overrides[GameCharacter]["life_stage"] = life_stage.name
+        character.get_component(GameCharacter).overwrite_life_stage(life_stage)
 
     if gender:
-        overrides[GameCharacter]["gender"] = gender
-
-    character = bundle.spawn(world, overrides=overrides)
+        character.get_component(GameCharacter).gender = gender
 
     world.get_resource(EventHandler).record_event(
         orrery.events.NewCharacterEvent(
@@ -239,14 +235,9 @@ def remove_character_from_settlement(
 
 def create_residence(
     world: World,
-    bundle: ResidenceComponentBundle,
-    settlement: int,
+    prefab: ResidencePrefab,
 ) -> GameObject:
-    overrides: Dict[Type[Component], Dict[str, Any]] = {
-        Residence: {"settlement": settlement}
-    }
-
-    residence = bundle.spawn(world, overrides=overrides)
+    residence = prefab.spawn(world)
 
     world.get_resource(EventHandler).record_event(
         orrery.events.NewResidenceEvent(
@@ -282,9 +273,9 @@ def add_residence(
     return residence
 
 
-def generate_child_bundle(
+def generate_child_prefab(
     world: World, parent_a: GameObject, parent_b: GameObject
-) -> ComponentBundle:
+) -> CharacterPrefab:
     rng = world.get_resource(random.Random)
     library = world.get_resource(CharacterLibrary)
 
@@ -293,7 +284,7 @@ def generate_child_bundle(
         *parent_b.get_component(GameCharacter).config.spawning.child_archetypes,
     ]
 
-    potential_child_bundles = library.get_matching_bundles(*eligible_child_configs)
+    potential_child_bundles = library.get_matching_prefabs(*eligible_child_configs)
 
     if potential_child_bundles:
 
@@ -309,7 +300,7 @@ def generate_child_bundle(
             ]
         )
 
-        bundle = library.get_bundle(config_to_inherit.name)
+        bundle = library.get(config_to_inherit.name)
 
         return bundle
 
@@ -336,21 +327,25 @@ def set_residence(
         former_residence_comp.remove_resident(character.uid)
         remove_status(character, Resident)
 
-        former_settlement = world.get_gameobject(resident.settlement).get_component(
-            Settlement
-        )
+        former_settlement = world.get_gameobject(
+            character.get_component(CurrentSettlement).settlement
+        ).get_component(Settlement)
+
         former_settlement.population -= 1
 
         if len(former_residence_comp.residents) <= 0:
             add_status(former_residence, Vacant(current_date))
+
+        character.remove_component(CurrentSettlement)
 
     if new_residence is None:
         return
 
     # Move into new residence
     new_residence.get_component(Residence).add_resident(character.uid)
+
     new_settlement = world.get_gameobject(
-        new_residence.get_component(Residence).settlement
+        new_residence.get_component(CurrentSettlement).settlement
     )
 
     if is_owner:
@@ -358,12 +353,10 @@ def set_residence(
 
     add_status(
         character,
-        Resident(
-            created=current_date,
-            residence=new_residence.uid,
-            settlement=new_settlement.uid,
-        ),
+        Resident(created=current_date, residence=new_residence.uid),
     )
+
+    character.add_component(CurrentSettlement(new_settlement.uid))
 
     if new_residence.has_component(Vacant):
         remove_status(new_residence, Vacant)
@@ -443,15 +436,13 @@ def set_business_name(business: GameObject, name: str) -> None:
 
 def create_business(
     world: World,
-    bundle: ComponentBundle,
+    prefab: BusinessPrefab,
     name: Optional[str] = None,
 ) -> GameObject:
-    overrides: Dict[Type[Component], Dict[str, Any]] = {Business: {}}
+    business = prefab.spawn(world)
 
     if name:
-        overrides[Business]["name"] = name
-
-    business = bundle.spawn(world, overrides=overrides)
+        business.get_component(Business).name = name
 
     world.get_resource(EventHandler).record_event(
         orrery.events.NewBusinessEvent(

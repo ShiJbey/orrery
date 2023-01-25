@@ -1,0 +1,8 @@
+name: "business::default"
+template: true
+components:
+  Business:
+    name: "Business"
+  StatusManager: {}
+  Services: {}
+  Location: {}

@@ -64,9 +64,6 @@ class CharacterConfig(pydantic.BaseModel):
     name: str
     aging: CharacterAgingConfig
     spawning: CharacterSpawnConfig
-    template: bool = False
-    extends: Optional[str] = None
-    components: Dict[str, Dict[str, Any]] = pydantic.Field(default_factory=dict)
 
 
 class ResidenceSpawnConfig(pydantic.BaseModel):
@@ -104,14 +101,6 @@ class ResidenceConfig(pydantic.BaseModel):
     spawning: ResidenceSpawnConfig = pydantic.Field(
         default_factory=ResidenceSpawnConfig
     )
-    building_components: Dict[str, Dict[str, Any]] = pydantic.Field(
-        default_factory=dict
-    )
-    unit_components: Dict[str, Dict[str, Any]] = pydantic.Field(default_factory=dict)
-    num_units: int = 1
-    template: bool = False
-    extends: Optional[str] = None
-    components: Dict[str, Dict[str, Any]] = pydantic.Field(default_factory=dict)
 
 
 class BusinessSpawnConfig(pydantic.BaseModel):
@@ -148,10 +137,7 @@ class BusinessSpawnConfig(pydantic.BaseModel):
 class BusinessConfig(pydantic.BaseModel):
     name: str
     spawning: BusinessSpawnConfig = pydantic.Field(default_factory=BusinessSpawnConfig)
-    template: bool = False
-    extends: Optional[str] = None
     owner_type: Optional[str] = None
-    components: Dict[str, Dict[str, Any]] = pydantic.Field(default_factory=dict)
 
 
 class PluginConfig(pydantic.BaseModel):
@@ -189,7 +175,7 @@ class OrreryConfig(pydantic.BaseModel):
 class OrreryCLIConfig(OrreryConfig):
     years_to_simulate: int
     plugins: List[Union[str, PluginConfig]] = pydantic.Field(default_factory=list)
-    path: str = "."
+    path: str = "core"
 
     @classmethod
     def from_partial(

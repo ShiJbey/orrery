@@ -516,7 +516,7 @@ class ComponentInfo:
 
     We use this information to lookup string names mapped to component types,
     and to find the proper factory to use when constructing a component instance
-    from a data file or ComponentBundle
+    from a data file or EntityPrefab
 
     Attributes
     ----------

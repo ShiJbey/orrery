@@ -1,7 +1,7 @@
 import pytest
 
 from orrery import Orrery
-from orrery.core.settlement import Grid, GridSettlementMap, Settlement
+from orrery.components.settlement import Grid, GridSettlementMap, Settlement
 from orrery.utils.common import create_settlement
 
 

@@ -5,108 +5,23 @@ Utility class and functions for importing simulation configuration data
 """
 from __future__ import annotations
 
-import copy
 import pathlib
-from typing import Any, Dict, List, Optional, Protocol, Sequence, Type, Union
+from typing import Any, Dict, List, Union
 
 import yaml
 
-from orrery.components.business import (
-    Business,
-    BusinessComponentBundle,
+from orrery.components.business import OccupationType
+from orrery.content_management import (
+    ActivityToVirtueMap,
     BusinessLibrary,
-    OccupationType,
-    OccupationTypeLibrary,
-)
-from orrery.components.character import (
-    CharacterComponentBundle,
     CharacterLibrary,
-    GameCharacter,
-)
-from orrery.components.residence import (
-    Residence,
-    ResidenceComponentBundle,
+    OccupationTypeLibrary,
     ResidenceLibrary,
 )
-from orrery.core.activity import ActivityToVirtueMap
-from orrery.core.config import BusinessConfig, CharacterConfig, ResidenceConfig
-from orrery.core.ecs import Component, World
+from orrery.core.ecs import World
+from orrery.core.tracery import Tracery
+from orrery.prefabs import BusinessPrefab, CharacterPrefab, ResidencePrefab
 from orrery.utils.common import deep_merge
-
-
-class IDataLoader(Protocol):
-    """Interface for a callable that loads a data from a YAML into the World state"""
-
-    def __call__(self, world: World, data: Dict[str, Any]) -> None:
-        raise NotImplementedError()
-
-
-class OrreryYamlLoader:
-    """
-    Load Neighborly Component and Archetype definitions from an YAML
-
-    Attributes
-    ----------
-    data: Dict[str, Any]
-        Data loaded from a YAML file or string
-    """
-
-    __slots__ = "data"
-
-    def __init__(self, data: Dict[str, Any]) -> None:
-        self.data: Dict[str, Any] = data
-
-    @classmethod
-    def from_path(cls, filepath: Union[str, pathlib.Path]) -> OrreryYamlLoader:
-        """
-        Create a new importer instance using a file path
-
-        Parameters
-        ----------
-        filepath: Union[str, pathlib.Path]
-            Absolute or relative path to a YAML file
-
-        Returns
-        -------
-        OrreryYamlLoader
-            A loader instance containing the data within the file
-        """
-        with open(filepath, "r") as f:
-            data: Dict[str, Any] = yaml.safe_load(f)
-        return cls(data)
-
-    @classmethod
-    def from_str(cls, yaml_str: str) -> OrreryYamlLoader:
-        """
-        Create a new importer instance using a yaml string
-
-        Parameters
-        ----------
-        yaml_str: str
-            A multiline string formatted as YAML
-
-        Returns
-        -------
-        OrreryYamlLoader
-            A loader instance containing the data within the string
-        """
-        data: Dict[str, Any] = yaml.safe_load(yaml_str)
-        return cls(data)
-
-    def load(self, world: World, loaders: Sequence[IDataLoader]) -> None:
-        """
-        Load each section of that YAML datafile
-
-        Parameters
-        ----------
-        world: World
-            The world instance to load data into
-        loaders: Sequence[IDataLoader]
-            A function that loads information from the
-            yaml data
-        """
-        for loader in loaders:
-            loader(world, self.data)
 
 
 def load_activity_virtues(world: World, data: Dict[str, Any]) -> None:
@@ -119,13 +34,20 @@ def load_activity_virtues(world: World, data: Dict[str, Any]) -> None:
         config.add_by_name(world, activity_name, *virtue_names)
 
 
-def load_occupation_types(world: World, data: Dict[str, Any]) -> None:
+def load_occupation_types(world: World, file_path: Union[str, pathlib.Path]) -> None:
     """Load virtue mappings for activities"""
+
+    path_obj = pathlib.Path(file_path)
+
+    if path_obj.suffix not in (".yaml", ".yml"):
+        raise Exception(f"Expected YAML file but file had extension, {path_obj.suffix}")
+
+    with open(file_path, "r") as f:
+        data: List[Dict[str, Any]] = yaml.safe_load(f)
+
     library = world.get_resource(OccupationTypeLibrary)
 
-    section_data: List[Dict[str, Any]] = data.get("Occupations", [])
-
-    for entry in section_data:
+    for entry in data:
         library.add(
             OccupationType(
                 name=entry["name"],
@@ -135,190 +57,122 @@ def load_occupation_types(world: World, data: Dict[str, Any]) -> None:
         )
 
 
-def load_character_configs(world: World, data: Dict[str, Any]) -> None:
-    """Load virtue mappings for activities"""
+def load_character_prefab(world: World, file_path: Union[str, pathlib.Path]) -> None:
+    """loads a CharacterEntityPrefab from a yaml file"""
+
+    path_obj = pathlib.Path(file_path)
+
+    if path_obj.suffix not in (".yaml", ".yml"):
+        raise Exception(f"Expected YAML file but file had extension, {path_obj.suffix}")
+
     library = world.get_resource(CharacterLibrary)
 
-    section_data: List[Dict[str, Any]] = data.get("Characters", [])
+    with open(file_path, "r") as f:
+        data: Dict[str, Any] = yaml.safe_load(f)
 
-    for entry in section_data:
+    if "name" not in data:
+        raise Exception(f"{file_path} is missing field, 'name'")
 
-        is_template: bool = entry.get("template", False)
-        extends: Optional[str] = entry.get("extends", None)
+    prefab_name = data["name"]
 
-        base_data: Dict[str, Any] = dict()
+    base_data: Dict[str, Any] = dict()
 
-        if extends:
-            base_data = library.get(extends).dict()
+    if base_prefab_name := data.get("extends", ""):
+        base_data = library.get(base_prefab_name).dict()
 
-        config_data = deep_merge(base_data, entry)
+    full_prefab_data = deep_merge(base_data, data)
 
-        config = CharacterConfig.parse_obj(config_data)
+    full_prefab_data["components"]["GameCharacter"]["config"] = prefab_name
 
-        config.template = is_template
+    if "config" in full_prefab_data:
+        full_prefab_data["config"]["name"] = prefab_name
+    else:
+        full_prefab_data["config"] = {"name": prefab_name}
 
-        if is_template:
-            library.add(config)
-        else:
-            library.add(config, create_character_bundle(world, config))
+    new_prefab = CharacterPrefab.parse_obj(full_prefab_data)
+
+    library.add(new_prefab)
 
 
-def load_business_configs(world: World, data: Dict[str, Any]) -> None:
-    """Load virtue mappings for activities"""
+def load_business_prefab(world: World, file_path: Union[str, pathlib.Path]) -> None:
+    """loads a CharacterEntityPrefab from a yaml file"""
+
+    path_obj = pathlib.Path(file_path)
+
+    if path_obj.suffix not in (".yaml", ".yml"):
+        raise Exception(f"Expected YAML file but file had extension, {path_obj.suffix}")
+
     library = world.get_resource(BusinessLibrary)
 
-    section_data: List[Dict[str, Any]] = data.get("Businesses", [])
+    with open(file_path, "r") as f:
+        data: Dict[str, Any] = yaml.safe_load(f)
 
-    for entry in section_data:
+    if "name" not in data:
+        raise Exception(f"{file_path} is missing field, 'name'")
 
-        is_template: bool = entry.get("template", False)
-        extends: Optional[str] = entry.get("extends", None)
+    prefab_name = data["name"]
 
-        base_data: Dict[str, Any] = dict()
+    base_data: Dict[str, Any] = dict()
 
-        if extends:
-            base_data = library.get(extends).dict()
+    if base_prefab_name := data.get("extends", ""):
+        base_data = library.get(base_prefab_name).dict()
 
-        config_data = deep_merge(base_data, entry)
+    full_prefab_data = deep_merge(base_data, data)
 
-        config = BusinessConfig.parse_obj(config_data)
+    full_prefab_data["components"]["Business"]["config"] = prefab_name
 
-        config.template = is_template
+    if "config" in full_prefab_data:
+        full_prefab_data["config"]["name"] = prefab_name
+    else:
+        full_prefab_data["config"] = {"name": prefab_name}
 
-        if is_template:
-            library.add(config)
-        else:
-            library.add(config, create_business_bundle(world, config))
+    new_prefab = BusinessPrefab.parse_obj(full_prefab_data)
+
+    library.add(new_prefab)
 
 
-def load_residence_configs(world: World, data: Dict[str, Any]) -> None:
-    """Load virtue mappings for activities"""
+def load_residence_prefab(world: World, file_path: Union[str, pathlib.Path]) -> None:
+    """loads a CharacterEntityPrefab from a yaml file"""
+
+    path_obj = pathlib.Path(file_path)
+
+    if path_obj.suffix not in (".yaml", ".yml"):
+        raise Exception(f"Expected YAML file but file had extension, {path_obj.suffix}")
+
     library = world.get_resource(ResidenceLibrary)
 
-    section_data: List[Dict[str, Any]] = data.get("Residences", [])
+    with open(file_path, "r") as f:
+        data: Dict[str, Any] = yaml.safe_load(f)
 
-    for entry in section_data:
+    if "name" not in data:
+        raise Exception(f"{file_path} is missing field, 'name'")
 
-        is_template: bool = entry.get("template", False)
-        extends: Optional[str] = entry.get("extends", None)
+    prefab_name = data["name"]
 
-        base_data: Dict[str, Any] = dict()
+    base_data: Dict[str, Any] = dict()
 
-        if extends:
-            base_data = library.get(extends).dict()
+    if base_prefab_name := data.get("extends", ""):
+        base_data = library.get(base_prefab_name).dict()
 
-        config_data = deep_merge(base_data, entry)
+    full_prefab_data = deep_merge(base_data, data)
 
-        config = ResidenceConfig.parse_obj(config_data)
+    full_prefab_data["components"]["Residence"]["config"] = prefab_name
 
-        config.template = is_template
+    if "config" in full_prefab_data:
+        full_prefab_data["config"]["name"] = prefab_name
+    else:
+        full_prefab_data["config"] = {"name": prefab_name}
 
-        if is_template:
-            library.add(config)
-        else:
-            library.add(config, create_residence_bundle(world, config))
+    new_prefab = ResidencePrefab.parse_obj(full_prefab_data)
 
-
-def load_all_data(world: World, data: Dict[str, Any]) -> None:
-    """Load data using all the available loader functions"""
-    load_activity_virtues(world, data)
-    load_character_configs(world, data)
-    load_business_configs(world, data)
-    load_residence_configs(world, data)
-    load_occupation_types(world, data)
+    library.add(new_prefab)
 
 
-def create_character_bundle(
-    world: World, config: CharacterConfig
-) -> CharacterComponentBundle:
-    """
-    Creates a CharacterComponentBundle using the information in the config
+def load_names(
+    world: World, rule_name: str, filepath: Union[str, pathlib.Path]
+) -> None:
+    """Load names a list of names from a text file or given list"""
+    tracery_instance = world.get_resource(Tracery)
 
-    Parameters
-    ----------
-    world: World
-        The world instance to get references to various component types
-    config: CharacterConfig
-        The configuration to draw component data from
-    """
-    components: Dict[Type[Component], Dict[str, Any]] = {}
-
-    for name, options in config.components.items():
-        component_type = world.get_component_info(name).component_type
-        if component_type == GameCharacter:
-            components[component_type] = {
-                **copy.deepcopy(options),
-                "config": config.name,
-            }
-        else:
-            components[component_type] = {**copy.deepcopy(options)}
-
-    return CharacterComponentBundle(config.name, components)
-
-
-def create_business_bundle(
-    world: World, config: BusinessConfig
-) -> BusinessComponentBundle:
-    """
-    Creates a BusinessComponentBundle using the information in the config
-
-    Parameters
-    ----------
-    world: World
-        The world instance to get references to various component types
-    config: BusinessConfig
-        The configuration to draw component data from
-    """
-    components: Dict[Type[Component], Dict[str, Any]] = {}
-
-    for c, options in config.components.items():
-        component_type = world.get_component_info(c).component_type
-        if component_type == Business:
-            components[component_type] = {
-                **copy.deepcopy(options),
-                "config": config.name,
-                "owner_type": config.owner_type,
-            }
-        else:
-            components[component_type] = {**copy.deepcopy(options)}
-
-    return BusinessComponentBundle(config.name, components)
-
-
-def create_residence_bundle(
-    world: World, config: ResidenceConfig
-) -> ResidenceComponentBundle:
-    """
-    Creates a ResidenceComponentBundle using the information in the config
-
-    Parameters
-    ----------
-    world: World
-        The world instance to get references to various component types
-    config: ResidenceComponentBundle
-        The configuration to draw component data from
-    """
-    components: Dict[Type[Component], Dict[str, Any]] = {}
-
-    unit_components: Dict[Type[Component], Dict[str, Any]] = {}
-
-    for c, options in config.components.items():
-        component_type = world.get_component_info(c).component_type
-        if component_type == Residence:
-            components[component_type] = {
-                **copy.deepcopy(options),
-                "config": config.name,
-            }
-        else:
-            components[component_type] = {**copy.deepcopy(options)}
-
-    for c, options in config.unit_components.items():
-        component_type = world.get_component_info(c).component_type
-        unit_components[component_type] = {**copy.deepcopy(options)}
-
-    return ResidenceComponentBundle(
-        name=config.name,
-        building_components=components,
-        unit_components=unit_components,
-        units=config.num_units,
-    )
+    with open(filepath, "r") as f:
+        tracery_instance.add({rule_name: f.read().splitlines()})

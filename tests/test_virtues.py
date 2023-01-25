@@ -2,8 +2,9 @@ import random
 
 import pytest
 
+from orrery.components.virtues import Virtues, VirtueType
 from orrery.core.ecs import World
-from orrery.core.virtues import Virtues, VirtuesFactory, VirtueType
+from orrery.factories.virtues import VirtuesFactory
 
 
 def test_construct_virtue_vect() -> None:

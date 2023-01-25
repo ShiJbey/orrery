@@ -1,35 +1,43 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict
 
 from orrery.core.ecs import Component, ISystem
 from orrery.core.time import SimDateTime
 from orrery.data_collection import DataCollector
-from orrery.decorators import component, system
 from orrery.orrery import Orrery, OrreryConfig
 
 app = Orrery(OrreryConfig(seed=101))
 
 
-@component(app)
+@app.component()
 @dataclass
 class Actor(Component):
     name: str
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {"name": self.name}
 
-@component(app)
+
+@app.component()
 @dataclass
 class Money(Component):
     amount: int
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {"amount": self.amount}
 
-@component(app)
+
+@app.component()
 @dataclass
 class Job(Component):
     title: str
     salary: int
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {"title": self.title, "salary": self.salary}
 
-@system(app)
+
+@app.system()
 class SalarySystem(ISystem):
     def process(self, *args: Any, **kwargs: Any):
         job: Job
@@ -38,7 +46,7 @@ class SalarySystem(ISystem):
             money.amount += job.salary // 12
 
 
-@system(app, -1000)
+@app.system(-1000)
 class WealthReporter(ISystem):
     def process(self, *args, **kwargs):
         timestamp = self.world.get_resource(SimDateTime).to_iso_str()

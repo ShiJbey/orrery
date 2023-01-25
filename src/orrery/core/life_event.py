@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from abc import abstractmethod
-from typing import Dict, List, Optional, Protocol, Union
+from typing import Optional, Protocol, Union
 
 from orrery.core.ecs import GameObject, World
 from orrery.core.event import Event, EventHandler, RoleBinder, RoleList
@@ -168,28 +168,3 @@ class LifeEventProbabilityFn(Protocol):
 
     def __call__(self, world: World, event: LifeEventInstance) -> float:
         raise NotImplementedError
-
-
-class LifeEventLibrary:
-    """
-    Static class used to store instances of LifeEventTypes for
-    use at runtime.
-    """
-
-    _registry: Dict[str, ILifeEvent] = {}
-
-    @classmethod
-    def add(cls, life_event: ILifeEvent, name: Optional[str] = None) -> None:
-        """Register a new LifeEventType mapped to a name"""
-        key_name = name if name else life_event.get_name()
-        cls._registry[key_name] = life_event
-
-    @classmethod
-    def get_all(cls) -> List[ILifeEvent]:
-        """Get all LifeEventTypes stores in the Library"""
-        return list(cls._registry.values())
-
-    @classmethod
-    def get(cls, name: str) -> ILifeEvent:
-        """Get a LifeEventType using a name"""
-        return cls._registry[name]

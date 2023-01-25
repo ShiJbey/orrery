@@ -1,7 +1,6 @@
-from orrery.components.business import Occupation
+from orrery.components.business import InTheWorkforce, Occupation, Unemployed
 from orrery.components.character import Departed, GameCharacter, LifeStage
 from orrery.components.shared import Active
-from orrery.components.statuses import InTheWorkforce, Unemployed
 from orrery.core.ecs import World
 from orrery.core.event import Event
 from orrery.core.time import SimDateTime

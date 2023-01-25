@@ -6,30 +6,24 @@ from typing import Any, List, Optional, Tuple
 from orrery.components.business import Business, Occupation, OpenForBusiness
 from orrery.components.character import (
     CanGetPregnant,
+    ChildOf,
+    Dating,
     Deceased,
     GameCharacter,
     LifeStage,
-    Retired,
-)
-from orrery.components.residence import Residence, Resident, Vacant
-from orrery.components.shared import Active
-from orrery.components.statuses import (
-    ChildOf,
-    Dating,
     Married,
     ParentOf,
     Pregnant,
+    Retired,
     SiblingOf,
 )
+from orrery.components.residence import Residence, Resident, Vacant
+from orrery.components.shared import Active
+from orrery.content_management import LifeEventLibrary
 from orrery.core.ecs import GameObject, World
 from orrery.core.ecs.query import QueryBuilder, eq_, not_, or_
 from orrery.core.event import Event, EventHandler, EventRoleType, RoleList
-from orrery.core.life_event import (
-    ILifeEvent,
-    LifeEvent,
-    LifeEventInstance,
-    LifeEventLibrary,
-)
+from orrery.core.life_event import ILifeEvent, LifeEvent, LifeEventInstance
 from orrery.core.time import SimDateTime
 from orrery.events import DeathEvent
 from orrery.orrery import Plugin

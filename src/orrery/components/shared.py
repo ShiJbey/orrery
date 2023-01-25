@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Optional, Set
 
-from orrery.core.activity import ActivityInstance, ActivityLibrary
-from orrery.core.ecs import Component, IComponentFactory, World
+from orrery.components.activity import ActivityInstance
+from orrery.core.ecs import Component
 from orrery.core.status import StatusComponent
 
 
@@ -34,15 +34,6 @@ class FrequentedLocations(Component):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.locations.__repr__()})"
-
-
-class FrequentedLocationsFactory(IComponentFactory):
-    """Factory that create Location component instances"""
-
-    def create(
-        self, world: World, locations: Optional[List[int]] = None, **kwargs: Any
-    ) -> FrequentedLocations:
-        return FrequentedLocations(set(locations if locations else []))
 
 
 class Building(Component):
@@ -124,28 +115,15 @@ class Location(Component):
         )
 
 
-class LocationFactory(IComponentFactory):
-    """Factory that create Location component instances"""
-
-    def create(
-        self, world: World, activities: Optional[List[str]] = None, **kwargs: Any
-    ) -> Location:
-        activity_library = world.get_resource(ActivityLibrary)
-
-        activity_names: List[str] = activities if activities else []
-
-        return Location(set([activity_library.get(name) for name in activity_names]))
-
-
 @dataclass
 class CurrentSettlement(Component):
-    settlement_id: int
+    settlement: int
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.settlement_id})"
+        return f"{self.__class__.__name__}({self.settlement})"
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"settlement_id": self.settlement_id}
+        return {"settlement": self.settlement}
 
 
 @dataclass

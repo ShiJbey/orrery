@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import List, Type, TypeVar
 
-from orrery.core.config import OrreryConfig
-from orrery.core.ecs import Component, GameObject
-from orrery.core.relationship import (
+from orrery.components.relationship import (
     Relationship,
     RelationshipManager,
     RelationshipNotFound,
     RelationshipStat,
 )
-from orrery.core.social_rule import SocialRuleLibrary
+from orrery.config import OrreryConfig
+from orrery.content_management import SocialRuleLibrary
+from orrery.core.ecs import Component, GameObject
 from orrery.core.status import StatusComponent, StatusManager
 from orrery.utils.statuses import add_status, has_status, remove_status
 

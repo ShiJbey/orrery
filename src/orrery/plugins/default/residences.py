@@ -3,7 +3,7 @@ import pathlib
 from typing import Any
 
 from orrery.core.ecs import World
-from orrery.loaders import OrreryYamlLoader, load_residence_configs
+from orrery.loaders import load_residence_prefab
 from orrery.orrery import Plugin
 
 _RESOURCES_DIR = pathlib.Path(os.path.abspath(__file__)).parent / "data"
@@ -11,9 +11,7 @@ _RESOURCES_DIR = pathlib.Path(os.path.abspath(__file__)).parent / "data"
 
 class DefaultResidencesPlugin(Plugin):
     def setup(self, world: World, **kwargs: Any) -> None:
-        OrreryYamlLoader.from_path(_RESOURCES_DIR / "data.yaml").load(
-            world, [load_residence_configs]
-        )
+        load_residence_prefab(world, _RESOURCES_DIR / "residence.default.house.yaml")
 
 
 def get_plugin() -> Plugin:

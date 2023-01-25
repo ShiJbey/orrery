@@ -4,12 +4,11 @@ social_rule.py
 This module provides interfaces and classes to assist users in authoring rules that
 influence how characters feel about each other.
 """
-import re
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Protocol
+from typing import List, Protocol
 
+from orrery.components.relationship import IRelationshipModifier, Relationship
 from orrery.core.ecs import GameObject, World
-from orrery.core.relationship import IRelationshipModifier, Relationship
 
 
 class ISocialRule(ABC):
@@ -136,69 +135,3 @@ class SocialRule(ISocialRule):
             if modifier.get_uid() in r.active_modifiers:
                 r.remove_modifier(modifier)
                 modifier.deactivate(r)
-
-
-class SocialRuleLibrary:
-    """
-    Repository of ISocialRule instances to use during the simulation.
-
-    Attributes
-    ----------
-    _all_rules: Dict[str, ISocialRule]
-        All the rules added to the library, including ones not actively used in
-        relationship calculations. (allows filtering)
-    _active_rules: List[ISocialRule]
-        List of the rules that are actively used for relationship calculations
-    _active_rule_names: List[str]
-        List of regular expression strings that correspond to rules to
-        set as active for use in relationship calculations
-    """
-
-    __slots__ = "_all_rules", "_active_rules", "_active_rule_names"
-
-    def __init__(
-        self,
-        rules: Optional[List[ISocialRule]] = None,
-        active_rules: Optional[List[str]] = None,
-    ) -> None:
-        self._all_rules: Dict[str, ISocialRule] = {}
-        self._active_rules: List[ISocialRule] = []
-        self._active_rule_names: List[str] = active_rules if active_rules else [".*"]
-
-        if rules:
-            for rule in rules:
-                self.add(rule)
-
-    def add(self, rule: ISocialRule) -> None:
-        """
-        Add a rule to the library
-
-        Parameters
-        ----------
-        rule: ISocialRule
-            The rule to add
-        """
-        self._all_rules[rule.get_uid()] = rule
-        if any(
-            [re.match(pattern, rule.get_uid()) for pattern in self._active_rule_names]
-        ):
-            self._active_rules.append(rule)
-
-    def set_active_rules(self, rule_names: List[str]) -> None:
-        """
-        Sets the rules with names that match the regex strings as active
-
-        Parameters
-        ----------
-        rule_names: List[str]
-            Regex strings for rule names to activate
-        """
-        self._active_rules.clear()
-        self._active_rule_names = rule_names
-        for name, rule in self._all_rules.items():
-            if any([re.match(pattern, name) for pattern in self._active_rule_names]):
-                self._active_rules.append(rule)
-
-    def get_active_rules(self) -> List[ISocialRule]:
-        """Return social rules that are active for relationship calculations"""
-        return self._active_rules
