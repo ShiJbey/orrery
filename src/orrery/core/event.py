@@ -173,9 +173,9 @@ class EventHandler(ISerializable):
     def __init__(self) -> None:
         self._event_history: List[Event] = []
         self._per_gameobject: DefaultDict[int, List[Event]] = defaultdict(list)
-        self._event_buffers_by_type: DefaultDict[Type[Event], List[Event]] = defaultdict(
-            list
-        )
+        self._event_buffers_by_type: DefaultDict[
+            Type[Event], List[Event]
+        ] = defaultdict(list)
         self._event_buffer: List[Event] = []
 
     def __iter__(self) -> Iterator[Event]:
@@ -188,7 +188,9 @@ class EventHandler(ISerializable):
 
     def iter_events_of_type(self, event_type: Type[_ET]) -> Iterator[_ET]:
         """Return an iterator to the buffer of events for the given type"""
-        return self._event_buffers_by_type[event_type].__iter__()
+        # We probably shouldn't ignore this typing error, but I dont
+        # know how to solve this right now
+        return self._event_buffers_by_type[event_type].__iter__()  # type: ignore
 
     def emit(self, event: Event) -> None:
         """Emit a new event

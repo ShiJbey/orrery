@@ -123,7 +123,6 @@ class TimeSystem(ISystem):
         current_date.increment(months=increment)
 
 
-
 class LifeEventSystem(System):
     """Fires LifeEvents adding some spice to the simulation data"""
 
@@ -143,7 +142,7 @@ class MeetNewPeopleSystem(ISystem):
     """Characters meet new people based on places they frequent"""
 
     def process(self, *args: Any, **kwargs: Any):
-        for gid, _ in self.world.get_components(GameCharacter, Active):
+        for gid, _ in self.world.get_components((GameCharacter, Active)):
             character = self.world.get_gameobject(gid)
 
             frequented_locations = character.get_component(
@@ -170,7 +169,7 @@ class MeetNewPeopleSystem(ISystem):
                 # Select one randomly
                 options: List[int]
                 weights: List[int]
-                options, weights = tuple(zip(*candidate_weights.items())) # type: ignore
+                options, weights = tuple(zip(*candidate_weights.items()))  # type: ignore
 
                 rng = self.world.get_resource(random.Random)
 
@@ -200,8 +199,9 @@ class FindEmployeesSystem(ISystem):
         occupation_types = self.world.get_resource(OccupationTypeLibrary)
         rng = self.world.get_resource(random.Random)
 
-        business: Business
-        for guid, (business, _) in self.world.get_components(Business, OpenForBusiness):
+        for guid, (business, _) in self.world.get_components(
+            (Business, OpenForBusiness)
+        ):
             open_positions = business.get_open_positions()
 
             for occupation_name in open_positions:
@@ -413,15 +413,8 @@ class SpawnResidentSystem(System):
         event_logger = self.world.get_resource(EventHandler)
         character_library = self.world.get_resource(CharacterLibrary)
 
-        current_settlement: CurrentSettlement
-        for guid, (
-            _,
-            _,
-            _,
-            _,
-            current_settlement,
-        ) in self.world.get_components(
-            Residence, Building, Active, Vacant, CurrentSettlement
+        for guid, (_, _, _, _, current_settlement,) in self.world.get_components(
+            (Residence, Building, Active, Vacant, CurrentSettlement)
         ):
             residence = self.world.get_gameobject(guid)
 
@@ -555,7 +548,7 @@ class BusinessUpdateSystem(System):
     def run(self, *args: Any, **kwargs: Any) -> None:
         time_increment = float(self.elapsed_time.total_days) / DAYS_PER_YEAR
         business: Business
-        for _, (business, _) in self.world.get_components(Business, OpenForBusiness):
+        for _, (business, _) in self.world.get_components((Business, OpenForBusiness)):
             # Increment how long the business has been open for business
             business.years_in_business += time_increment
 
@@ -587,9 +580,8 @@ class CharacterAgingSystem(System):
 
         age_increment = float(self.elapsed_time.total_days) / DAYS_PER_YEAR
 
-        character_comp: GameCharacter
         for guid, (character_comp, _, _) in self.world.get_components(
-            GameCharacter, CanAge, Active
+            (GameCharacter, CanAge, Active)
         ):
             character = self.world.get_gameobject(guid)
 

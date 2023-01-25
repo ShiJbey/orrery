@@ -18,9 +18,7 @@ class Actor(Component):
     name: str
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "name": str
-        }
+        return {"name": str}
 
 
 @dataclass
@@ -28,9 +26,7 @@ class CurrentLocation(Component):
     location: int
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "location": self.location
-        }
+        return {"location": self.location}
 
 
 @dataclass
@@ -38,9 +34,7 @@ class Money(Component):
     amount: int
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "money": self.amount
-        }
+        return {"money": self.amount}
 
 
 @dataclass
@@ -49,10 +43,7 @@ class Job(Component):
     salary: int
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "title": self.title,
-            "salary": self.salary
-        }
+        return {"title": self.title, "salary": self.salary}
 
 
 @dataclass
@@ -60,19 +51,15 @@ class Location(Component):
     name: str
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "name": self.name
-        }
+        return {"name": self.name}
 
 
 class ComponentA(Component):
-
     def to_dict(self) -> Dict[str, Any]:
         return {}
 
 
 class ComponentB(Component):
-
     def to_dict(self) -> Dict[str, Any]:
         return {}
 
@@ -89,9 +76,7 @@ class AnotherFakeResource:
 
 class SalarySystem(ISystem):
     def process(self, *args: Any, **kwargs: Any):
-        job: Job
-        money: Money
-        for _, (job, money) in self.world.get_components(Job, Money):
+        for _, (job, money) in self.world.get_components((Job, Money)):
             money.amount += job.salary
 
 
@@ -185,7 +170,7 @@ def test_delete_gameobject():
     assert g3.has_component(ComponentA) is False
     # When you remove the last component from an entity,
     # it technically does not exist within esper anymore
-    assert world._ecs.entity_exists(g3.uid) is False # type: ignore
+    assert world._ecs.entity_exists(g3.uid) is False  # type: ignore
     world.delete_gameobject(g3.uid)
     world.step()
     assert world.has_gameobject(g3.uid) is False
@@ -243,11 +228,11 @@ def test_world_get_components():
     world.spawn_gameobject([ComponentB()])
     world.spawn_gameobject([ComponentA(), ComponentB()])
 
-    with_a = world.get_components(ComponentA)
+    with_a = world.get_components((ComponentA,))
 
     assert list(zip(*with_a))[0] == (1, 3)
 
-    with_b = world.get_components(ComponentB)
+    with_b = world.get_components((ComponentB,))
 
     assert list(zip(*with_b))[0] == (2, 3)
 
@@ -392,14 +377,15 @@ def test_gameobject_set_active():
 def test_gameobject_get_components():
     world = World()
 
-    adrian = world.spawn_gameobject([Actor("Adrian"), Money(100)])
+    actor_component = Actor("Adrian")
+    money_component = Money(100)
 
-    actor: Actor
-    money: Money
-    actor, money = adrian.get_components()
+    adrian = world.spawn_gameobject([actor_component, money_component])
 
-    assert actor.name == "Adrian"
-    assert money.amount == 100
+    components = adrian.get_components()
+
+    assert actor_component in components
+    assert money_component in components
 
 
 def test_gameobject_get_component_types():

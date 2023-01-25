@@ -3,6 +3,8 @@ include CHANGELOG.md
 include CODE_OF_CONDUCT.md
 include README.md
 include MANIFEST.in
+include src/orrery/plugins/default/data/*
+include src/orrery/plugins/default/data/names/*
 global-exclude *.py[co]
 global-exclude __pycache__
 global-exclude *~

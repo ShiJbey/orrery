@@ -1,10 +1,11 @@
 from typing import Any, Dict
+
 import pytest
 
 from orrery.components.character import GameCharacter, Gender, Retired
 from orrery.config import CharacterAgingConfig, CharacterConfig, CharacterSpawnConfig
 from orrery.core.ecs import Component, World
-from orrery.core.ecs.query import QueryBuilder, Relation, eq_
+from orrery.core.ecs.query import QueryBuilder, Relation
 from orrery.core.time import SimDateTime
 from orrery.utils.query import is_gender
 
@@ -92,13 +93,11 @@ def test_relation_copy():
 
 
 class Hero(Component):
-
     def to_dict(self) -> Dict[str, Any]:
         return {}
 
 
 class DemonKing(Component):
-
     def to_dict(self) -> Dict[str, Any]:
         return {}
 
@@ -128,7 +127,11 @@ def sample_world() -> World:
         ]
     )
     world.spawn_gameobject(
-        [DemonKing(), GameCharacter(character_config, "-Shi", ""), Retired(SimDateTime().to_iso_str())]
+        [
+            DemonKing(),
+            GameCharacter(character_config, "-Shi", ""),
+            Retired(SimDateTime().to_iso_str()),
+        ]
     )
     world.spawn_gameobject(
         [
@@ -190,29 +193,6 @@ def test_with(sample_world: World):
 #         (QueryBuilder().without_((Retired,)).build().execute(sample_world))
 
 
-def test_equal(sample_world: World):
-    query = (
-        QueryBuilder("X", "Y")
-        .with_((GameCharacter, Hero), "X")
-        .with_((GameCharacter, Hero), "Y")
-        .build()
-    )
-    result = set(query.execute(sample_world))
-    expected = {(1, 1), (1, 2), (2, 1), (2, 2)}
-    assert result == expected
-
-    query = (
-        QueryBuilder("X", "Y")
-        .with_((GameCharacter, Hero), "X")
-        .with_((GameCharacter, Hero), "Y")
-        .filter_(eq_, "X", "Y")
-        .build()
-    )
-    result = set(query.execute(sample_world))
-    expected = {(1, 1), (2, 2)}
-    assert result == expected
-
-
 def test_query_bindings(sample_world: World):
 
     query = QueryBuilder().with_((Hero,)).build()
@@ -266,4 +246,6 @@ def test_filter(sample_world: World):
     assert result == expected
 
     with pytest.raises(RuntimeError):
-        QueryBuilder("X", "Y").filter_(eq_, "X", "Y").build().execute(sample_world)
+        QueryBuilder("X", "Y").filter_(
+            lambda world, *gameobjects: gameobjects[0] == gameobjects[1], "X", "Y"
+        ).build().execute(sample_world)

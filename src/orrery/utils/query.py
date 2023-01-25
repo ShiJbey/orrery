@@ -260,7 +260,9 @@ def find_with_relationship_stat_lte(
     return clause
 
 
-def filter_relationship_has_statuses(*status_types: Type[StatusComponent]) -> QueryFilterFn:
+def filter_relationship_has_statuses(
+    *status_types: Type[StatusComponent],
+) -> QueryFilterFn:
     """
     Query filter function that returns true if the first of the given game
     objects has a relationship toward the second game object with the given
@@ -278,7 +280,9 @@ def filter_relationship_has_statuses(*status_types: Type[StatusComponent]) -> Qu
     return precondition
 
 
-def find_relationships_with_statuses(*status_types: Type[StatusComponent]) -> QueryGetFn:
+def find_relationships_with_statuses(
+    *status_types: Type[StatusComponent],
+) -> QueryGetFn:
     """
     Returns a list of all the GameObjects with the given component
     """

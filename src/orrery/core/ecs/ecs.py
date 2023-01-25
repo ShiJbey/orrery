@@ -22,7 +22,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union, overload
 
 import esper
 from ordered_set import OrderedSet
@@ -554,6 +554,16 @@ class DefaultComponentFactory(IComponentFactory):
         return self.component_type(**kwargs)
 
 
+_T1 = TypeVar("_T1", bound=Component)
+_T2 = TypeVar("_T2", bound=Component)
+_T3 = TypeVar("_T3", bound=Component)
+_T4 = TypeVar("_T4", bound=Component)
+_T5 = TypeVar("_T5", bound=Component)
+_T6 = TypeVar("_T6", bound=Component)
+_T7 = TypeVar("_T7", bound=Component)
+_T8 = TypeVar("_T8", bound=Component)
+
+
 class World:
     """
     Manages Gameobjects, Systems, and resources for the simulation
@@ -709,11 +719,119 @@ class World:
         except KeyError:
             return None
 
+    @overload
     def get_components(
-        self, *component_types: Type[_CT]
-    ) -> List[Tuple[int, List[_CT]]]:
+        self, component_types: Tuple[Type[_T1]]
+    ) -> List[Tuple[int, Tuple[_T1]]]:
+        ...
+
+    @overload
+    def get_components(
+        self, component_types: Tuple[Type[_T1], Type[_T2]]
+    ) -> List[Tuple[int, Tuple[_T1, _T2]]]:
+        ...
+
+    @overload
+    def get_components(
+        self, component_types: Tuple[Type[_T1], Type[_T2], Type[_T3]]
+    ) -> List[Tuple[int, Tuple[_T1, _T2, _T3]]]:
+        ...
+
+    @overload
+    def get_components(
+        self, component_types: Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4]]
+    ) -> List[Tuple[int, Tuple[_T1, _T2, _T3, _T4]]]:
+        ...
+
+    @overload
+    def get_components(
+        self,
+        component_types: Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5]],
+    ) -> List[Tuple[int, Tuple[_T1, _T2, _T3, _T4, _T5]]]:
+        ...
+
+    @overload
+    def get_components(
+        self,
+        component_types: Tuple[
+            Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5], Type[_T6]
+        ],
+    ) -> List[Tuple[int, Tuple[_T1, _T2, _T3, _T4, _T5, _T6]]]:
+        ...
+
+    @overload
+    def get_components(
+        self,
+        component_types: Tuple[
+            Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5], Type[_T6], Type[_T7]
+        ],
+    ) -> List[Tuple[int, Tuple[_T1, _T2, _T3, _T4, _T5, _T6, _T7]]]:
+        ...
+
+    @overload
+    def get_components(
+        self,
+        component_types: Tuple[
+            Type[_T1],
+            Type[_T2],
+            Type[_T3],
+            Type[_T4],
+            Type[_T5],
+            Type[_T6],
+            Type[_T7],
+            Type[_T8],
+        ],
+    ) -> List[Tuple[int, Tuple[_T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]]]:
+        ...
+
+    def get_components(
+        self,
+        component_types: Union[
+            Tuple[Type[_T1]],
+            Tuple[Type[_T1], Type[_T2]],
+            Tuple[Type[_T1], Type[_T2], Type[_T3]],
+            Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4]],
+            Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5]],
+            Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5], Type[_T6]],
+            Tuple[
+                Type[_T1],
+                Type[_T2],
+                Type[_T3],
+                Type[_T4],
+                Type[_T5],
+                Type[_T6],
+                Type[_T7],
+            ],
+            Tuple[
+                Type[_T1],
+                Type[_T2],
+                Type[_T3],
+                Type[_T4],
+                Type[_T5],
+                Type[_T6],
+                Type[_T7],
+                Type[_T8],
+            ],
+        ],
+    ) -> Union[
+        List[Tuple[int, Tuple[_T1]]],
+        List[Tuple[int, Tuple[_T1, _T2]]],
+        List[Tuple[int, Tuple[_T1, _T2, _T3]]],
+        List[Tuple[int, Tuple[_T1, _T2, _T3, _T4]]],
+        List[Tuple[int, Tuple[_T1, _T2, _T3, _T4, _T5]]],
+        List[Tuple[int, Tuple[_T1, _T2, _T3, _T4, _T5, _T6]]],
+        List[Tuple[int, Tuple[_T1, _T2, _T3, _T4, _T5, _T6, _T7]]],
+        List[Tuple[int, Tuple[_T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]]],
+    ]:
         """Get all game objects with the given components"""
-        return self._ecs.get_components(*component_types)  # type: ignore
+        ret = [
+            (guid, tuple(components))
+            for guid, components in self._ecs.get_components(*component_types)
+        ]
+
+        # We have to ignore the type because of esper's lax type hinting for
+        # world.get_components()
+        return ret  # type: ignore
 
     def has_components(self, guid: int, *component_types: Type[_CT]) -> bool:
         try:

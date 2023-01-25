@@ -18,10 +18,7 @@ class Stats(Component):
     defense: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "strength": self.strength,
-            "defense": self.defense
-        }
+        return {"strength": self.strength, "defense": self.defense}
 
 
 class SuperStrength(StatusComponent):

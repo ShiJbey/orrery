@@ -5,12 +5,32 @@ This package contains functionality for the entity-component system. It has defi
 for entities, systems, the world, queries, and entity prefabs.
 """
 
-from .ecs import *
-from .prefab import *
-from .query import *
+from .ecs import (
+    Component,
+    ComponentNotFoundError,
+    GameObject,
+    GameObjectNotFoundError,
+    IComponentFactory,
+    ISystem,
+    ResourceNotFoundError,
+    World,
+)
+from .prefab import EntityPrefab
+from .query import Query, QueryBuilder, QueryFilterFn, QueryFromFn, QueryGetFn
 
 __all__ = [
-    "ecs",
-    "prefab",
-    "query"
+    Component,
+    ComponentNotFoundError,
+    GameObject,
+    GameObjectNotFoundError,
+    IComponentFactory,
+    ISystem,
+    ResourceNotFoundError,
+    World,
+    EntityPrefab,
+    Query,
+    QueryBuilder,
+    QueryFilterFn,
+    QueryFromFn,
+    QueryGetFn,
 ]

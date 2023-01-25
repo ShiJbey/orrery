@@ -21,7 +21,7 @@ from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.shared import Active
 from orrery.content_management import LifeEventLibrary
 from orrery.core.ecs import GameObject, World
-from orrery.core.ecs.query import QueryBuilder, eq_, not_, or_
+from orrery.core.ecs.query import QueryBuilder, not_, or_
 from orrery.core.event import Event, EventHandler, EventRoleType, RoleList
 from orrery.core.life_event import ILifeEvent, LifeEvent, LifeEventInstance
 from orrery.core.time import SimDateTime
@@ -74,7 +74,7 @@ def start_dating_event(threshold: float = 0.7, probability: float = 1.0) -> ILif
                 filter_relationship_stat_gte("Romance", threshold), "Other", "Initiator"
             )
             .filter_(
-                not_(eq_),
+                not_(lambda world, *gameobjects: gameobjects[0] == gameobjects[1]),
                 "Initiator",
                 "Other",
             )
@@ -197,7 +197,7 @@ def marriage_event(threshold: float = 0.7, probability: float = 1.0) -> ILifeEve
                 "Other",
             )
             .filter_(
-                not_(eq_),
+                not_(lambda world, *gameobjects: gameobjects[0] == gameobjects[1]),
                 "Initiator",
                 "Other",
             )
@@ -312,9 +312,8 @@ def retire_event(probability: float = 0.4) -> ILifeEvent:
 
         eligible_characters: List[GameObject] = []
 
-        character: GameCharacter
         for gid, (character, _, _) in world.get_components(
-            GameCharacter, Occupation, Active
+            (GameCharacter, Occupation, Active)
         ):
 
             if character.life_stage < LifeStage.Senior:
@@ -345,10 +344,8 @@ def find_own_place_event(probability: float = 0.1) -> ILifeEvent:
     def bind_potential_mover(world: World) -> List[Tuple[Any, ...]]:
         eligible: List[Tuple[Any, ...]] = []
 
-        character: GameCharacter
-        resident: Resident
         for gid, (character, _, resident, _) in world.get_components(
-            GameCharacter, Occupation, Resident, Active
+            (GameCharacter, Occupation, Resident, Active)
         ):
 
             if character.life_stage < LifeStage.YoungAdult:
@@ -367,7 +364,7 @@ def find_own_place_event(probability: float = 0.1) -> ILifeEvent:
         return list(
             map(
                 lambda pair: world.get_gameobject(pair[0]),
-                world.get_components(Residence, Vacant),
+                world.get_components((Residence, Vacant)),
             )
         )
 

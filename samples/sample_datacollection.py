@@ -40,9 +40,7 @@ class Job(Component):
 @app.system()
 class SalarySystem(ISystem):
     def process(self, *args: Any, **kwargs: Any):
-        job: Job
-        money: Money
-        for _, (job, money) in self.world.get_components(Job, Money):
+        for _, (job, money) in self.world.get_components((Job, Money)):
             money.amount += job.salary // 12
 
 
