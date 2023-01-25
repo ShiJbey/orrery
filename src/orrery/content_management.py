@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import random
 import re
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional, Set
+
+from ordered_set import OrderedSet
 
 from orrery.components.activity import ActivityInstance
 from orrery.components.business import OccupationType, ServiceType, logger
@@ -399,8 +401,8 @@ class SocialRuleLibrary:
         rules: Optional[List[ISocialRule]] = None,
         active_rules: Optional[List[str]] = None,
     ) -> None:
-        self._all_rules: Dict[str, ISocialRule] = {}
-        self._active_rules: List[ISocialRule] = []
+        self._all_rules: List[ISocialRule] = []
+        self._active_rules: Set[int] = set()
         self._active_rule_names: List[str] = active_rules if active_rules else [".*"]
 
         if rules:
@@ -416,11 +418,18 @@ class SocialRuleLibrary:
         rule: ISocialRule
             The rule to add
         """
-        self._all_rules[rule.get_uid()] = rule
+        rule_index = len(self._all_rules)
+        self._all_rules.append(rule)
         if any(
-            [re.match(pattern, rule.get_uid()) for pattern in self._active_rule_names]
+            [
+                re.match(pattern, rule.get_rule_name())
+                for pattern in self._active_rule_names
+            ]
         ):
-            self._active_rules.append(rule)
+            self._active_rules.add(rule_index)
+
+    def reset_active_rules(self) -> None:
+        self.set_active_rules([".*"])
 
     def set_active_rules(self, rule_names: List[str]) -> None:
         """
@@ -433,10 +442,17 @@ class SocialRuleLibrary:
         """
         self._active_rules.clear()
         self._active_rule_names = rule_names
-        for name, rule in self._all_rules.items():
-            if any([re.match(pattern, name) for pattern in self._active_rule_names]):
-                self._active_rules.append(rule)
+        for i, rule in enumerate(self._all_rules):
+            if any(
+                [
+                    re.match(pattern, rule.get_rule_name())
+                    for pattern in self._active_rule_names
+                ]
+            ):
+                self._active_rules.add(i)
 
     def get_active_rules(self) -> List[ISocialRule]:
         """Return social rules that are active for relationship calculations"""
-        return self._active_rules
+        return [
+            rule for i, rule in enumerate(self._all_rules) if i in self._active_rules
+        ]

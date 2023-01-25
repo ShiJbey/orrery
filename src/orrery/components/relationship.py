@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, Protocol, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 
 from orrery.core.ecs import Component
 
@@ -207,33 +207,14 @@ class RelationshipStat:
         )
 
 
-@dataclass(frozen=True)
-class SimpleRelationshipModifier:
+@dataclass
+class RelationshipModifier:
 
-    uid: str
-    modifiers: Dict[str, int]
-
-    def get_uid(self) -> str:
-        """Return the unique identifier of the modifier"""
-        return self.uid
-
-    def get_description(self) -> str:
-        """Return a text description of the modifier"""
-        return str(self.to_dict())
+    name: str
+    values: Dict[str, int]
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize the modifier to a dictionary"""
-        return {"uid": self.uid, "modifiers": {**self.modifiers}}
-
-    def activate(self, relationship: Relationship) -> None:
-        """Apply this modifier to the given relationship"""
-        for stat, buff in self.modifiers.items():
-            relationship[stat].add_modifier(buff)
-
-    def deactivate(self, relationship: Relationship) -> None:
-        """Remove this modifier's effects from the given relationship"""
-        for stat, buff in self.modifiers.items():
-            relationship[stat].remove_modifier(buff)
+        return {"name": self.name, "values": {**self.values}}
 
 
 class Relationship(Component):
@@ -241,7 +222,7 @@ class Relationship(Component):
     __slots__ = (
         "_stats",
         "interaction_score",
-        "active_modifiers",
+        "modifiers",
         "_is_dirty",
         "target",
         "owner",
@@ -258,21 +239,20 @@ class Relationship(Component):
             **stats,
             "Interaction": self.interaction_score,
         }
-        self.active_modifiers: Dict[str, IRelationshipModifier] = {}
+        self.modifiers: List[RelationshipModifier] = []
         self._is_dirty = False
 
-    def add_modifier(self, modifier: IRelationshipModifier) -> None:
-        self.active_modifiers[modifier.get_uid()] = modifier
-        modifier.activate(self)
+    def add_modifier(self, modifier: RelationshipModifier) -> None:
+        self.modifiers.append(modifier)
 
-    def remove_modifier(self, modifier: IRelationshipModifier) -> None:
-        del self.active_modifiers[modifier.get_uid()]
-        modifier.deactivate(self)
+        for stat_name, value in modifier.values.items():
+            self[stat_name].add_modifier(value)
 
-    def remove_modifier_by_uid(self, uid: str) -> None:
-        modifier = self.active_modifiers[uid]
-        modifier.deactivate(self)
-        del self.active_modifiers[uid]
+    def clear_modifiers(self) -> None:
+        for modifier in self.modifiers:
+            for stat_name, value in modifier.values.items():
+                self[stat_name].remove_modifier(value)
+        self.modifiers.clear()
 
     def __getitem__(self, item: str) -> RelationshipStat:
         try:
@@ -295,7 +275,7 @@ class Relationship(Component):
             "owner": self.owner,
             "target": self.target,
             **{k: stat.to_dict() for k, stat in self._stats.items()},
-            "active_modifiers": [m.to_dict() for _, m in self.active_modifiers.items()],
+            "modifiers": [m.to_dict() for m in self.modifiers],
         }
 
 
@@ -317,55 +297,3 @@ class RelationshipManager(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {str(k): v for k, v in self.relationships.items()}
-
-
-class IRelationshipModifier(Protocol):
-    """Modifies the stat values of a relationship"""
-
-    def get_uid(self) -> str:
-        """Return the unique identifier of the modifier"""
-        raise NotImplementedError
-
-    def get_description(self) -> str:
-        """Return a text description of the modifier"""
-        raise NotImplementedError
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize the modifier to a dictionary"""
-        raise NotImplementedError
-
-    def activate(self, relationship: Relationship) -> None:
-        """Apply this modifier to the given relationship"""
-        raise NotImplementedError
-
-    def deactivate(self, relationship: Relationship) -> None:
-        """Remove this modifier's effects from the given relationship"""
-        raise NotImplementedError
-
-
-class RelationshipModifier:
-    def __init__(self, uid: str, modifiers: Dict[str, int]) -> None:
-        self.uid: str = uid
-        self.modifiers: Dict[str, int] = modifiers
-
-    def get_uid(self) -> str:
-        """Return the unique identifier of the modifier"""
-        return self.uid
-
-    def get_description(self) -> str:
-        """Return a text description of the modifier"""
-        return str(self.modifiers)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize the modifier to a dictionary"""
-        return {"uid": self.uid, "modifiers": self.modifiers}
-
-    def activate(self, relationship: Relationship) -> None:
-        """Apply this modifier to the given relationship"""
-        for stat, buff in self.modifiers.items():
-            relationship[stat].add_modifier(buff)
-
-    def deactivate(self, relationship: Relationship) -> None:
-        """Remove this modifier's effects from the given relationship"""
-        for stat, buff in self.modifiers.items():
-            relationship[stat].remove_modifier(-buff)

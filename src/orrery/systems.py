@@ -66,6 +66,7 @@ from orrery.utils.relationships import (
     get_relationship,
     get_relationships_with_statuses,
     has_relationship,
+    reevaluate_social_rules,
 )
 from orrery.utils.statuses import add_status, clear_statuses, remove_status
 
@@ -892,3 +893,12 @@ class PrintEventBufferSystem(ISystem):
     def process(self, *args: Any, **kwargs: Any) -> None:
         for event in self.world.get_resource(EventHandler).iter_events():
             print(str(event))
+
+
+class RevaluateSocialRulesSystem(System):
+    def run(self, *args: Any, **kwargs: Any) -> None:
+        for guid, relationship_comp in self.world.get_component(Relationship):
+            relationship = self.world.get_gameobject(guid)
+            subject = self.world.get_gameobject(relationship_comp.owner)
+            target = self.world.get_gameobject(relationship_comp.target)
+            reevaluate_social_rules(relationship, subject, target)

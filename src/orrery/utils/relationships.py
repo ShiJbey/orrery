@@ -5,6 +5,7 @@ from typing import List, Type, TypeVar
 from orrery.components.relationship import (
     Relationship,
     RelationshipManager,
+    RelationshipModifier,
     RelationshipNotFound,
     RelationshipStat,
 )
@@ -60,11 +61,7 @@ def add_relationship(subject: GameObject, target: GameObject) -> GameObject:
 
     subject.add_child(relationship)
 
-    social_rules = subject.world.get_resource(SocialRuleLibrary).get_active_rules()
-
-    for rule in social_rules:
-        if rule.check_preconditions(subject.world, subject, target):
-            rule.activate(subject.world, subject, target, relationship)
+    reevaluate_social_rules(relationship, subject, target)
 
     return relationship
 
@@ -278,3 +275,21 @@ def get_relationships_with_statuses(
         if has_relationship_status(subject, target, *status_types):
             matches.append(relationship.get_component(Relationship))
     return matches
+
+
+def reevaluate_social_rules(
+    relationship: GameObject, subject: GameObject, target: GameObject
+) -> None:
+    social_rules = subject.world.get_resource(SocialRuleLibrary).get_active_rules()
+
+    for rule in social_rules:
+        if rule.check_initiator(subject) is False:
+            continue
+        if rule.check_target(target) is False:
+            continue
+
+        relationship.get_component(Relationship).add_modifier(
+            RelationshipModifier(
+                name=rule.get_rule_name(), values=rule.evaluate(subject, target)
+            )
+        )

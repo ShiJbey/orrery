@@ -6,11 +6,10 @@ import orrery.plugins.default.characters
 import orrery.plugins.default.names
 import orrery.plugins.default.residences
 from orrery import Orrery
-from orrery.components.relationship import Relationship, RelationshipModifier
 from orrery.components.virtues import Virtues
 from orrery.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
 from orrery.content_management import CharacterLibrary, SocialRuleLibrary
-from orrery.core.ecs import Component, GameObject, World
+from orrery.core.ecs import Component, GameObject
 from orrery.core.social_rule import ISocialRule
 from orrery.core.status import StatusComponent
 from orrery.core.time import SimDateTime
@@ -61,21 +60,19 @@ class VirtueCompatibilityRule(ISocialRule):
     based on characters' personal virtues
     """
 
-    def get_uid(self) -> str:
+    def get_rule_name(self) -> str:
         """Return the unique identifier of the modifier"""
         return self.__class__.__name__
 
-    def check_preconditions(self, world: World, *gameobjects: GameObject) -> bool:
+    def check_target(self, gameobject: GameObject) -> bool:
         """Return true if a certain condition holds"""
-        return all([g.has_component(Virtues) for g in gameobjects])
+        return gameobject.has_component(Virtues)
 
-    def activate(
-        self,
-        world: World,
-        subject: GameObject,
-        target: GameObject,
-        relationship: GameObject,
-    ) -> None:
+    def check_initiator(self, gameobject: GameObject) -> bool:
+        """Return true if a certain condition holds"""
+        return gameobject.has_component(Virtues)
+
+    def evaluate(self, subject: GameObject, target: GameObject) -> Dict[str, int]:
         """Apply any modifiers associated with the social rule"""
         character_virtues = subject.get_component(Virtues)
         acquaintance_virtues = target.get_component(Virtues)
@@ -98,18 +95,7 @@ class VirtueCompatibilityRule(ISocialRule):
             romance_buff = 2
             friendship_buff = 3
 
-        compatibility_mod = RelationshipModifier(
-            "virtue-compatibility",
-            {"Friendship": friendship_buff, "Romance": romance_buff},
-        )
-
-        relationship.get_component(Relationship).add_modifier(compatibility_mod)
-
-    def deactivate(self, relationship: GameObject) -> None:
-        """Apply any modifiers associated with the social rule"""
-        relationship.get_component(Relationship).remove_modifier_by_uid(
-            "virtue-compatibility"
-        )
+        return {"Friendship": friendship_buff, "Romance": romance_buff}
 
 
 class OwesDebt(StatusComponent):
