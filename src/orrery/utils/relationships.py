@@ -10,7 +10,7 @@ from orrery.components.relationship import (
 )
 from orrery.config import OrreryConfig
 from orrery.content_management import SocialRuleLibrary
-from orrery.core.ecs import Component, GameObject
+from orrery.core.ecs import GameObject
 from orrery.core.status import StatusComponent, StatusManager
 from orrery.utils.statuses import add_status, has_status, remove_status
 

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Dict
 
 import pytest
 
@@ -17,15 +17,30 @@ from orrery.core.ecs import (
 class Actor(Component):
     name: str
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": str
+        }
+
 
 @dataclass
 class CurrentLocation(Component):
     location: int
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "location": self.location
+        }
+
 
 @dataclass
 class Money(Component):
     amount: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "money": self.amount
+        }
 
 
 @dataclass
@@ -33,23 +48,33 @@ class Job(Component):
     title: str
     salary: int
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "title": self.title,
+            "salary": self.salary
+        }
+
 
 @dataclass
 class Location(Component):
     name: str
 
-
-@dataclass
-class SimpleRoutine(Component):
-    free: bool
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name
+        }
 
 
 class ComponentA(Component):
-    pass
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 class ComponentB(Component):
-    pass
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 @dataclass
@@ -160,7 +185,7 @@ def test_delete_gameobject():
     assert g3.has_component(ComponentA) is False
     # When you remove the last component from an entity,
     # it technically does not exist within esper anymore
-    assert world.ecs.entity_exists(g3.uid) is False
+    assert world._ecs.entity_exists(g3.uid) is False # type: ignore
     world.delete_gameobject(g3.uid)
     world.step()
     assert world.has_gameobject(g3.uid) is False

@@ -375,3 +375,90 @@ class NewResidenceEvent(Event):
                 EventRole("Residence", residence.uid),
             ],
         )
+
+
+class BecomeAdolescentEvent(Event):
+    def __init__(
+        self,
+        date: SimDateTime,
+        character: GameObject,
+    ) -> None:
+        super().__init__(
+            name="BecomeAdolescent",
+            timestamp=date.to_iso_str(),
+            roles=[
+                EventRole("Character", character.uid),
+            ],
+        )
+
+
+class BecomeYoungAdultEvent(Event):
+    def __init__(
+        self,
+        date: SimDateTime,
+        character: GameObject,
+    ) -> None:
+        super().__init__(
+            name="BecomeYoungAdult",
+            timestamp=date.to_iso_str(),
+            roles=[
+                EventRole("Character", character.uid),
+            ],
+        )
+
+
+class BecomeAdultEvent(Event):
+    def __init__(
+        self,
+        date: SimDateTime,
+        character: GameObject,
+    ) -> None:
+        super().__init__(
+            name="BecomeAdult",
+            timestamp=date.to_iso_str(),
+            roles=[
+                EventRole("Character", character.uid),
+            ],
+        )
+
+
+class BecomeSeniorEvent(Event):
+    def __init__(
+        self,
+        date: SimDateTime,
+        character: GameObject,
+    ) -> None:
+        super().__init__(
+            name="BecomeSenior",
+            timestamp=date.to_iso_str(),
+            roles=[
+                EventRole("Character", character.uid),
+            ],
+        )
+
+
+class RetirementEvent(Event):
+    __slots__ = "occupation"
+
+    def __init__(
+        self,
+        date: SimDateTime,
+        character: GameObject,
+        business: GameObject,
+        occupation: str,
+    ) -> None:
+        super().__init__(
+            name="LeaveJob",
+            timestamp=date.to_iso_str(),
+            roles=[
+                EventRole("Business", business.uid),
+                EventRole("Character", character.uid),
+            ],
+        )
+        self.occupation: str = occupation
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "occupation": self.occupation,
+        }

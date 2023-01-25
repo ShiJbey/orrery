@@ -4,6 +4,7 @@ test_status.py
 TODO: Fill in the placeholder tests with actual tests
 """
 from dataclasses import dataclass
+from typing import Any, Dict
 
 from orrery.core.ecs import Component, World
 from orrery.core.status import StatusComponent, StatusManager
@@ -15,6 +16,12 @@ from orrery.utils.statuses import add_status, remove_status
 class Stats(Component):
     strength: int = 0
     defense: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "strength": self.strength,
+            "defense": self.defense
+        }
 
 
 class SuperStrength(StatusComponent):

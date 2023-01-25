@@ -266,7 +266,7 @@ class Married(StatusComponent):
 
     __slots__ = "years"
 
-    def __init__(self, created: str, years: int = 0.0) -> None:
+    def __init__(self, created: str, years: float = 0.0) -> None:
         super().__init__(created)
         self.years: float = years
 
@@ -279,7 +279,7 @@ class Dating(StatusComponent):
 
     __slots__ = "years"
 
-    def __init__(self, created: str, years: int = 0.0) -> None:
+    def __init__(self, created: str, years: float = 0.0) -> None:
         super().__init__(created)
         self.years: float = years
 

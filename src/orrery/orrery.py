@@ -4,7 +4,6 @@ import random
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
 
-from orrery import event_callbacks
 from orrery.components.activity import Activities, LikedActivities
 from orrery.components.business import (
     Business,
@@ -79,6 +78,7 @@ from orrery.systems import (
     MeetNewPeopleSystem,
     OccupationUpdateSystem,
     PregnantStatusSystem,
+    PrintEventBufferSystem,
     RelationshipUpdateSystem,
     SpawnResidentSystem,
     TimeSystem,
@@ -153,11 +153,11 @@ class Orrery:
         self.plugins: List[Tuple[Plugin, Dict[str, Any]]] = []
 
         # Seed RNG for libraries we don't control, like Tracery
-        random.seed(config.seed)
+        random.seed(self.config.seed)
 
         # Add default resources
-        self.world.add_resource(config)
-        self.world.add_resource(random.Random(config.seed))
+        self.world.add_resource(self.config)
+        self.world.add_resource(random.Random(self.config.seed))
         self.world.add_resource(Tracery())
         self.world.add_resource(SocialRuleLibrary())
         self.world.add_resource(CharacterLibrary())
@@ -226,57 +226,8 @@ class Orrery:
         self.world.register_component(Settlement)
 
         # Configure printing every event to the console
-        if config.verbose:
-            self.world.get_resource(EventHandler).subscribe(lambda e: print(str(e)))
-
-        # Configure event callback functions
-        self.world.get_resource(EventHandler).on(
-            "Depart", event_callbacks.on_depart_callback
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Retire", event_callbacks.remove_retired_from_occupation
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Retire", event_callbacks.remove_retired_from_occupation
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Death", event_callbacks.remove_deceased_from_occupation
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Death", event_callbacks.remove_deceased_from_residence
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Depart", event_callbacks.remove_departed_from_residence
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Depart", event_callbacks.remove_departed_from_occupation
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Death", event_callbacks.remove_statuses_from_deceased
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Depart", event_callbacks.remove_statuses_from_departed
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Death", event_callbacks.remove_frequented_locations_from_deceased
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Depart", event_callbacks.remove_frequented_locations_from_departed
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "JoinSettlement", event_callbacks.on_join_settlement
-        )
+        if self.config.verbose:
+            self.world.add_system(PrintEventBufferSystem())
 
     def load_plugin(self, plugin: Plugin, **kwargs: Any) -> None:
         """

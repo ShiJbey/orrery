@@ -4,7 +4,7 @@ from typing import Any, Dict, List, TypeVar
 
 import pydantic
 
-from orrery.core.ecs import GameObject, World
+from .ecs import GameObject, World
 
 _KT = TypeVar("_KT")
 

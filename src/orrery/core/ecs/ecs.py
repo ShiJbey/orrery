@@ -281,7 +281,7 @@ class GameObject:
         returns the first instance of the component type
         """
 
-        stack = list(*self.children)
+        stack: List[GameObject] = list(*self.children)
         checked: Set[GameObject] = set()
 
         while stack:
@@ -306,7 +306,7 @@ class GameObject:
         """Get all the instances of a component type attached to the immediate children of this GameObject"""
         results: List[Tuple[int, _CT]] = []
 
-        stack = list(*self.children)
+        stack: List[GameObject] = list(*self.children)
         checked: Set[GameObject] = set()
 
         while stack:
@@ -727,7 +727,7 @@ class World:
         except KeyError:
             return False
 
-    def get_components_for_entity(self, guid: int) -> Tuple[_CT, ...]:
+    def get_components_for_entity(self, guid: int) -> Tuple[Component, ...]:
         """Get the instances of the component types on the given entity
 
         Parameters

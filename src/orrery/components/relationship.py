@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, Protocol, Tuple, TypeVar
+from typing import Any, Dict, Iterator, Protocol, Tuple
 
 from orrery.core.ecs import Component
 
@@ -236,9 +236,6 @@ class SimpleRelationshipModifier:
             relationship[stat].remove_modifier(buff)
 
 
-_RST = TypeVar("_RST", bound="RelationshipStatus")
-
-
 class Relationship(Component):
 
     __slots__ = (
@@ -319,7 +316,7 @@ class RelationshipManager(Component):
         self.relationships: Dict[int, int] = {}
 
     def to_dict(self) -> Dict[str, Any]:
-        return {**self.relationships}
+        return {str(k): v for k, v in self.relationships.items()}
 
 
 class IRelationshipModifier(Protocol):

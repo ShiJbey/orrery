@@ -1,9 +1,11 @@
+from typing import Any, Dict
 import pytest
 
 from orrery.components.character import GameCharacter, Gender, Retired
 from orrery.config import CharacterAgingConfig, CharacterConfig, CharacterSpawnConfig
 from orrery.core.ecs import Component, World
 from orrery.core.ecs.query import QueryBuilder, Relation, eq_
+from orrery.core.time import SimDateTime
 from orrery.utils.query import is_gender
 
 
@@ -90,11 +92,15 @@ def test_relation_copy():
 
 
 class Hero(Component):
-    pass
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 class DemonKing(Component):
-    pass
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 @pytest.fixture()
@@ -118,11 +124,11 @@ def sample_world() -> World:
         [
             Hero(),
             GameCharacter(character_config, "Astrid", "", gender=Gender.Female),
-            Retired(),
+            Retired(SimDateTime().to_iso_str()),
         ]
     )
     world.spawn_gameobject(
-        [DemonKing(), GameCharacter(character_config, "-Shi", ""), Retired()]
+        [DemonKing(), GameCharacter(character_config, "-Shi", ""), Retired(SimDateTime().to_iso_str())]
     )
     world.spawn_gameobject(
         [

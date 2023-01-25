@@ -83,7 +83,7 @@ def create_settlement(
         [Settlement(generated_name, GridSettlementMap(settlement_size))]
     )
 
-    world.get_resource(EventHandler).record_event(
+    world.get_resource(EventHandler).emit(
         orrery.events.NewSettlementEvent(
             date=world.get_resource(SimDateTime), settlement=settlement
         )
@@ -174,7 +174,7 @@ def create_character(
     if gender:
         character.get_component(GameCharacter).gender = gender
 
-    world.get_resource(EventHandler).record_event(
+    world.get_resource(EventHandler).emit(
         orrery.events.NewCharacterEvent(
             date=world.get_resource(SimDateTime), character=character
         )
@@ -201,7 +201,7 @@ def add_character_to_settlement(character: GameObject, settlement: GameObject) -
 
     character.add_component(CurrentSettlement(settlement.uid))
 
-    character.world.get_resource(EventHandler).record_event(
+    character.world.get_resource(EventHandler).emit(
         orrery.events.JoinSettlementEvent(
             character.world.get_resource(SimDateTime), settlement, character
         )
@@ -226,7 +226,7 @@ def remove_character_from_settlement(
 
     remove_status(character, Active)
 
-    character.world.get_resource(EventHandler).record_event(
+    character.world.get_resource(EventHandler).emit(
         orrery.events.LeaveSettlementEvent(
             character.world.get_resource(SimDateTime), settlement, character
         )
@@ -239,7 +239,7 @@ def create_residence(
 ) -> GameObject:
     residence = prefab.spawn(world)
 
-    world.get_resource(EventHandler).record_event(
+    world.get_resource(EventHandler).emit(
         orrery.events.NewResidenceEvent(
             date=world.get_resource(SimDateTime), residence=residence
         )
@@ -406,7 +406,7 @@ def depart_town(world: World, character: GameObject, reason: str = "") -> None:
             set_residence(world, resident, None)
             departing_characters.append(resident)
 
-    world.get_resource(EventHandler).record_event(
+    world.get_resource(EventHandler).emit(
         orrery.events.DepartEvent(
             date=world.get_resource(SimDateTime),
             characters=departing_characters,
@@ -444,7 +444,7 @@ def create_business(
     if name:
         business.get_component(Business).name = name
 
-    world.get_resource(EventHandler).record_event(
+    world.get_resource(EventHandler).emit(
         orrery.events.NewBusinessEvent(
             date=world.get_resource(SimDateTime), business=business
         )
@@ -561,7 +561,7 @@ def shutdown_business(business: GameObject) -> None:
     business.remove_component(Location)
     remove_status(business, Active)
 
-    world.get_resource(EventHandler).record_event(event)
+    world.get_resource(EventHandler).emit(event)
 
 
 def end_job(
@@ -635,7 +635,7 @@ def end_job(
     )
 
     # Emit the event
-    world.get_resource(EventHandler).record_event(
+    world.get_resource(EventHandler).emit(
         orrery.events.EndJobEvent(
             date=world.get_resource(SimDateTime),
             character=character,
@@ -730,7 +730,7 @@ def start_job(
 
         business_comp.add_employee(character.uid, occupation.occupation_type)
 
-    character.world.get_resource(EventHandler).record_event(
+    character.world.get_resource(EventHandler).emit(
         orrery.events.StartJobEvent(
             character.world.get_resource(SimDateTime),
             business=business,

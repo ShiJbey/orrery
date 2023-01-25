@@ -49,7 +49,7 @@ class DataCollector:
         column_names: List[str]
             The names of columns within the table
         """
-        new_table = {column: [] for column in column_names}
+        new_table: Dict[str, List[Any]] = {column: [] for column in column_names}
         self.tables[table_name] = new_table
 
     def add_table_row(self, table_name: str, row_data: Dict[str, Any]) -> None:
@@ -103,7 +103,7 @@ class DataCollector:
 class DataCollectionSystem(ISystem):
     """Collects data from the world simulation"""
 
-    def process(self, *args, **kwargs) -> None:
+    def process(self, *args: Any, **kwargs: Any) -> None:
         data_collector = self.world.get_resource(DataCollector)
 
         for table_name, reporter in data_collector.reporters:

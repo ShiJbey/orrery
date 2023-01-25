@@ -5,15 +5,12 @@ This package contains functionality for the entity-component system. It has defi
 for entities, systems, the world, queries, and entity prefabs.
 """
 
-from orrery.core.ecs.ecs import (
-    Component,
-    ComponentNotFoundError,
-    GameObject,
-    GameObjectNotFoundError,
-    IComponentFactory,
-    ISystem,
-    ResourceNotFoundError,
-    World,
-)
-from orrery.core.ecs.prefab import EntityPrefab
-from orrery.core.ecs.query import Query, QueryBuilder
+from .ecs import *
+from .prefab import *
+from .query import *
+
+__all__ = [
+    "ecs",
+    "prefab",
+    "query"
+]

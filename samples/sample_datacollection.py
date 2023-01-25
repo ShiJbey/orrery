@@ -48,7 +48,7 @@ class SalarySystem(ISystem):
 
 @app.system(-1000)
 class WealthReporter(ISystem):
-    def process(self, *args, **kwargs):
+    def process(self, *args: Any, **kwargs: Any) -> None:
         timestamp = self.world.get_resource(SimDateTime).to_iso_str()
         data_collector = self.world.get_resource(DataCollector)
         for guid, money in self.world.get_component(Money):

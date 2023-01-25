@@ -123,7 +123,7 @@ def filter_relationship_stat_gte(
             relationship = get_relationship(subject, target)
             if value_type == "raw":
                 return relationship[stat_name].get_raw_value() >= threshold
-            elif value_type == "clamped":
+            elif value_type == "scaled":
                 return relationship[stat_name].get_scaled_value() >= threshold
             elif value_type == "norm":
                 return relationship[stat_name].get_normalized_value() >= threshold
@@ -153,7 +153,7 @@ def filter_relationship_stat_lte(
             relationship = get_relationship(subject, target)
             if value_type == "raw":
                 return relationship[stat_name].get_raw_value() <= threshold
-            elif value_type == "clamped":
+            elif value_type == "scaled":
                 return relationship[stat_name].get_scaled_value() <= threshold
             elif value_type == "norm":
                 return relationship[stat_name].get_normalized_value() <= threshold
@@ -180,6 +180,10 @@ def find_with_relationship_stat_gte(
     def clause(
         ctx: QueryContext, world: World, *variables: str
     ) -> List[Tuple[int, ...]]:
+
+        if ctx.relation is None:
+            raise TypeError("Relation is None inside query")
+
         # loop through each row in the ctx at the given column
         results: List[Tuple[int, ...]] = []
 
@@ -192,7 +196,7 @@ def find_with_relationship_stat_gte(
 
                 if value_type == "raw":
                     value = relationship[stat_name].get_raw_value()
-                elif value_type == "clamped":
+                elif value_type == "scaled":
                     value = relationship[stat_name].get_scaled_value()
                 elif value_type == "norm":
                     value = relationship[stat_name].get_normalized_value()
@@ -223,6 +227,10 @@ def find_with_relationship_stat_lte(
     def clause(
         ctx: QueryContext, world: World, *variables: str
     ) -> List[Tuple[int, ...]]:
+
+        if ctx.relation is None:
+            raise TypeError("Relation is None inside query")
+
         # loop through each row in the ctx at the given column
         results: List[Tuple[int, ...]] = []
 
@@ -235,7 +243,7 @@ def find_with_relationship_stat_lte(
 
                 if value_type == "raw":
                     value = relationship[stat_name].get_raw_value()
-                elif value_type == "clamped":
+                elif value_type == "scaled":
                     value = relationship[stat_name].get_scaled_value()
                 elif value_type == "norm":
                     value = relationship[stat_name].get_normalized_value()
@@ -252,7 +260,7 @@ def find_with_relationship_stat_lte(
     return clause
 
 
-def filter_relationship_has_statuses(*status_types: Type[Component]) -> QueryFilterFn:
+def filter_relationship_has_statuses(*status_types: Type[StatusComponent]) -> QueryFilterFn:
     """
     Query filter function that returns true if the first of the given game
     objects has a relationship toward the second game object with the given
@@ -270,12 +278,15 @@ def filter_relationship_has_statuses(*status_types: Type[Component]) -> QueryFil
     return precondition
 
 
-def find_relationships_with_statuses(*status_types: Type[Component]) -> QueryGetFn:
+def find_relationships_with_statuses(*status_types: Type[StatusComponent]) -> QueryGetFn:
     """
     Returns a list of all the GameObjects with the given component
     """
 
     def fn(ctx: QueryContext, world: World, *variables: str) -> List[Tuple[int, ...]]:
+        if ctx.relation is None:
+            raise TypeError("Relation is None inside query")
+
         results: List[Tuple[int, ...]] = []
         subject_id: int
         for (subject_id,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):

@@ -15,7 +15,7 @@ from typing import (
     overload,
 )
 
-from orrery.core.ecs import Component, GameObject, World
+from .ecs import Component, GameObject, World
 
 
 class QueryFilterFn(Protocol):

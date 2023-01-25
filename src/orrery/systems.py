@@ -1,9 +1,7 @@
 import random
 from abc import ABC, abstractmethod
 from collections import Counter
-from typing import Any, List, Optional, Type
-
-from ordered_set import OrderedSet
+from typing import Any, List, Optional
 
 import orrery.events
 from orrery.components.business import (
@@ -45,7 +43,7 @@ from orrery.content_management import (
     ResidenceLibrary,
 )
 from orrery.core.ecs import GameObject, ISystem, QueryBuilder
-from orrery.core.event import Event, EventHandler, EventRole
+from orrery.core.event import EventHandler
 from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
 from orrery.prefabs import CharacterPrefab
 from orrery.utils.common import (
@@ -56,6 +54,7 @@ from orrery.utils.common import (
     create_business,
     create_character,
     create_residence,
+    end_job,
     generate_child_prefab,
     set_residence,
     start_job,
@@ -68,10 +67,10 @@ from orrery.utils.relationships import (
     get_relationships_with_statuses,
     has_relationship,
 )
-from orrery.utils.statuses import add_status, remove_status
+from orrery.utils.statuses import add_status, clear_statuses, remove_status
 
 
-class System(ISystem):
+class System(ISystem, ABC):
     """
     System is a more fully-featured System abstraction that
     handles common calculations like calculating the elapsed
@@ -124,59 +123,6 @@ class TimeSystem(ISystem):
         current_date.increment(months=increment)
 
 
-class ISystemGroup(ISystem, ABC):
-    """Abstract base class for all system group classes"""
-
-    @abstractmethod
-    def add_subsystem(self, sub_system: ISystem) -> None:
-        """Add a sub-system to the system group"""
-        raise NotImplementedError
-
-    @abstractmethod
-    def remove_subsystem(self, system_type: Type[ISystem]) -> None:
-        """Remove a sub-system from the group"""
-        raise NotImplementedError
-
-
-class RootSystemGroup(ISystemGroup):
-    """The default system group to which systems are added"""
-
-    name: str = "root"
-    active: bool = True
-
-    __slots__ = "sub_systems"
-
-    def __init__(self) -> None:
-        self.sub_systems: OrderedSet[ISystem] = OrderedSet([])
-
-    @classmethod
-    def get_name(cls) -> str:
-        """Return the name of the system"""
-        return cls.name
-
-    def system_should_run(self) -> bool:
-        """Check if this system should run this simulation step
-
-        Returns
-        -------
-        bool
-            Returns True if the system should run
-        """
-
-        return self.active
-
-    def add_subsystem(self, system: ISystem) -> None:
-        """Add a sub-system to the system group"""
-        self.sub_systems.add(system)
-
-    def remove_subsystem(self, system: ISystem) -> None:
-        """Remove a sub-system from the group"""
-        self.sub_systems.remove(system)
-
-    def process(self, *args, **kwargs) -> None:
-        for s in self.sub_systems:
-            s.process(*args, **kwargs)
-
 
 class LifeEventSystem(System):
     """Fires LifeEvents adding some spice to the simulation data"""
@@ -188,7 +134,7 @@ class LifeEventSystem(System):
         all_events = life_events.get_all()
 
         if all_events:
-            for _, settlement in self.world.get_component(Settlement):
+            for _, _ in self.world.get_component(Settlement):
                 for life_event in rng.choices(all_events, k=10):
                     life_event.try_execute_event(self.world)
 
@@ -224,7 +170,7 @@ class MeetNewPeopleSystem(ISystem):
                 # Select one randomly
                 options: List[int]
                 weights: List[int]
-                options, weights = zip(*candidate_weights.items())
+                options, weights = tuple(zip(*candidate_weights.items())) # type: ignore
 
                 rng = self.world.get_resource(random.Random)
 
@@ -403,7 +349,7 @@ class BuildBusinessSystem(ISystem):
                     lot_id=lot,
                 )
 
-                event_log.record_event(
+                event_log.emit(
                     orrery.events.StartBusinessEvent(
                         self.world.get_resource(SimDateTime),
                         owner,
@@ -467,10 +413,9 @@ class SpawnResidentSystem(System):
         event_logger = self.world.get_resource(EventHandler)
         character_library = self.world.get_resource(CharacterLibrary)
 
-        residence_comp: Residence
         current_settlement: CurrentSettlement
         for guid, (
-            residence_comp,
+            _,
             _,
             _,
             _,
@@ -601,7 +546,7 @@ class SpawnResidentSystem(System):
                         get_relationship(sibling, child)["Friendship"] += 20
 
             # Record a life event
-            event_logger.record_event(
+            event_logger.emit(
                 orrery.events.MoveIntoTownEvent(date, residence, *generated_characters)
             )
 
@@ -617,7 +562,7 @@ class BusinessUpdateSystem(System):
 
 class OccupationUpdateSystem(System):
     def run(self, *args: Any, **kwargs: Any) -> None:
-        for guid, occupation in self.world.get_component(Occupation):
+        for _, occupation in self.world.get_component(Occupation):
             # Increment the amount of time that a character has held this occupation
             occupation.set_years_held(
                 occupation.years_held
@@ -658,54 +603,26 @@ class CharacterAgingSystem(System):
                 continue
 
             if character_comp.life_stage == LifeStage.Adolescent:
-                event_log.record_event(
-                    Event(
-                        name="BecameAdolescent",
-                        timestamp=current_date.to_iso_str(),
-                        roles=[
-                            EventRole("Character", character.uid),
-                        ],
-                    ),
+                event_log.emit(
+                    orrery.events.BecomeAdolescentEvent(current_date, character)
                 )
 
             elif character_comp.life_stage == LifeStage.YoungAdult:
-                event_log.record_event(
-                    Event(
-                        name="BecomeYoungAdult",
-                        timestamp=current_date.to_iso_str(),
-                        roles=[
-                            EventRole("Character", character.uid),
-                        ],
-                    ),
+                event_log.emit(
+                    orrery.events.BecomeYoungAdultEvent(current_date, character)
                 )
 
             elif character_comp.life_stage == LifeStage.Adult:
-                event_log.record_event(
-                    Event(
-                        name="BecomeAdult",
-                        timestamp=current_date.to_iso_str(),
-                        roles=[
-                            EventRole("Character", character.uid),
-                        ],
-                    ),
-                )
+                event_log.emit(orrery.events.BecomeAdultEvent(current_date, character))
 
             elif character_comp.life_stage == LifeStage.Senior:
-                event_log.record_event(
-                    Event(
-                        name="BecomeSenior",
-                        timestamp=current_date.to_iso_str(),
-                        roles=[
-                            EventRole("Character", character.uid),
-                        ],
-                    ),
-                )
+                event_log.emit(orrery.events.BecomeSeniorEvent(current_date, character))
 
 
 class EventSystem(ISystem):
     def process(self, *args: Any, **kwargs: Any) -> None:
         event_log = self.world.get_resource(EventHandler)
-        event_log.process_event_queue(self.world)
+        event_log.process_event_buffer()
 
 
 class UnemployedStatusSystem(System):
@@ -760,7 +677,7 @@ class UnemployedStatusSystem(System):
                         "unemployment",
                     )
 
-                    self.world.get_resource(EventHandler).record_event(event)
+                    self.world.get_resource(EventHandler).emit(event)
 
 
 class PregnantStatusSystem(System):
@@ -855,7 +772,7 @@ class PregnantStatusSystem(System):
 
             # Pregnancy event dates are retro-fit to be the actual date that the
             # child was due.
-            self.world.get_resource(EventHandler).record_event(
+            self.world.get_resource(EventHandler).emit(
                 orrery.events.ChildBirthEvent(
                     current_date, character, other_parent, baby
                 )
@@ -864,13 +781,13 @@ class PregnantStatusSystem(System):
 
 class MarriedStatusSystem(System):
     def run(self, *args: Any, **kwargs: Any) -> None:
-        for guid, married in self.world.get_component(Married):
+        for _, married in self.world.get_component(Married):
             married.years += self.elapsed_time.total_days / DAYS_PER_YEAR
 
 
 class DatingStatusSystem(System):
     def run(self, *args: Any, **kwargs: Any) -> None:
-        for guid, dating in self.world.get_component(Dating):
+        for _, dating in self.world.get_component(Dating):
             dating.years += self.elapsed_time.total_days / DAYS_PER_YEAR
 
 
@@ -906,3 +823,80 @@ class RemoveFrequentedFromDepartedSystem(System):
             gameobject = self.world.get_gameobject(guid)
             if gameobject.has_component(GameCharacter):
                 clear_frequented_locations(gameobject)
+
+
+class OnDepartSystem(ISystem):
+    def process(self, *args: Any, **kwargs: Any) -> None:
+        date = self.world.get_resource(SimDateTime)
+
+        for event in self.world.get_resource(EventHandler).iter_events_of_type(
+            orrery.events.DepartEvent
+        ):
+            for c in event.get_all("Character"):
+                character = self.world.get_gameobject(c)
+                remove_status(character, Active)
+                add_status(character, Departed(date.to_iso_str()))
+                clear_frequented_locations(character)
+                clear_statuses(character)
+                set_residence(self.world, character, None)
+
+                if character.has_component(Occupation):
+                    end_job(character, reason=event.name)
+
+
+class OnDeathSystem(ISystem):
+    def process(self, *args: Any, **kwargs: Any) -> None:
+
+        for event in self.world.get_resource(EventHandler).iter_events_of_type(
+            orrery.events.DeathEvent
+        ):
+            character = self.world.get_gameobject(event["Character"])
+            set_residence(self.world, character, None)
+            clear_statuses(character)
+
+
+class OnJoinSettlementSystem(ISystem):
+    def process(self, *args: Any, **kwargs: Any) -> None:
+        date = self.world.get_resource(SimDateTime)
+
+        for event in self.world.get_resource(EventHandler).iter_events_of_type(
+            orrery.events.JoinSettlementEvent
+        ):
+            character = self.world.get_gameobject(event["Character"])
+            game_character = character.get_component(GameCharacter)
+
+            if game_character.life_stage >= LifeStage.YoungAdult:
+                add_status(character, InTheWorkforce(date.to_iso_str()))
+                if not character.has_component(Occupation):
+                    add_status(character, Unemployed(date.to_iso_str()))
+
+
+class RemoveRetiredFromOccupationSystem(ISystem):
+    def process(self, *args: Any, **kwargs: Any) -> None:
+
+        for event in self.world.get_resource(EventHandler).iter_events_of_type(
+            orrery.events.RetirementEvent
+        ):
+            character = self.world.get_gameobject(event["Retiree"])
+            if character.has_component(Occupation):
+                end_job(character, reason=event.name)
+
+
+class OnBecomeYoungAdultSystem(ISystem):
+    def process(self, *args: Any, **kwargs: Any) -> None:
+        date = self.world.get_resource(SimDateTime)
+
+        for event in self.world.get_resource(EventHandler).iter_events_of_type(
+            orrery.events.RetirementEvent
+        ):
+            character = self.world.get_gameobject(event["Character"])
+            add_status(character, InTheWorkforce(date.to_iso_str()))
+
+            if not character.has_component(Occupation):
+                add_status(character, Unemployed(date.to_iso_str()))
+
+
+class PrintEventBufferSystem(ISystem):
+    def process(self, *args: Any, **kwargs: Any) -> None:
+        for event in self.world.get_resource(EventHandler).iter_events():
+            print(str(event))

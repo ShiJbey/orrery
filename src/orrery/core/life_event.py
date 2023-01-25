@@ -65,7 +65,7 @@ class LifeEventInstance:
             roles=[r for r in self.roles],
         )
 
-        world.get_resource(EventHandler).record_event(event)
+        world.get_resource(EventHandler).emit(event)
 
         if self.effect is not None:
             self.effect(world, event)

@@ -406,7 +406,7 @@ def die_of_old_age(probability: float = 0.8) -> ILifeEvent:
         deceased = world.get_gameobject(event["Deceased"])
         add_status(deceased, Deceased(current_date.to_iso_str()))
         remove_status(deceased, Active)
-        world.get_resource(EventHandler).record_event(
+        world.get_resource(EventHandler).emit(
             DeathEvent(world.get_resource(SimDateTime), deceased)
         )
 

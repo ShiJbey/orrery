@@ -1,7 +1,18 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Callable, ClassVar, DefaultDict, Dict, List, Optional, Protocol
+from typing import (
+    Any,
+    ClassVar,
+    DefaultDict,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Protocol,
+    Type,
+    TypeVar,
+)
 
 from orrery.core.ecs import GameObject, World
 from orrery.core.serializable import ISerializable
@@ -142,130 +153,62 @@ class EventRole:
         return f"{self.__class__.__name__}(name={self.name}, gid={self.gid})"
 
 
+_ET = TypeVar("_ET", bound=Event)
+
+
 class EventHandler(ISerializable):
     """
     Global resource that manages all the LifeEvents that have occurred in the simulation.
 
-    This component should always be present in the simulation.
-
-    Attributes
-    ----------
-    event_history: List[Event]
-        All the events that have occurred thus far in the simulation
-    _per_gameobject: DefaultDict[int, List[Event]]
-        Dictionary of all the LifEvents that have occurred divided by participant ID
-    _subscribers: List[Callable[[LifeEvent], None]]
-        Callback functions executed every time a LifeEvent occurs
-    _per_gameobject_subscribers: DefaultDict[int, List[Callable[[LifeEvent], None]]
-        Callback functions divided by the GameObject to which they are subscribed
+    This resource should always be present in the simulation.
     """
 
     __slots__ = (
-        "event_history",
-        "_subscribers",
+        "_event_history",
         "_per_gameobject",
-        "_per_gameobject_subscribers",
-        "_listeners",
-        "_event_queue",
+        "_event_buffers_by_type",
+        "_event_buffer",
     )
 
     def __init__(self) -> None:
-        self.event_history: List[Event] = []
+        self._event_history: List[Event] = []
         self._per_gameobject: DefaultDict[int, List[Event]] = defaultdict(list)
-        self._subscribers: List[Callable[[Event], None]] = []
-        self._per_gameobject_subscribers: DefaultDict[
-            int, List[Callable[[Event], None]]
-        ] = defaultdict(list)
-        self._listeners: DefaultDict[
-            str, List[Callable[[World, Event], None]]
-        ] = defaultdict(list)
-        self._event_queue: List[Event] = []
+        self._event_buffers_by_type: DefaultDict[Type[Event], List[Event]] = defaultdict(
+            list
+        )
+        self._event_buffer: List[Event] = []
 
-    def record_event(self, event: Event) -> None:
-        """
-        Adds a LifeEvent to the history and calls all registered callback functions
+    def __iter__(self) -> Iterator[Event]:
+        """Return an iterator for the event history"""
+        return self._event_history.__iter__()
+
+    def iter_events(self) -> Iterator[Event]:
+        """Return an iterator to all the events in the buffer regardless of type"""
+        return self._event_buffer.__iter__()
+
+    def iter_events_of_type(self, event_type: Type[_ET]) -> Iterator[_ET]:
+        """Return an iterator to the buffer of events for the given type"""
+        return self._event_buffers_by_type[event_type].__iter__()
+
+    def emit(self, event: Event) -> None:
+        """Emit a new event
 
         Parameters
         ----------
         event: Event
             The event that occurred
         """
-        self.event_history.append(event)
-        self._event_queue.append(event)
+        self._event_buffer.append(event)
+        self._event_buffers_by_type[type(event)].append(event)
 
-    def process_event_queue(self, world: World) -> None:
-        while self._event_queue:
-            event = self._event_queue.pop(0)
-
+    def process_event_buffer(self) -> None:
+        for event in self._event_buffer:
             for role in event.roles:
                 self._per_gameobject[role.gid].append(event)
-                if role.gid in self._per_gameobject_subscribers:
-                    for cb in self._per_gameobject_subscribers[role.gid]:
-                        cb(event)
+            self._event_history.append(event)
 
-            for cb in self._subscribers:
-                cb(event)
-
-            for listener in self._listeners[event.name]:
-                listener(world, event)
-
-    def on(self, event_name: str, listener: Callable[[World, Event], None]) -> None:
-        self._listeners[event_name].append(listener)
-
-    def subscribe(self, cb: Callable[[Event], None]) -> None:
-        """
-        Add a function to be called whenever a LifeEvent occurs
-
-        Parameters
-        ----------
-        cb: Callable[[LifeEvent], None]
-            Function to call
-        """
-        self._subscribers.append(cb)
-
-    def unsubscribe(self, cb: Callable[[Event], None]) -> None:
-        """
-        Remove a function from being called whenever a LifeEvent occurs
-
-        Parameters
-        ----------
-        cb: Callable[[LifeEvent], None]
-            Function to call
-        """
-        self._subscribers.remove(cb)
-
-    def subscribe_to_gameobject(self, gid: int, cb: Callable[[Event], None]) -> None:
-        """
-        Add a function to be called whenever the gameobject with the given gid
-        is involved in a LifeEvent
-
-        Parameters
-        ----------
-        gid: int
-            ID of the GameObject to subscribe to
-
-        cb: Callable[[LifeEvent], None]
-            Callback function executed when a life event occurs
-        """
-        self._per_gameobject_subscribers[gid].append(cb)
-
-    def unsubscribe_from_gameobject(
-        self, gid: int, cb: Callable[[Event], None]
-    ) -> None:
-        """
-        Remove a function from being called whenever the gameobject with the given gid
-        is involved in a LifeEvent
-
-        Parameters
-        ----------
-        gid: int
-            ID of the GameObject to subscribe to
-
-        cb: Callable[[LifeEvent], None]
-            Callback function executed when a life event occurs
-        """
-        if gid in self._per_gameobject_subscribers:
-            self._per_gameobject_subscribers[gid].remove(cb)
+        self._event_buffer.clear()
+        self._event_buffers_by_type.clear()
 
     def get_events_for(self, gid: int) -> List[Event]:
         """
@@ -284,7 +227,7 @@ class EventHandler(ISerializable):
         return self._per_gameobject[gid]
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"events": [e.to_dict() for e in self.event_history]}
+        return {"events": [e.to_dict() for e in self._event_history]}
 
 
 class RoleBinder(Protocol):
