@@ -39,6 +39,7 @@ from orrery.content_management import (
     ActivityLibrary,
     ActivityToVirtueMap,
     CharacterLibrary,
+    LocationBiasRuleLibrary,
     ServiceLibrary,
 )
 from orrery.core.ecs import GameObject, World
@@ -872,7 +873,7 @@ def find_places_with_any_activities(
 
     activity_instances = [activity_library.get(a, create_new=False) for a in activities]
 
-    def score_location(act_list: Iterable[ActivityInstance]) -> int:
+    def score_loc(act_list: Iterable[ActivityInstance]) -> int:
         location_score: int = 0
         for activity in activity_instances:
             if activity in act_list:
@@ -884,13 +885,29 @@ def find_places_with_any_activities(
     settlement_comp = settlement.get_component(Settlement)
 
     for location_id in settlement_comp.locations:
-        score = score_location(
+        score = score_loc(
             world.get_gameobject(location_id).get_component(Location).activities
         )
         if score > 0:
             matches.append((score, location_id))
 
     return [match[1] for match in sorted(matches, key=lambda m: m[0], reverse=True)]
+
+
+def score_location(character: GameObject, location: GameObject) -> int:
+    world = character.world
+    rules = world.get_resource(LocationBiasRuleLibrary)
+
+    score: int = 0
+
+    for rule in rules:
+        if rule.check_location(location) is False:
+            continue
+        if rule.check_character(character) is False:
+            continue
+        score += rule.evaluate(character, location)
+
+    return score
 
 
 def set_frequented_locations(
@@ -913,15 +930,22 @@ def set_frequented_locations(
     """
     clear_frequented_locations(character)
 
-    liked_activities = [
-        a.name for a in character.get_component(LikedActivities).activities
+    # For all locations available in the settlement
+    locations = [
+        world.get_gameobject(guid)
+        for guid, (_, current_settlement) in world.get_components(
+            (Location, CurrentSettlement)
+        )
+        if current_settlement.settlement == settlement.uid
     ]
 
-    locations = find_places_with_any_activities(
-        world, settlement, *list(liked_activities)
-    )
+    scores = [score_location(character, location) for location in locations]
 
-    selected_locations = locations[:max_locations]
+    pairs = list(zip(locations, scores))
+
+    pairs.sort(key=lambda pair: pair[1])
+
+    selected_locations = [loc.uid for loc, _ in pairs[:max_locations]]
 
     character.add_component(FrequentedLocations(set(selected_locations)))
 

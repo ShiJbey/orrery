@@ -56,6 +56,7 @@ from orrery.utils.common import (
     create_residence,
     end_job,
     generate_child_prefab,
+    set_frequented_locations,
     set_residence,
     start_job,
     startup_business,
@@ -895,10 +896,23 @@ class PrintEventBufferSystem(ISystem):
             print(str(event))
 
 
-class RevaluateSocialRulesSystem(System):
+class ReevaluateSocialRulesSystem(System):
     def run(self, *args: Any, **kwargs: Any) -> None:
         for guid, relationship_comp in self.world.get_component(Relationship):
             relationship = self.world.get_gameobject(guid)
             subject = self.world.get_gameobject(relationship_comp.owner)
             target = self.world.get_gameobject(relationship_comp.target)
             reevaluate_social_rules(relationship, subject, target)
+
+
+class UpdateFrequentedLocationSystem(System):
+    def run(self, *args: Any, **kwargs: Any) -> None:
+        for guid, (_, current_settlement) in self.world.get_components(
+            (FrequentedLocations, CurrentSettlement)
+        ):
+            character = self.world.get_gameobject(guid)
+            set_frequented_locations(
+                self.world,
+                character,
+                self.world.get_gameobject(current_settlement.settlement),
+            )

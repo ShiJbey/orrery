@@ -34,7 +34,7 @@ class ISocialRule(ABC):
         raise NotImplementedError
 
 
-class StaticSocialRule(ISocialRule):
+class SocialRule(ISocialRule):
     """A parameterized social rule with a static modifier"""
 
     __slots__ = "name", "initiator_precondition", "target_precondition", "modifier"

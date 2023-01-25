@@ -4,14 +4,13 @@ import random
 import re
 from typing import Dict, Iterator, List, Optional, Set
 
-from ordered_set import OrderedSet
-
 from orrery.components.activity import ActivityInstance
 from orrery.components.business import OccupationType, ServiceType, logger
 from orrery.components.settlement import Settlement
 from orrery.components.virtues import Virtues
 from orrery.core.ecs import GameObject, World
 from orrery.core.life_event import ILifeEvent
+from orrery.core.location_bias import ILocationBiasRule
 from orrery.core.social_rule import ISocialRule
 from orrery.core.time import SimDateTime
 from orrery.prefabs import BusinessPrefab, CharacterPrefab, ResidencePrefab
@@ -456,3 +455,18 @@ class SocialRuleLibrary:
         return [
             rule for i, rule in enumerate(self._all_rules) if i in self._active_rules
         ]
+
+
+class LocationBiasRuleLibrary:
+    """Repository of active rules that determine what location characters frequent"""
+
+    __slots__ = "rules"
+
+    def __init__(self) -> None:
+        self.rules: Dict[str, ILocationBiasRule] = {}
+
+    def add(self, rule: ILocationBiasRule) -> None:
+        self.rules[rule.get_rule_name()] = rule
+
+    def __iter__(self) -> Iterator[ILocationBiasRule]:
+        return self.rules.values().__iter__()
