@@ -1,33 +1,21 @@
 import time
-from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import orrery.plugins.default.businesses
 import orrery.plugins.default.characters
-import orrery.plugins.default.life_events
 import orrery.plugins.default.names
 import orrery.plugins.default.residences
 from orrery import Orrery
-from orrery.components.business import BusinessLibrary
-from orrery.components.character import CharacterLibrary
-from orrery.components.shared import Location, Name
-from orrery.core.activity import Activities
-from orrery.core.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
-from orrery.core.ecs import Component, ComponentBundle, GameObject, World
-from orrery.core.relationship import (
-    Relationship,
-    RelationshipModifier,
-    RelationshipStatus,
-)
-from orrery.core.social_rule import ISocialRule, SocialRuleLibrary
+from orrery.components.virtues import Virtues
+from orrery.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
+from orrery.content_management import CharacterLibrary, SocialRuleLibrary
+from orrery.core.ecs import Component, GameObject
+from orrery.core.social_rule import ISocialRule
+from orrery.core.status import StatusComponent
 from orrery.core.time import SimDateTime
-from orrery.core.virtues import Virtues
 from orrery.exporter import export_to_json
-from orrery.loaders import OrreryYamlLoader, load_all_data
 from orrery.utils.common import (
-    add_business,
     add_character_to_settlement,
-    create_business,
     create_character,
     create_settlement,
 )
@@ -37,30 +25,33 @@ from orrery.utils.relationships import (
     get_relationship,
 )
 
-#######################################
-# Sample Components
-#######################################
-
-
-class Robot(Component):
-
-    serial_number: str = "182hdyd6s-62"
-
-
-#######################################
-# Main Application
-#######################################
-
-
-class SimpleLocation(ComponentBundle):
-    def __init__(self, name: str, activities: List[str]) -> None:
-        super().__init__(
-            {
-                Name: {"name": name},
-                Location: {},
-                Activities: {"activities": activities},
+sim = Orrery(
+    OrreryConfig(
+        seed=3,
+        relationship_schema=RelationshipSchema(
+            stats={
+                "Friendship": RelationshipStatConfig(changes_with_time=True),
+                "Romance": RelationshipStatConfig(changes_with_time=True),
+                "Power": RelationshipStatConfig(
+                    min_value=-50, max_value=50, changes_with_time=False
+                ),
             }
-        )
+        ),
+    )
+)
+
+sim.load_plugin(orrery.plugins.default.names.get_plugin())
+sim.load_plugin(orrery.plugins.default.characters.get_plugin())
+sim.load_plugin(orrery.plugins.default.businesses.get_plugin())
+sim.load_plugin(orrery.plugins.default.residences.get_plugin())
+
+
+@sim.component()
+class Robot(Component):
+    """Tags a character as a Robot"""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 class VirtueCompatibilityRule(ISocialRule):
@@ -69,23 +60,21 @@ class VirtueCompatibilityRule(ISocialRule):
     based on characters' personal virtues
     """
 
-    def get_uid(self) -> str:
+    def get_rule_name(self) -> str:
         """Return the unique identifier of the modifier"""
         return self.__class__.__name__
 
-    def check_preconditions(self, world: World, *gameobjects: GameObject) -> bool:
+    def check_target(self, gameobject: GameObject) -> bool:
         """Return true if a certain condition holds"""
-        return all([g.has_component(Virtues) for g in gameobjects])
+        return gameobject.has_component(Virtues)
 
-    def activate(
-        self,
-        world: World,
-        subject: GameObject,
-        target: GameObject,
-        relationship: Relationship,
-    ) -> None:
+    def check_initiator(self, gameobject: GameObject) -> bool:
+        """Return true if a certain condition holds"""
+        return gameobject.has_component(Virtues)
+
+    def evaluate(self, initiator: GameObject, target: GameObject) -> Dict[str, int]:
         """Apply any modifiers associated with the social rule"""
-        character_virtues = subject.get_component(Virtues)
+        character_virtues = initiator.get_component(Virtues)
         acquaintance_virtues = target.get_component(Virtues)
 
         compatibility = character_virtues.compatibility(acquaintance_virtues)
@@ -106,132 +95,77 @@ class VirtueCompatibilityRule(ISocialRule):
             romance_buff = 2
             friendship_buff = 3
 
-        compatibility_mod = RelationshipModifier(
-            "virtue-compatibility",
-            {"Friendship": friendship_buff, "Romance": romance_buff},
-        )
-
-        relationship.add_modifier(compatibility_mod)
-
-    def deactivate(self, relationship: Relationship) -> None:
-        """Apply any modifiers associated with the social rule"""
-        relationship.remove_modifier_by_uid("virtue-compatibility")
+        return {"Friendship": friendship_buff, "Romance": romance_buff}
 
 
-@dataclass
-class OwesDebt(RelationshipStatus):
-    amount: int
+class OwesDebt(StatusComponent):
+    """Marks a character as owing money to another character"""
+
+    def __init__(self, created: str, amount: int) -> None:
+        super().__init__(created)
+        self.amount: int = amount
 
     def to_dict(self) -> Dict[str, Any]:
-        return {**super().to_dict(), "amount": self.amount}
+        return {"amount": self.amount}
 
 
 def main():
     """Main entry point for this module"""
-    sim = Orrery(
-        OrreryConfig(
-            seed=3,
-            relationship_schema=RelationshipSchema(
-                stats={
-                    "Friendship": RelationshipStatConfig(changes_with_time=True),
-                    "Romance": RelationshipStatConfig(changes_with_time=True),
-                    "Power": RelationshipStatConfig(
-                        min_value=-50, max_value=50, changes_with_time=False
-                    ),
-                }
-            ),
-        )
-    )
-
-    sim.load_plugin(orrery.plugins.default.names.get_plugin())
-    sim.load_plugin(orrery.plugins.default.characters.get_plugin())
-    sim.load_plugin(orrery.plugins.default.businesses.get_plugin())
-    sim.load_plugin(orrery.plugins.default.residences.get_plugin())
-    sim.load_plugin(orrery.plugins.default.life_events.get_plugin())
-
-    sim.world.register_component(Robot)
-
-    OrreryYamlLoader.from_str(
-        """
-        Characters:
-            - name: "character::robot"
-              extends: "character::default"
-              components:
-                GameCharacter:
-                    first_name: "#character::default::first_name::gender-neutral#"
-                    last_name: "#character::default::last_name#"
-                Robot: {}
-        """
-    ).load(sim.world, [load_all_data])
 
     sim.world.get_resource(SocialRuleLibrary).add(VirtueCompatibilityRule())
 
     character_library = sim.world.get_resource(CharacterLibrary)
-    business_library = sim.world.get_resource(BusinessLibrary)
 
     west_world = create_settlement(sim.world, "West World")
 
-    add_business(
-        create_business(sim.world, business_library.get_bundle("Library")),
-        west_world,
-    )
-
-    add_business(
-        create_business(sim.world, business_library.get_bundle("Library")),
-        west_world,
-    )
-
-    add_business(
-        create_business(sim.world, business_library.get_bundle("Library")),
-        west_world,
-    )
-
-    add_business(
-        create_business(sim.world, business_library.get_bundle("Library")),
-        west_world,
-    )
+    current_date = sim.world.get_resource(SimDateTime)
 
     delores = create_character(
         sim.world,
-        character_library.get_bundle("character::robot"),
+        character_library.get("character::default::female"),
         first_name="Delores",
         last_name="Abernathy",
         age=32,
     )
 
-    add_character_to_settlement(sim.world, delores, west_world)
+    delores.add_component(Robot())
+
+    add_character_to_settlement(delores, west_world)
 
     charlotte = create_character(
         sim.world,
-        character_library.get_bundle("character::default::female"),
+        character_library.get("character::default::female"),
         first_name="Charlotte",
         last_name="Hale",
         age=40,
     )
 
-    add_character_to_settlement(sim.world, charlotte, west_world)
+    add_character_to_settlement(charlotte, west_world)
 
     william = create_character(
         sim.world,
-        character_library.get_bundle("character::default::male"),
+        character_library.get("character::default::male"),
         first_name="William",
         age=68,
     )
 
-    add_character_to_settlement(sim.world, william, west_world)
+    add_character_to_settlement(william, west_world)
 
     add_relationship(delores, charlotte)
     get_relationship(delores, charlotte)["Friendship"] += -1
     get_relationship(delores, charlotte)["Friendship"] += 1
 
-    add_relationship_status(delores, charlotte, OwesDebt(500))
+    add_relationship_status(
+        delores, charlotte, OwesDebt(current_date.to_iso_str(), 500)
+    )
 
     add_relationship(delores, william)
     get_relationship(delores, william)["Romance"] += 4
     get_relationship(delores, william)["Romance"] += -7
     get_relationship(delores, william)["Interaction"] += 1
 
-    add_relationship(william, delores)["Interaction"] += 1
+    add_relationship(william, delores)
+    get_relationship(william, delores)["Interaction"] += 1
 
     st = time.time()
     sim.run_for(100)

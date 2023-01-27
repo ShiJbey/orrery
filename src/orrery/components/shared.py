@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Set, List
+from typing import Any, Dict, Optional, Set
 
-from orrery.core.activity import ActivityInstance, ActivityLibrary
-from orrery.core.ecs import Component, IComponentFactory, World
+from orrery.components.activity import ActivityInstance
+from orrery.core.ecs import Component
+from orrery.core.status import StatusComponent
 
 
-class Active(Component):
+class Active(StatusComponent):
     """Tags a GameObject as active within the simulation"""
 
     pass
@@ -19,7 +20,7 @@ class FrequentedLocations(Component):
     __slots__ = "locations"
 
     def __init__(self, locations: Optional[Set[int]] = None) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.locations: Set[int] = locations if locations else set()
 
     def to_dict(self) -> Dict[str, Any]:
@@ -33,15 +34,6 @@ class FrequentedLocations(Component):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.locations.__repr__()})"
-
-
-class FrequentedLocationsFactory(IComponentFactory):
-    """Factory that create Location component instances"""
-
-    def create(
-        self, world: World, locations: Optional[List[int]] = None, **kwargs: Any
-    ) -> FrequentedLocations:
-        return FrequentedLocations(set(locations if locations else []))
 
 
 class Building(Component):
@@ -60,7 +52,7 @@ class Building(Component):
     __slots__ = "building_type", "lot", "settlement"
 
     def __init__(self, building_type: str, lot: int, settlement: int) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.building_type: str = building_type
         self.lot: int = lot
         self.settlement: int = settlement
@@ -87,7 +79,7 @@ class Name(Component):
     __slots__ = "name"
 
     def __init__(self, name: str) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.name: str = name
 
     def to_dict(self) -> Dict[str, Any]:
@@ -105,14 +97,14 @@ class Location(Component):
     __slots__ = "frequented_by", "activities"
 
     def __init__(self, activities: Optional[Set[ActivityInstance]] = None) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.frequented_by: Set[int] = set()
         self.activities: Set[ActivityInstance] = activities if activities else set()
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "frequented_by": list(self.frequented_by),
-            "activities": list(self.activities),
+            "activities": [str(a) for a in self.activities],
         }
 
     def __repr__(self):
@@ -123,17 +115,15 @@ class Location(Component):
         )
 
 
-class LocationFactory(IComponentFactory):
-    """Factory that create Location component instances"""
+@dataclass
+class CurrentSettlement(Component):
+    settlement: int
 
-    def create(
-        self, world: World, activities: Optional[List[str]] = None, **kwargs: Any
-    ) -> Location:
-        activity_library = world.get_resource(ActivityLibrary)
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.settlement})"
 
-        activity_names: List[str] = activities if activities else []
-
-        return Location(set([activity_library.get(name) for name in activity_names]))
+    def to_dict(self) -> Dict[str, Any]:
+        return {"settlement": self.settlement}
 
 
 @dataclass

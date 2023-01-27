@@ -10,13 +10,12 @@ from __future__ import annotations
 
 import enum
 import logging
-import random
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 import numpy.typing as npt
 
-from orrery.core.ecs import Component, IComponentFactory, World
+from orrery.core.ecs import Component
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +69,7 @@ class Virtues(Component):
     __slots__ = "_virtues"
 
     def __init__(self, overrides: Optional[Dict[str, int]] = None) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self._virtues: npt.NDArray[np.int32] = np.zeros(  # type: ignore
             len(VirtueType), dtype=np.int32
         )
@@ -146,54 +145,8 @@ class Virtues(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "virtues": {
+            **{
                 virtue.name: int(self._virtues[i])
                 for i, virtue in enumerate(list(VirtueType))
             },
         }
-
-
-class VirtuesFactory(IComponentFactory):
-    def create(
-        self,
-        world: World,
-        n_likes: int = 3,
-        n_dislikes: int = 3,
-        initialization: str = "zeros",
-        overrides: Optional[Dict[str, int]] = None,
-        **kwargs: Any,
-    ) -> Component:
-        """Generate a new set of character values"""
-        values_overrides: Dict[str, int] = {}
-
-        if initialization == "zeros":
-            pass
-
-        elif initialization == "random":
-            rng = world.get_resource(random.Random)
-
-            # Select Traits
-            total_virtues: int = n_likes + n_dislikes
-            chosen_virtues = [
-                virtue.name for virtue in rng.sample(list(VirtueType), total_virtues)
-            ]
-
-            # select likes and dislikes
-            high_values = rng.sample(chosen_virtues, n_likes)
-            low_values = list(set(chosen_virtues) - set(high_values))
-
-            # Generate values for each ([30,50] for high values, [-50,-30] for dislikes)
-            for trait in high_values:
-                values_overrides[trait] = rng.randint(30, 50)
-
-            for trait in low_values:
-                values_overrides[trait] = rng.randint(-50, -30)
-        else:
-            # Using an unknown virtue doesn't break anything, but we should log it
-            logger.warning(f"Unrecognized Virtues initialization '{initialization}'")
-
-        if overrides is not None:
-            # Override any values with manually-specified values
-            values_overrides = {**values_overrides, **overrides}
-
-        return Virtues(values_overrides)

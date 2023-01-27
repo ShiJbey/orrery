@@ -1,4 +1,4 @@
-from orrery.core.config import OrreryCLIConfig
+from orrery.config import OrreryCLIConfig, PluginConfig
 
 
 def test_cli_config_from_partial() -> None:
@@ -11,4 +11,7 @@ def test_cli_config_from_partial() -> None:
     )
 
     assert overwritten_config.seed == "apples"
-    assert overwritten_config.plugins[0].name == "sample_plugin"
+
+    plugin_info = overwritten_config.plugins[0]
+    assert isinstance(plugin_info, PluginConfig)
+    assert plugin_info.name == "sample_plugin"

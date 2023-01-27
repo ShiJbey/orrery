@@ -1,89 +1,71 @@
 from __future__ import annotations
 
 import logging
-import math
-import random
-import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Type
+from typing import Any, Dict, List, Optional, Set
 
-from orrery.core import query
-from orrery.core.config import BusinessConfig
-from orrery.core.ecs import (
-    Component,
-    ComponentBundle,
-    GameObject,
-    IComponentFactory,
-    World,
-)
-from orrery.core.event import Event
-from orrery.core.settlement import Settlement
-from orrery.core.time import SimDateTime
-from orrery.core.tracery import Tracery
+from orrery.config import BusinessConfig
+from orrery.core.ecs import Component, query
+from orrery.core.status import StatusComponent
 
 logger = logging.getLogger(__name__)
 
 
 class Occupation(Component):
-    """
-    A character's employment information
+    """Information about a character's employment status"""
 
-    Attributes
-    ----------
-    _occupation_type: str
-        The name of the occupation
-    _business: int
-        The unique ID of the business the character works at
-    _level: int
-        The socio-economic level of this job
-    _years_held: float
-        The number of years the character has held this job
-    """
-
-    __slots__ = "_occupation_type", "_years_held", "_business", "_level"
+    __slots__ = "_occupation_type", "_years_held", "_business"
 
     def __init__(
-        self,
-        occupation_type: str,
-        business: int,
-        level: int,
+        self, occupation_type: str, business: int, years_held: float = 0.0
     ) -> None:
-        super(Component, self).__init__()
+        """
+        Parameters
+        ----------
+        occupation_type: str
+            The name of the occupation
+        business: int
+            The business that the character is work for
+        years_held: float, optional
+            The number of years the character has held this job
+            (defaults to 0.0)
+        """
+
+        super().__init__()
         self._occupation_type: str = occupation_type
         self._business: int = business
-        self._level: int = level
-        self._years_held: float = 0.0
+        self._years_held: float = years_held
 
     def to_dict(self) -> Dict[str, Any]:
+        """Return serialized dict representation of an Occupation component"""
         return {
             "occupation_type": self._occupation_type,
-            "level": self._level,
             "business": self._business,
             "years_held": self._years_held,
         }
 
     @property
     def business(self) -> int:
+        """Get the business the character works for"""
         return self._business
 
     @property
-    def years_held(self) -> int:
-        return math.floor(self._years_held)
-
-    @property
-    def level(self) -> int:
-        return self._level
+    def years_held(self) -> float:
+        """Get the number of years this character has worked this job"""
+        return self._years_held
 
     @property
     def occupation_type(self) -> str:
+        """Get the type of occupation this is"""
         return self._occupation_type
 
-    def increment_years_held(self, years: float) -> None:
-        self._years_held += years
+    def set_years_held(self, years: float) -> None:
+        """Set the number of years this character has held this job"""
+        self._years_held = years
 
     def __repr__(self) -> str:
-        return "Occupation(occupation_type={}, business={}, level={}, years_held={})".format(
-            self.occupation_type, self.business, self.level, self.years_held
+        return "Occupation(occupation_type={}, business={}, years_held={})".format(
+            self.occupation_type, self.business, self.years_held
         )
 
 
@@ -100,14 +82,14 @@ class WorkHistoryEntry:
         The unique ID of the business the character worked at
     years_held: float
         The number of years the character held this job
-    reason_for_leaving: Optional[Event]
-        Optional reference to the event that caused the character to leave this job
+    reason_for_leaving: Optional[str]
+        Name of the event that caused the character to leave this job
     """
 
     occupation_type: str
     business: int
-    years_held: float
-    reason_for_leaving: Optional[Event] = None
+    years_held: float = 0
+    reason_for_leaving: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         """Return dictionary representation for serialization"""
@@ -116,32 +98,18 @@ class WorkHistoryEntry:
             "occupation_type": self.occupation_type,
             "business": self.business,
             "years_held": self.years_held,
+            "reason_for_leaving": self.reason_for_leaving,
         }
-
-        if self.reason_for_leaving:
-            # This should probably point to a unique ID for the
-            # event, but we will leave it as the name of the event for now
-            ret["reason_for_leaving"] = self.reason_for_leaving.name
-
         return ret
 
 
 class WorkHistory(Component):
-    """
-    Component that stores information about all the jobs that a character has held
-
-    Attributes
-    ----------
-    _chronological_history: List[WorkHistoryEntry]
-        List of previous job in order from oldest to most recent
-    _categorical_history: Dict[str, List[WorkHistoryEntry]]
-        References to WorkHistoryEntries grouped by the occupation type
-    """
+    """Stores information about all the jobs that a character has held"""
 
     __slots__ = "_chronological_history", "_categorical_history"
 
     def __init__(self) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self._chronological_history: List[WorkHistoryEntry] = []
         self._categorical_history: Dict[str, List[WorkHistoryEntry]] = {}
 
@@ -155,7 +123,7 @@ class WorkHistory(Component):
         occupation_type: str,
         business: int,
         years_held: float,
-        reason_for_leaving: Optional[Event] = None,
+        reason_for_leaving: str = "",
     ) -> None:
         """
         Add an entry to the work history
@@ -168,8 +136,8 @@ class WorkHistory(Component):
             The unique ID of the business the character worked at
         years_held: float
             The number of years the character held this job
-        reason_for_leaving: Optional[Event]
-            Optional reference to the event that caused the character to leave this job
+        reason_for_leaving: str, optional
+            Name of the event that caused the character to leave this job
         """
         entry = WorkHistoryEntry(
             occupation_type=occupation_type,
@@ -229,49 +197,16 @@ class ServiceType:
     def __hash__(self) -> int:
         return self.uid
 
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return self.name
+
     def __eq__(self, other: object) -> bool:
         if isinstance(other, ServiceType):
             return self.uid == other.uid
         raise TypeError(f"Expected ServiceType but was {type(object)}")
-
-
-class ServiceLibrary:
-    """
-    Repository of various services offered by a business
-
-    Attributes
-    ----------
-    _next_id: int
-        The next ID assigned to a new ServiceType instance
-    _services: List[ServiceType]
-        A list of all the possible services a business could have
-    _name_to_id: Dict[str, int]
-        Mapping of service names to indexes into the _services list
-    """
-
-    __slots__ = "_next_id", "_services", "_name_to_id"
-
-    def __init__(self) -> None:
-        self._next_id: int = 0
-        self._services: List[ServiceType] = []
-        self._name_to_id: Dict[str, int] = {}
-
-    def __contains__(self, service_name: str) -> bool:
-        """Return True if a service type exists with the given name"""
-        return service_name.lower() in self._name_to_id
-
-    def get(self, service_name: str) -> ServiceType:
-        lc_service_name = service_name.lower()
-
-        if lc_service_name in self._name_to_id:
-            return self._services[self._name_to_id[lc_service_name]]
-
-        uid = self._next_id
-        self._next_id += 1
-        service_type = ServiceType(uid, lc_service_name)
-        self._services.append(service_type)
-        self._name_to_id[lc_service_name] = uid
-        return service_type
 
 
 class Services(Component):
@@ -306,25 +241,20 @@ class Services(Component):
         """
         return service in self.services
 
+    def __repr__(self) -> str:
+        return "{}({})".format(self.__class__.__name__, self.services)
 
-class ServicesFactory(IComponentFactory):
-    """
-    Factory class that creates instances of Services components
-    """
-
-    def create(self, world: World, **kwargs: Any) -> Component:
-        service_list: List[str] = kwargs.get("services", [])
-        service_library = world.get_resource(ServiceLibrary)
-        return Services(set([service_library.get(s) for s in service_list]))
+    def to_dict(self) -> Dict[str, Any]:
+        return {"services": [str(s) for s in self.services]}
 
 
-class ClosedForBusiness(Component):
+class ClosedForBusiness(StatusComponent):
     """Tags a business as being closed and no longer active"""
 
     pass
 
 
-class OpenForBusiness(Component):
+class OpenForBusiness(StatusComponent):
     """Tags a business as being open and active in the simulation"""
 
     pass
@@ -369,28 +299,28 @@ class Business(Component):
         owner_type: Optional[str] = None,
         owner: Optional[int] = None,
         open_positions: Optional[Dict[str, int]] = None,
+        years_in_business: float = 0.0,
     ) -> None:
-        super(Component, self).__init__()
+        super().__init__()
         self.config: BusinessConfig = config
         self.name: str = name
         self.owner_type: Optional[str] = owner_type
         self._open_positions: Dict[str, int] = open_positions if open_positions else {}
-        if owner_type is not None:
-            if owner_type in self._open_positions:
-                self._open_positions[owner_type] += 1
-            else:
-                self._open_positions[owner_type] = 0
         self._employees: Dict[int, str] = {}
         self.owner: Optional[int] = owner
-        self.years_in_business: float = 0.0
+        self.years_in_business: float = years_in_business
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
             "open_positions": self._open_positions,
-            "employees": self.get_employees(),
-            "owner": self.owner if self.owner is not None else -1,
-            "owner_type": self.owner_type if self.owner_type is not None else "",
+            "employees": [
+                {"title": title, "uid": uid} for uid, title in self._employees.items()
+            ],
+            "owner": {
+                "title": self.config.owner_type if self.config.owner_type else "",
+                "uid": self.owner if self.owner is not None else -1,
+            },
             "years_in_business": self.years_in_business,
         }
 
@@ -400,7 +330,9 @@ class Business(Component):
 
     def get_open_positions(self) -> List[str]:
         """Returns all the open job titles"""
-        return [title for title, n in self._open_positions.items() if n > 0]
+        return sum(
+            [[title] * count for title, count in self._open_positions.items()], []
+        )
 
     def get_employees(self) -> List[int]:
         """Return a list of IDs for current employees"""
@@ -432,34 +364,6 @@ class Business(Component):
         )
 
 
-class BusinessFactory(IComponentFactory):
-    """Constructs instances of Business components"""
-
-    def create(self, world: World, **kwargs: Any) -> Component:
-        name_pattern: str = kwargs["name"]
-        owner_type: str = kwargs.get("owner_type", None)
-        employee_types: Dict[str, int] = {**kwargs.get("employees", {})}
-
-        config_name = kwargs["config"]
-
-        config = world.get_resource(BusinessLibrary).get(config_name)
-
-        name_generator = world.get_resource(Tracery)
-
-        return Business(
-            config=config,
-            name=name_generator.generate(name_pattern),
-            owner_type=owner_type,
-            open_positions=employee_types,
-        )
-
-
-class InTheWorkforce(Component):
-    """Tags a character as being eligible to work"""
-
-    pass
-
-
 @dataclass(frozen=True, slots=True)
 class OccupationType:
     """
@@ -482,149 +386,49 @@ class OccupationType:
     precondition: Optional[query.QueryFilterFn] = None
 
 
-class OccupationTypeLibrary:
-    """Collection OccupationType information for lookup at runtime"""
+@dataclass
+class BusinessOwner(StatusComponent):
 
-    __slots__ = "_registry"
+    created: str
+    business: int
 
-    def __init__(self) -> None:
-        self._registry: Dict[str, OccupationType] = {}
-
-    def add(
-        self,
-        occupation_type: OccupationType,
-    ) -> None:
-        """
-        Add a new occupation type to the library
-
-        Parameters
-        ----------
-        occupation_type: OccupationType
-            The occupation type instance to add
-        """
-        if occupation_type.name in self._registry:
-            logger.debug(f"Overwriting OccupationType: ({occupation_type.name})")
-        self._registry[occupation_type.name] = occupation_type
-
-    def get(self, name: str) -> OccupationType:
-        """
-        Get an OccupationType by name
-
-        Parameters
-        ----------
-        name: str
-            The registered name of the OccupationType
-
-        Returns
-        -------
-        OccupationType
-
-        Raises
-        ------
-        KeyError
-            When there is not an OccupationType
-            registered to that name
-        """
-        return self._registry[name]
+    def to_dict(self) -> Dict[str, Any]:
+        return {"business": self.business}
 
 
-class BusinessComponentBundle(ComponentBundle):
+class Unemployed(StatusComponent):
     """
-    ComponentBundle for specifically constructing business instances
+    Status component that marks a character as being able to work but lacking a job
 
     Attributes
     ----------
-    name: str
-        The name of the config associated with this bundle
-
-    Note
-    ----
-    There really is not an explicit need for this class, but it
-    exists if we ever need to do something specific with bundles
-    that instantiate business GameObjects
+    years: float
+        The number of years that the entity has been unemployed
     """
 
-    __slots__ = "name"
+    __slots__ = "years"
 
-    def __init__(
-        self, name: str, components: Dict[Type[Component], Dict[str, Any]]
-    ) -> None:
-        super().__init__(components)
-        self.name: str = name
+    def __init__(self, created: str, years: float = 0.0) -> None:
+        super().__init__(created)
+        self.years: float = years
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {**super().to_dict(), "years": self.years}
 
 
-class BusinessLibrary:
-    """Collection BusinessComponentBundles and configurations that create business GameObjects"""
+class InTheWorkforce(StatusComponent):
+    """Tags a character as being eligible to work"""
 
-    __slots__ = "_registry", "_bundles"
+    pass
 
-    def __init__(self) -> None:
-        self._registry: Dict[str, BusinessConfig] = {}
-        self._bundles: Dict[str, BusinessComponentBundle] = {}
 
-    def add(
-        self, config: BusinessConfig, bundle: Optional[BusinessComponentBundle] = None
-    ) -> None:
-        """Register a new archetype by name"""
-        self._registry[config.name] = config
-        if bundle:
-            self._bundles[config.name] = bundle
+class BossOf(StatusComponent):
+    pass
 
-    def get_all(self) -> List[BusinessConfig]:
-        """Get all stored archetypes"""
-        return list(self._registry.values())
 
-    def get(self, name: str) -> BusinessConfig:
-        """Get an archetype by name"""
-        return self._registry[name]
+class EmployeeOf(StatusComponent):
+    pass
 
-    def get_bundle(self, name: str) -> BusinessComponentBundle:
-        """Retrieve the ComponentBundle mapped to the given name"""
-        return self._bundles[name]
 
-    def get_matching_bundles(self, *bundle_names: str) -> List[BusinessComponentBundle]:
-        """Get all component bundles that match the given regex strings"""
-
-        matches: List[BusinessComponentBundle] = []
-
-        for name, bundle in self._bundles.items():
-            if any([re.match(pattern, name) for pattern in bundle_names]):
-                matches.append(bundle)
-
-        return matches
-
-    def choose_random(
-        self, world: World, settlement: GameObject
-    ) -> Optional[BusinessComponentBundle]:
-        """
-        Return all business archetypes that may be built
-        given the state of the simulation
-        """
-        settlement_comp = settlement.get_component(Settlement)
-        date = world.get_resource(SimDateTime)
-        rng = world.get_resource(random.Random)
-
-        choices: List[BusinessConfig] = []
-        weights: List[int] = []
-
-        for config in self.get_all():
-            if (
-                settlement_comp.business_counts[config.name]
-                < config.spawning.max_instances
-                and settlement_comp.population >= config.spawning.min_population
-                and (
-                    config.spawning.year_available
-                    <= date.year
-                    < config.spawning.year_obsolete
-                )
-                and not config.template
-            ):
-                choices.append(config)
-                weights.append(config.spawning.spawn_frequency)
-
-        if choices:
-            # Choose an archetype at random
-            chosen = rng.choices(population=choices, weights=weights, k=1)[0]
-            return self._bundles[chosen.name]
-
-        return None
+class CoworkerOf(StatusComponent):
+    pass

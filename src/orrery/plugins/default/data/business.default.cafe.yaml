@@ -1,0 +1,15 @@
+name: "business::default::cafe"
+extends: "business::default"
+config:
+  owner_type: Owner
+  employee_types:
+    Barista: 2
+components:
+  Business:
+    name: "Cafe"
+    employees:
+      Barista: 2
+  Location:
+    activities:
+      - reading
+      - socializing

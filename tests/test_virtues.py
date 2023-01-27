@@ -1,10 +1,10 @@
 import random
-from typing import cast
 
 import pytest
 
+from orrery.components.virtues import Virtues, VirtueType
 from orrery.core.ecs import World
-from orrery.core.virtues import Virtues, VirtuesFactory, VirtueType
+from orrery.factories.virtues import VirtuesFactory
 
 
 def test_construct_virtue_vect() -> None:
@@ -71,9 +71,6 @@ def test_virtue_vect_factory() -> None:
     world = World()
     world.add_resource(random.Random(1234))
     factory = VirtuesFactory()
-    vector = cast(
-        Virtues,
-        factory.create(world, overrides={"ADVENTURE": 10, "POWER": 20}),
-    )
+    vector: Virtues = factory.create(world, overrides={"ADVENTURE": 10, "POWER": 20})
     assert vector[VirtueType.ADVENTURE] == 10
     assert vector[VirtueType.POWER] == 20

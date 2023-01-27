@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 from orrery import __version__
-from orrery.core.config import OrreryCLIConfig
+from orrery.config import OrreryCLIConfig
 from orrery.exporter import export_to_json
 from orrery.orrery import Orrery, Plugin, PluginSetupError
 

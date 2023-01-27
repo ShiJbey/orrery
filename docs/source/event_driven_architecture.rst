@@ -16,3 +16,12 @@ Events in Orrery
 In Orrery, events serve multiple purposes. The primary purpose of events is to serve as
 potential content when constructing stories. The second purpose is to allow simulation
 authors to trigger functions in reaction to things happening to the characters.
+
+List of Orrery Events
+---------------------
+
+- ``join-settlement``
+- ``leave-settlement``
+- ``business-open``
+- ``business-close``
+- ``new-settlement``

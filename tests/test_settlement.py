@@ -1,6 +1,8 @@
 import pytest
 
-from orrery.core.settlement import Grid, GridSettlementMap, create_grid_settlement
+from orrery import Orrery
+from orrery.components.settlement import Grid, GridSettlementMap, Settlement
+from orrery.utils.common import create_settlement
 
 
 @pytest.fixture
@@ -30,23 +32,10 @@ def test_set_item_raises_index_error(int_grid: Grid[int]):
         assert int_grid[-1, 0] == 88
 
 
-def test_settlement_increment_population():
-    town = create_grid_settlement("Test Town", (5, 5))
-    town.increment_population()
-    town.increment_population()
-    assert town.population == 2
-
-
-def test_settlement_decrement_population():
-    town = create_grid_settlement("Test Town", (5, 5))
-    town.population = 2
-    town.decrement_population()
-    assert town.population == 1
-
-
 def test_settlement_to_dict():
-    town = create_grid_settlement("Test Town", (5, 5))
-    town.population = 3
+    sim = Orrery()
+    town = create_settlement(sim.world, "Test Town", (5, 5))
+    town.get_component(Settlement).population = 3
     town_dict = town.to_dict()
     assert town_dict["name"] == "Test Town"
     assert town_dict["population"] == 3

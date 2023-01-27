@@ -1,14 +1,8 @@
-from typing import cast
-
-from orrery.core.activity import (
-    Activities,
-    ActivitiesFactory,
-    ActivityLibrary,
-    ActivityToVirtueMap,
-    LikedActivities,
-)
+from orrery.components.activity import Activities, LikedActivities
+from orrery.components.virtues import VirtueType
+from orrery.content_management import ActivityLibrary, ActivityToVirtueMap
 from orrery.core.ecs import World
-from orrery.core.virtues import VirtueType
+from orrery.factories.activity import ActivitiesFactory
 
 
 def test_get_activity_from_library() -> None:
@@ -108,8 +102,8 @@ def test_activity_manager_factory() -> None:
 
     factory = ActivitiesFactory()
 
-    activity_manager = cast(
-        Activities, factory.create(world, activities=["Shopping", "Eating"])
+    activity_manager: Activities = factory.create(
+        world, activities=["Shopping", "Eating"]
     )
 
     assert activity_library.get("Drinking") not in activity_manager

@@ -2,86 +2,93 @@ from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
 
-from orrery import event_callbacks
+from orrery.components.activity import Activities, LikedActivities
 from orrery.components.business import (
     Business,
-    BusinessFactory,
-    BusinessLibrary,
     ClosedForBusiness,
     InTheWorkforce,
     Occupation,
-    OccupationTypeLibrary,
     OpenForBusiness,
-    ServiceLibrary,
     Services,
-    ServicesFactory,
     WorkHistory,
 )
 from orrery.components.character import (
     CanAge,
     CanDie,
     CanGetPregnant,
-    CharacterLibrary,
     CollegeGraduate,
     Deceased,
     Departed,
     GameCharacter,
-    GameCharacterFactory,
     Retired,
 )
-from orrery.components.residence import Residence, ResidenceLibrary, Resident, Vacant
+from orrery.components.relationship import RelationshipManager
+from orrery.components.residence import Residence, Resident, Vacant
+from orrery.components.settlement import Settlement
 from orrery.components.shared import (
     Active,
     Building,
     FrequentedLocations,
-    FrequentedLocationsFactory,
     Location,
-    LocationFactory,
     Name,
     Position2D,
 )
+from orrery.components.virtues import Virtues
+from orrery.config import OrreryConfig
 from orrery.constants import (
     BUSINESS_UPDATE_PHASE,
     CHARACTER_UPDATE_PHASE,
     CORE_SYSTEMS_PHASE,
     SETTLEMENT_UPDATE_PHASE,
 )
-from orrery.core.activity import (
-    Activities,
-    ActivitiesFactory,
+from orrery.content_management import (
     ActivityLibrary,
     ActivityToVirtueMap,
-    LikedActivities,
-    LikedActivitiesFactory,
+    BusinessLibrary,
+    CharacterLibrary,
+    LifeEventLibrary,
+    OccupationTypeLibrary,
+    ResidenceLibrary,
+    ServiceLibrary,
+    SocialRuleLibrary,
 )
-from orrery.core.config import OrreryConfig
-from orrery.core.ecs import World
+from orrery.core.ai import AIComponent
+from orrery.core.ecs import Component, IComponentFactory, ISystem, World
 from orrery.core.event import EventHandler
-from orrery.core.life_event import LifeEventLibrary
-from orrery.core.relationship import RelationshipManager
-from orrery.core.settlement import Settlement
-from orrery.core.social_rule import SocialRuleLibrary
 from orrery.core.status import StatusManager
 from orrery.core.time import SimDateTime, TimeDelta
 from orrery.core.tracery import Tracery
-from orrery.core.traits import TraitLibrary, Traits, TraitsFactory
-from orrery.core.virtues import Virtues, VirtuesFactory
+from orrery.core.traits import TraitManager
+from orrery.factories.activity import ActivitiesFactory, LikedActivitiesFactory
+from orrery.factories.business import BusinessFactory, ServicesFactory
+from orrery.factories.character import GameCharacterFactory
+from orrery.factories.shared import FrequentedLocationsFactory, LocationFactory
+from orrery.factories.virtues import VirtuesFactory
 from orrery.systems import (
     BuildBusinessSystem,
     BuildHousingSystem,
     BusinessUpdateSystem,
     CharacterAgingSystem,
+    DatingStatusSystem,
     EventSystem,
     FindEmployeesSystem,
     LifeEventSystem,
+    MarriedStatusSystem,
     MeetNewPeopleSystem,
+    OccupationUpdateSystem,
+    PregnantStatusSystem,
+    PrintEventBufferSystem,
     RelationshipUpdateSystem,
     SpawnResidentSystem,
-    StatusUpdateSystem,
     TimeSystem,
+    UnemployedStatusSystem,
 )
+
+_CT = TypeVar("_CT", bound=Component)
+_RT = TypeVar("_RT", bound=Any)
+_ST = TypeVar("_ST", bound=ISystem)
 
 
 class PluginSetupError(Exception):
@@ -141,17 +148,17 @@ class Orrery:
 
     __slots__ = "world", "config", "plugins"
 
-    def __init__(self, config: OrreryConfig) -> None:
+    def __init__(self, config: Optional[OrreryConfig] = None) -> None:
         self.world: World = World()
-        self.config: OrreryConfig = config
+        self.config: OrreryConfig = config if config else OrreryConfig()
         self.plugins: List[Tuple[Plugin, Dict[str, Any]]] = []
 
         # Seed RNG for libraries we don't control, like Tracery
-        random.seed(config.seed)
+        random.seed(self.config.seed)
 
         # Add default resources
-        self.world.add_resource(config)
-        self.world.add_resource(random.Random(config.seed))
+        self.world.add_resource(self.config)
+        self.world.add_resource(random.Random(self.config.seed))
         self.world.add_resource(Tracery())
         self.world.add_resource(SocialRuleLibrary())
         self.world.add_resource(CharacterLibrary())
@@ -164,16 +171,19 @@ class Orrery:
         self.world.add_resource(OccupationTypeLibrary())
         self.world.add_resource(LifeEventLibrary())
         self.world.add_resource(ServiceLibrary())
-        self.world.add_resource(TraitLibrary())
 
         # Add default systems
-        self.world.add_system(StatusUpdateSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(RelationshipUpdateSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(MeetNewPeopleSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(LifeEventSystem(), CORE_SYSTEMS_PHASE)
         self.world.add_system(EventSystem(), CORE_SYSTEMS_PHASE)
         self.world.add_system(TimeSystem(), CORE_SYSTEMS_PHASE)
         self.world.add_system(CharacterAgingSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(DatingStatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(MarriedStatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(PregnantStatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(UnemployedStatusSystem(), CHARACTER_UPDATE_PHASE)
+        self.world.add_system(OccupationUpdateSystem(), CHARACTER_UPDATE_PHASE)
         self.world.add_system(BusinessUpdateSystem(), BUSINESS_UPDATE_PHASE)
         self.world.add_system(FindEmployeesSystem(), BUSINESS_UPDATE_PHASE)
         self.world.add_system(BuildHousingSystem(), SETTLEMENT_UPDATE_PHASE)
@@ -182,10 +192,11 @@ class Orrery:
 
         # Register components
         self.world.register_component(Active)
+        self.world.register_component(AIComponent)
         self.world.register_component(GameCharacter, factory=GameCharacterFactory())
         self.world.register_component(Name)
         self.world.register_component(RelationshipManager)
-        self.world.register_component(Traits, factory=TraitsFactory())
+        self.world.register_component(TraitManager)
         self.world.register_component(Location, factory=LocationFactory())
         self.world.register_component(Virtues, factory=VirtuesFactory())
         self.world.register_component(Activities, factory=ActivitiesFactory())
@@ -210,71 +221,15 @@ class Orrery:
         self.world.register_component(Building)
         self.world.register_component(Position2D)
         self.world.register_component(StatusManager)
+        self.world.register_component(StatusManager)
         self.world.register_component(
             FrequentedLocations, factory=FrequentedLocationsFactory()
         )
         self.world.register_component(Settlement)
 
         # Configure printing every event to the console
-        if config.verbose:
-            self.world.get_resource(EventHandler).subscribe(lambda e: print(str(e)))
-
-        # Configure event callback functions
-        self.world.get_resource(EventHandler).on(
-            "Depart", event_callbacks.on_depart_callback
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Retire", event_callbacks.remove_retired_from_occupation
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Retire", event_callbacks.remove_retired_from_occupation
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Death", event_callbacks.remove_deceased_from_occupation
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Death", event_callbacks.remove_deceased_from_residence
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Depart", event_callbacks.remove_departed_from_residence
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Depart", event_callbacks.remove_departed_from_occupation
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Death", event_callbacks.remove_statuses_from_deceased
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Depart", event_callbacks.remove_statuses_from_departed
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Death", event_callbacks.remove_frequented_locations_from_deceased
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "Depart", event_callbacks.remove_frequented_locations_from_departed
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "LeaveJob", event_callbacks.add_unemployed_status_after_end_job
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "StartJob", event_callbacks.remove_unemployed_status_after_start_job
-        )
-
-        self.world.get_resource(EventHandler).on(
-            "JoinSettlement", event_callbacks.on_join_settlement
-        )
+        if self.config.verbose:
+            self.world.add_system(PrintEventBufferSystem())
 
     def load_plugin(self, plugin: Plugin, **kwargs: Any) -> None:
         """
@@ -321,3 +276,116 @@ class Orrery:
     def step(self) -> None:
         """Advance the simulation a single timestep"""
         self.world.step()
+
+    def register_component(
+        self,
+        component_type: Type[Component],
+        name: Optional[str] = None,
+        factory: Optional[IComponentFactory] = None,
+    ) -> None:
+        """Register a component type with the  simulation
+
+        Registers a component class type with the simulation's World instance.
+        This allows content authors to use the Component in YAML files and
+        EntityPrefabs.
+
+        Parameters
+        ----------
+        component_type: Type[Component]
+            The type of component to add
+        name: str, optional
+            A name to register the component type under (defaults to name of class)
+        factory: IComponentFactory, optional
+            A factory instance used to construct this component type
+            (defaults to DefaultComponentFactory())
+        """
+
+        self.world.register_component(component_type, name, factory)
+
+    def add_resource(self, resource: Any) -> None:
+        """Add a shared resource
+
+        Parameters
+        ----------
+        resource: Any
+            An instance of the resource to add to the class
+        """
+
+        self.world.add_resource(resource)
+
+    def add_system(self, system: ISystem, priority: int = 0) -> None:
+        """Add a simulation system
+
+        Parameters
+        ----------
+        system: ISystem
+            The system to add
+        priority: int
+            The priority of this system.
+            The higher the number the sooner it runs at the beginning of a simulation step
+        """
+
+        self.world.add_system(system, priority=priority)
+
+    def component(
+        self,
+        name: Optional[str] = None,
+        factory: Optional[IComponentFactory] = None,
+    ):
+        """Register a component type with the  simulation
+
+        Registers a component class type with the simulation's World instance.
+        This allows content authors to use the Component in YAML files and
+        EntityPrefabs.
+
+        Parameters
+        ----------
+        name: str, optional
+            A name to register the component type under (defaults to name of class)
+        factory: IComponentFactory, optional
+            A factory instance used to construct this component type
+            (defaults to DefaultComponentFactory())
+        """
+
+        def decorator(cls: Type[_CT]) -> Type[_CT]:
+            self.world.register_component(cls, name, factory)
+            return cls
+
+        return decorator
+
+    def resource(self, **kwargs: Any):
+        """Add a class as a shared resource
+
+        This decorator adds an instance of the decorated class as a shared resource.
+
+        Parameters
+        ----------
+        **kwargs: Any
+            Keyword arguments to pass to the constructor of the decorated class
+        """
+
+        def decorator(cls: Type[_RT]) -> Type[_RT]:
+            self.world.add_resource(cls(**kwargs))
+            return cls
+
+        return decorator
+
+    def system(self, priority: int = 0, **kwargs: Any):
+        """Add a class as a simulation system
+
+        This decorator adds an instance of the decorated class as a shared resource.
+
+        Parameters
+        ----------
+        priority: int
+            The priority of this system.
+            The higher the number the sooner it runs at the beginning of a simulation step
+        **kwargs: Any
+            Keyword arguments to pass to the constructor of the decorated class
+        """
+
+        def decorator(cls: Type[_ST]) -> Type[_ST]:
+            self.world.add_system(cls(**kwargs), priority=priority)
+            return cls
+
+        return decorator

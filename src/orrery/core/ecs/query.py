@@ -11,11 +11,12 @@ from typing import (
     Protocol,
     Tuple,
     Type,
+    TypeVar,
     Union,
     overload,
 )
 
-from orrery.core.ecs import Component, GameObject, World
+from .ecs import Component, GameObject, World
 
 
 class QueryFilterFn(Protocol):
@@ -277,9 +278,14 @@ class QueryContext:
     output_symbols: Tuple[str, ...] = ()
 
 
-def eq_(world: World, *gameobjects: GameObject) -> bool:
-    """Query function that removes all instances where two variables are not the same"""
-    return gameobjects[0] == gameobjects[1]
+_T1 = TypeVar("_T1", bound=Component)
+_T2 = TypeVar("_T2", bound=Component)
+_T3 = TypeVar("_T3", bound=Component)
+_T4 = TypeVar("_T4", bound=Component)
+_T5 = TypeVar("_T5", bound=Component)
+_T6 = TypeVar("_T6", bound=Component)
+_T7 = TypeVar("_T7", bound=Component)
+_T8 = TypeVar("_T8", bound=Component)
 
 
 class QueryBuilder:
@@ -300,16 +306,118 @@ class QueryBuilder:
     def build(self) -> Query:
         return Query(find=self._output_vars, clauses=self._clauses)
 
+    @overload
     def with_(
         self,
-        component_types: Tuple[Type[Component], ...],
+        component_types: Tuple[Type[_T1]],
+        variable: Optional[str] = None,
+    ) -> QueryBuilder:
+        ...
+
+    @overload
+    def with_(
+        self,
+        component_types: Tuple[Type[_T1], Type[_T2]],
+        variable: Optional[str] = None,
+    ) -> QueryBuilder:
+        ...
+
+    @overload
+    def with_(
+        self,
+        component_types: Tuple[Type[_T1], Type[_T2], Type[_T3]],
+        variable: Optional[str] = None,
+    ) -> QueryBuilder:
+        ...
+
+    @overload
+    def with_(
+        self,
+        component_types: Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4]],
+        variable: Optional[str] = None,
+    ) -> QueryBuilder:
+        ...
+
+    @overload
+    def with_(
+        self,
+        component_types: Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5]],
+        variable: Optional[str] = None,
+    ) -> QueryBuilder:
+        ...
+
+    @overload
+    def with_(
+        self,
+        component_types: Tuple[
+            Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5], Type[_T6]
+        ],
+        variable: Optional[str] = None,
+    ) -> QueryBuilder:
+        ...
+
+    @overload
+    def with_(
+        self,
+        component_types: Tuple[
+            Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5], Type[_T6], Type[_T7]
+        ],
+        variable: Optional[str] = None,
+    ) -> QueryBuilder:
+        ...
+
+    @overload
+    def with_(
+        self,
+        component_types: Tuple[
+            Type[_T1],
+            Type[_T2],
+            Type[_T3],
+            Type[_T4],
+            Type[_T5],
+            Type[_T6],
+            Type[_T7],
+            Type[_T8],
+        ],
+    ) -> QueryBuilder:
+        ...
+
+    def with_(
+        self,
+        component_types: Union[
+            Tuple[Type[_T1]],
+            Tuple[Type[_T1], Type[_T2]],
+            Tuple[Type[_T1], Type[_T2], Type[_T3]],
+            Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4]],
+            Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5]],
+            Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5], Type[_T6]],
+            Tuple[
+                Type[_T1],
+                Type[_T2],
+                Type[_T3],
+                Type[_T4],
+                Type[_T5],
+                Type[_T6],
+                Type[_T7],
+            ],
+            Tuple[
+                Type[_T1],
+                Type[_T2],
+                Type[_T3],
+                Type[_T4],
+                Type[_T5],
+                Type[_T6],
+                Type[_T7],
+                Type[_T8],
+            ],
+        ],
         variable: Optional[str] = None,
     ) -> QueryBuilder:
         """Adds results to the current query for game objects with all the given components"""
 
         def clause(ctx: QueryContext, world: World) -> Relation:
             results = list(
-                map(lambda result: (result[0],), world.get_components(*component_types))
+                map(lambda result: (result[0],), world.get_components(component_types))
             )
 
             chosen_variable = (
@@ -337,7 +445,7 @@ class QueryBuilder:
 
     #     def clause(ctx: QueryContext, world: World) -> Relation:
     #         results = list(
-    #             map(lambda result: (result[0],), world.get_components(*component_types))
+    #             map(lambda result: (result[0],), world.get_components(component_types))
     #         )
 
     #         chosen_variable = (

@@ -1,89 +1,91 @@
 from __future__ import annotations
 
 import random
-from typing import Any, List, Optional, Tuple, cast
+from typing import Any, List, Optional, Tuple
 
-import orrery.events
 from orrery.components.business import Business, Occupation, OpenForBusiness
 from orrery.components.character import (
     CanGetPregnant,
+    ChildOf,
+    Dating,
     Deceased,
     GameCharacter,
     LifeStage,
+    Married,
+    ParentOf,
+    Pregnant,
     Retired,
+    SiblingOf,
 )
-from orrery.components.relationship_status import Dating
 from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.shared import Active
+from orrery.content_management import LifeEventLibrary
 from orrery.core.ecs import GameObject, World
+from orrery.core.ecs.query import QueryBuilder, not_, or_
 from orrery.core.event import Event, EventHandler, EventRoleType, RoleList
-from orrery.core.life_event import (
-    ILifeEvent,
-    LifeEvent,
-    LifeEventInstance,
-    LifeEventLibrary,
-)
-from orrery.core.query import QueryBuilder, eq_, not_, or_
-from orrery.core.relationship import RelationshipManager, RelationshipTag
+from orrery.core.life_event import ILifeEvent, LifeEvent, LifeEventInstance
 from orrery.core.time import SimDateTime
+from orrery.events import DeathEvent
 from orrery.orrery import Plugin
-from orrery.statuses import Pregnant
 from orrery.utils.common import depart_town, end_job, set_residence, shutdown_business
 from orrery.utils.query import (
+    filter_relationship_has_statuses,
+    filter_relationship_stat_gte,
+    filter_relationship_stat_lte,
+    find_relationships_with_statuses,
+    find_with_relationship_stat_gte,
     from_pattern,
     from_roles,
-    get_relationships_with_tags,
-    get_romances_gte,
     has_component_filter,
     is_single,
-    relationship_has_tags,
-    romance_gte,
-    romance_lte,
 )
 from orrery.utils.relationships import (
     add_relationship_status,
-    get_relationship,
     get_relationship_status,
+    get_relationships_with_statuses,
     remove_relationship_status,
 )
-from orrery.utils.statuses import add_status, has_status
+from orrery.utils.statuses import add_status, has_status, remove_status
 
 
 def start_dating_event(threshold: float = 0.7, probability: float = 1.0) -> ILifeEvent:
     """Defines an event where two characters become friends"""
 
     def effect(world: World, event: Event):
+        current_date = world.get_resource(SimDateTime).to_iso_str()
         initiator = world.get_gameobject(event["Initiator"])
         other = world.get_gameobject(event["Other"])
 
-        get_relationship(initiator, other).add_tags(
-            RelationshipTag.Dating | RelationshipTag.SignificantOther
-        )
-        get_relationship(other, initiator).add_tags(
-            RelationshipTag.Dating | RelationshipTag.SignificantOther
-        )
-
-        add_relationship_status(initiator, other, Dating())
-        add_relationship_status(other, initiator, Dating())
+        add_relationship_status(initiator, other, Dating(current_date))
+        add_relationship_status(other, initiator, Dating(current_date))
 
     return LifeEvent(
         name="StartDating",
         bind_fn=from_pattern(
             QueryBuilder("Initiator", "Other")
             .with_((GameCharacter, Active), "Initiator")
-            .get_(get_romances_gte(threshold), "Initiator", "Other")
+            .get_(
+                find_with_relationship_stat_gte("Romance", threshold),
+                "Initiator",
+                "Other",
+            )
             .filter_(has_component_filter(Active), "Other")
-            .filter_(romance_gte(threshold), "Other", "Initiator")
             .filter_(
-                not_(eq_),
+                filter_relationship_stat_gte("Romance", threshold), "Other", "Initiator"
+            )
+            .filter_(
+                not_(lambda world, *gameobjects: gameobjects[0] == gameobjects[1]),
                 "Initiator",
                 "Other",
             )
             .filter_(
                 not_(
                     or_(
-                        relationship_has_tags(RelationshipTag.SignificantOther),
-                        relationship_has_tags(RelationshipTag.Family),
+                        filter_relationship_has_statuses(Dating),
+                        filter_relationship_has_statuses(Married),
+                        filter_relationship_has_statuses(ChildOf),
+                        filter_relationship_has_statuses(ParentOf),
+                        filter_relationship_has_statuses(SiblingOf),
                     )
                 ),
                 "Initiator",
@@ -92,8 +94,11 @@ def start_dating_event(threshold: float = 0.7, probability: float = 1.0) -> ILif
             .filter_(
                 not_(
                     or_(
-                        relationship_has_tags(RelationshipTag.SignificantOther),
-                        relationship_has_tags(RelationshipTag.Family),
+                        filter_relationship_has_statuses(Dating),
+                        filter_relationship_has_statuses(Married),
+                        filter_relationship_has_statuses(ChildOf),
+                        filter_relationship_has_statuses(ParentOf),
+                        filter_relationship_has_statuses(SiblingOf),
                     )
                 ),
                 "Other",
@@ -115,13 +120,6 @@ def stop_dating_event(threshold: float = 0.4, probability: float = 1.0) -> ILife
         initiator = world.get_gameobject(event["Initiator"])
         other = world.get_gameobject(event["Other"])
 
-        get_relationship(initiator, other).remove_tags(
-            RelationshipTag.Dating | RelationshipTag.SignificantOther
-        )
-        get_relationship(other, initiator).remove_tags(
-            RelationshipTag.Dating | RelationshipTag.SignificantOther
-        )
-
         remove_relationship_status(initiator, other, Dating)
         remove_relationship_status(other, initiator, Dating)
 
@@ -131,11 +129,13 @@ def stop_dating_event(threshold: float = 0.4, probability: float = 1.0) -> ILife
             QueryBuilder("Initiator", "Other")
             .with_((GameCharacter, Active), "Initiator")
             .get_(
-                get_relationships_with_tags(RelationshipTag.Dating),
+                find_relationships_with_statuses(Dating),
                 "Initiator",
                 "Other",
             )
-            .filter_(romance_lte(threshold), "Initiator", "Other")
+            .filter_(
+                filter_relationship_stat_lte("Romance", threshold), "Initiator", "Other"
+            )
             .build()
         ),
         effect=effect,
@@ -147,13 +147,11 @@ def divorce_event(threshold: float = 0.4, probability: float = 1.0) -> ILifeEven
     """Defines an event where two characters become friends"""
 
     def effect(world: World, event: Event):
-        world.get_gameobject(event["Initiator"]).get_component(RelationshipManager).get(
-            event["Other"]
-        ).remove_tags(RelationshipTag.Spouse | RelationshipTag.SignificantOther)
+        initiator = world.get_gameobject(event["Initiator"])
+        ex_spouse = world.get_gameobject(event["Other"])
 
-        world.get_gameobject(event["Other"]).get_component(RelationshipManager).get(
-            event["Initiator"]
-        ).remove_tags(RelationshipTag.Spouse | RelationshipTag.SignificantOther)
+        remove_relationship_status(initiator, ex_spouse, Married)
+        remove_relationship_status(ex_spouse, initiator, Married)
 
     return LifeEvent(
         name="Divorce",
@@ -161,11 +159,13 @@ def divorce_event(threshold: float = 0.4, probability: float = 1.0) -> ILifeEven
             QueryBuilder("Initiator", "Other")
             .with_((GameCharacter, Active), "Initiator")
             .get_(
-                get_relationships_with_tags(RelationshipTag.Spouse),
+                find_relationships_with_statuses(Married),
                 "Initiator",
                 "Other",
             )
-            .filter_(romance_lte(threshold), "Initiator", "Other")
+            .filter_(
+                filter_relationship_stat_lte("Romance", threshold), "Initiator", "Other"
+            )
             .build()
         ),
         effect=effect,
@@ -177,21 +177,14 @@ def marriage_event(threshold: float = 0.7, probability: float = 1.0) -> ILifeEve
     """Defines an event where two characters become friends"""
 
     def effect(world: World, event: Event):
-        world.get_gameobject(event["Initiator"]).get_component(RelationshipManager).get(
-            event["Other"]
-        ).add_tags(RelationshipTag.Spouse | RelationshipTag.SignificantOther)
+        current_date = world.get_resource(SimDateTime).to_iso_str()
+        initiator = world.get_gameobject(event["Initiator"])
+        other = world.get_gameobject(event["Other"])
 
-        world.get_gameobject(event["Initiator"]).get_component(RelationshipManager).get(
-            event["Other"]
-        ).remove_tags(RelationshipTag.Dating)
-
-        world.get_gameobject(event["Other"]).get_component(RelationshipManager).get(
-            event["Initiator"]
-        ).add_tags(RelationshipTag.Spouse | RelationshipTag.SignificantOther)
-
-        world.get_gameobject(event["Other"]).get_component(RelationshipManager).get(
-            event["Initiator"]
-        ).remove_tags(RelationshipTag.Dating)
+        remove_relationship_status(initiator, other, Dating)
+        remove_relationship_status(other, initiator, Dating)
+        add_relationship_status(initiator, other, Married(current_date))
+        add_relationship_status(other, initiator, Married(current_date))
 
     return LifeEvent(
         name="GetMarried",
@@ -199,25 +192,29 @@ def marriage_event(threshold: float = 0.7, probability: float = 1.0) -> ILifeEve
             QueryBuilder("Initiator", "Other")
             .with_((GameCharacter, Active), "Initiator")
             .get_(
-                get_relationships_with_tags(RelationshipTag.Dating),
+                find_relationships_with_statuses(Dating),
                 "Initiator",
                 "Other",
             )
             .filter_(
-                not_(eq_),
+                not_(lambda world, *gameobjects: gameobjects[0] == gameobjects[1]),
                 "Initiator",
                 "Other",
             )
             .filter_(
                 lambda world, *gameobjects: get_relationship_status(
                     gameobjects[0], gameobjects[1], Dating
-                ).time_active
+                ).years
                 > 36,
                 "Initiator",
                 "Other",
             )
-            .filter_(romance_gte(threshold), "Initiator", "Other")
-            .filter_(romance_gte(threshold), "Other", "Initiator")
+            .filter_(
+                filter_relationship_stat_gte("Romance", threshold), "Initiator", "Other"
+            )
+            .filter_(
+                filter_relationship_stat_gte("Romance", threshold), "Other", "Initiator"
+            )
             .build()
         ),
         effect=effect,
@@ -229,6 +226,7 @@ def pregnancy_event() -> ILifeEvent:
     """Defines an event where two characters stop dating"""
 
     def execute(world: World, event: Event):
+        current_date = world.get_resource(SimDateTime)
         due_date = SimDateTime.from_iso_str(
             world.get_resource(SimDateTime).to_iso_str()
         )
@@ -237,6 +235,7 @@ def pregnancy_event() -> ILifeEvent:
         add_status(
             world.get_gameobject(event["PregnantOne"]),
             Pregnant(
+                created=current_date.to_iso_str(),
                 partner_id=event["Other"],
                 due_date=due_date,
             ),
@@ -244,9 +243,7 @@ def pregnancy_event() -> ILifeEvent:
 
     def prob_fn(world: World, event: LifeEventInstance):
         gameobject = world.get_gameobject(event.roles["PregnantOne"])
-        children = gameobject.get_component(RelationshipManager).get_all_with_tags(
-            RelationshipTag.Child
-        )
+        children = get_relationships_with_statuses(gameobject, ParentOf)
         if len(children) >= 5:
             return 0.0
         else:
@@ -262,15 +259,15 @@ def pregnancy_event() -> ILifeEvent:
                 "PregnantOne",
             )
             .get_(
-                get_relationships_with_tags(RelationshipTag.Spouse),
+                find_relationships_with_statuses(Married),
                 "PregnantOne",
                 "Other",
             )
             .filter_(has_component_filter(Active), "Other")
             .filter_(
                 or_(
-                    relationship_has_tags(RelationshipTag.Dating),
-                    relationship_has_tags(RelationshipTag.Married),
+                    filter_relationship_has_statuses(Dating),
+                    filter_relationship_has_statuses(Married),
                 ),
                 "PregnantOne",
                 "Other",
@@ -303,7 +300,7 @@ def retire_event(probability: float = 0.4) -> ILifeEvent:
     ):
 
         if candidate:
-            if not candidate.has_component(Retired) and candidate.has_component(
+            if not candidate.has_component(Retired) and candidate.has_components(
                 Occupation, Active
             ):
                 if (
@@ -314,10 +311,10 @@ def retire_event(probability: float = 0.4) -> ILifeEvent:
             return None
 
         eligible_characters: List[GameObject] = []
+
         for gid, (character, _, _) in world.get_components(
-            GameCharacter, Occupation, Active
+            (GameCharacter, Occupation, Active)
         ):
-            character = cast(GameCharacter, character)
 
             if character.life_stage < LifeStage.Senior:
                 continue
@@ -330,9 +327,10 @@ def retire_event(probability: float = 0.4) -> ILifeEvent:
         return None
 
     def execute(world: World, event: Event):
+        date = world.get_resource(SimDateTime)
         retiree = world.get_gameobject(event["Retiree"])
-        retiree.add_component(Retired())
-        end_job(world, retiree, event.name)
+        add_status(retiree, Retired(date.to_iso_str()))
+        end_job(retiree, event.name)
 
     return LifeEvent(
         name="Retire",
@@ -347,10 +345,8 @@ def find_own_place_event(probability: float = 0.1) -> ILifeEvent:
         eligible: List[Tuple[Any, ...]] = []
 
         for gid, (character, _, resident, _) in world.get_components(
-            GameCharacter, Occupation, Resident, Active
+            (GameCharacter, Occupation, Resident, Active)
         ):
-            character = cast(GameCharacter, character)
-            resident = cast(Resident, resident)
 
             if character.life_stage < LifeStage.YoungAdult:
                 continue
@@ -363,16 +359,16 @@ def find_own_place_event(probability: float = 0.1) -> ILifeEvent:
 
         return eligible
 
-    def find_vacant_residences(world: World) -> List[Residence]:
+    def find_vacant_residences(world: World) -> List[GameObject]:
         """Try to find a vacant residence to move into"""
         return list(
             map(
-                lambda pair: cast(Residence, pair[1][0]),
-                world.get_components(Residence, Vacant),
+                lambda pair: world.get_gameobject(pair[0]),
+                world.get_components((Residence, Vacant)),
             )
         )
 
-    def choose_random_vacant_residence(world: World) -> Optional[Residence]:
+    def choose_random_vacant_residence(world: World) -> Optional[GameObject]:
         """Randomly chooses a vacant residence to move into"""
         vacancies = find_vacant_residences(world)
         if vacancies:
@@ -385,7 +381,7 @@ def find_own_place_event(probability: float = 0.1) -> ILifeEvent:
         vacant_residence = choose_random_vacant_residence(world)
         if vacant_residence:
             # Move into house with any dependent children
-            set_residence(world, character, vacant_residence.gameobject)
+            set_residence(world, character, vacant_residence)
 
         # Depart if no housing could be found
         else:
@@ -403,11 +399,12 @@ def find_own_place_event(probability: float = 0.1) -> ILifeEvent:
 
 def die_of_old_age(probability: float = 0.8) -> ILifeEvent:
     def execute(world: World, event: Event) -> None:
+        current_date = world.get_resource(SimDateTime)
         deceased = world.get_gameobject(event["Deceased"])
-        deceased.add_component(Deceased())
-        deceased.remove_component(Active)
-        world.get_resource(EventHandler).record_event(
-            orrery.events.DeathEvent(world.get_resource(SimDateTime), deceased)
+        add_status(deceased, Deceased(current_date.to_iso_str()))
+        remove_status(deceased, Active)
+        world.get_resource(EventHandler).emit(
+            DeathEvent(world.get_resource(SimDateTime), deceased)
         )
 
     return LifeEvent(

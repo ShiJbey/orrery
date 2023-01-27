@@ -1,0 +1,52 @@
+- name: Rest
+  traits:
+    - leisure-time
+- name: Gambling
+  traits:
+    - wealth
+    - excitement
+    - adventure
+    - lust
+- name: Shopping
+  traits:
+    - material things
+    - excitement
+    - leisure-time
+- name: Recreation
+  traits:
+    - health
+    - excitement
+- name: Studying
+  traits:
+    - knowledge
+    - power
+    - ambition
+- name: Reading
+  traits:
+    - knowledge
+    - power
+    - leisure-time
+- name: Errands
+  traits:
+    - reliability
+    - health
+    - family
+- name: Eating
+  traits:
+    - social
+    - health
+    - family
+- name: Socializing
+  traits:
+    - social
+    - excitement
+    - friendship
+- name: Drinking
+  traits:
+    - social
+    - friendship
+- name: Relaxing
+  traits:
+    - health
+    - tranquility
+    - leisure-time
