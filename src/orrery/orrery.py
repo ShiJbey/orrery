@@ -37,12 +37,6 @@ from orrery.components.shared import (
 )
 from orrery.components.virtues import Virtues
 from orrery.config import OrreryConfig
-from orrery.constants import (
-    BUSINESS_UPDATE_PHASE,
-    CHARACTER_UPDATE_PHASE,
-    CORE_SYSTEMS_PHASE,
-    SETTLEMENT_UPDATE_PHASE,
-)
 from orrery.content_management import (
     ActivityLibrary,
     ActivityToVirtueMap,
@@ -67,23 +61,42 @@ from orrery.factories.character import GameCharacterFactory
 from orrery.factories.shared import FrequentedLocationsFactory, LocationFactory
 from orrery.factories.virtues import VirtuesFactory
 from orrery.systems import (
+    AIActionSystem,
     BuildBusinessSystem,
     BuildHousingSystem,
     BusinessUpdateSystem,
     CharacterAgingSystem,
+    CharacterUpdateSystemGroup,
+    CleanUpSystemGroup,
+    CoreSystemsSystemGroup,
     DatingStatusSystem,
+    EarlyCharacterUpdateSystemGroup,
+    EventListenersSystemGroup,
     EventSystem,
     FindEmployeesSystem,
+    InitializationSystemGroup,
+    LateCharacterUpdateSystemGroup,
     LifeEventSystem,
+    MarkUnemployedNewCharactersSystem,
     MarriedStatusSystem,
     MeetNewPeopleSystem,
     OccupationUpdateSystem,
+    OnBecomeYoungAdultSystem,
+    OnDeathSystem,
+    OnDepartSystem,
+    OnJoinSettlementSystem,
     PregnantStatusSystem,
     PrintEventBufferSystem,
+    ReevaluateSocialRulesSystem,
     RelationshipUpdateSystem,
+    RelationshipUpdateSystemGroup,
+    RemoveFrequentedFromDepartedSystem,
+    RemoveRetiredFromOccupationSystem,
     SpawnResidentSystem,
+    StatusUpdateSystemGroup,
     TimeSystem,
     UnemployedStatusSystem,
+    UpdateFrequentedLocationSystem,
 )
 
 _CT = TypeVar("_CT", bound=Component)
@@ -172,23 +185,45 @@ class Orrery:
         self.world.add_resource(LifeEventLibrary())
         self.world.add_resource(ServiceLibrary())
 
+        # Add default system groups
+        self.world.add_system(InitializationSystemGroup())
+        self.world.add_system(StatusUpdateSystemGroup())
+        self.world.add_system(BusinessUpdateSystem())
+        self.world.add_system(CharacterUpdateSystemGroup())
+        self.world.add_system(EarlyCharacterUpdateSystemGroup())
+        self.world.add_system(LateCharacterUpdateSystemGroup())
+        self.world.add_system(RelationshipUpdateSystemGroup())
+        self.world.add_system(CoreSystemsSystemGroup())
+        self.world.add_system(EventListenersSystemGroup())
+        self.world.add_system(CleanUpSystemGroup())
+
         # Add default systems
-        self.world.add_system(RelationshipUpdateSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(MeetNewPeopleSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(LifeEventSystem(), CORE_SYSTEMS_PHASE)
-        self.world.add_system(EventSystem(), CORE_SYSTEMS_PHASE)
-        self.world.add_system(TimeSystem(), CORE_SYSTEMS_PHASE)
-        self.world.add_system(CharacterAgingSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(DatingStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(MarriedStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(PregnantStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(UnemployedStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(OccupationUpdateSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(BusinessUpdateSystem(), BUSINESS_UPDATE_PHASE)
-        self.world.add_system(FindEmployeesSystem(), BUSINESS_UPDATE_PHASE)
-        self.world.add_system(BuildHousingSystem(), SETTLEMENT_UPDATE_PHASE)
-        self.world.add_system(SpawnResidentSystem(), SETTLEMENT_UPDATE_PHASE)
-        self.world.add_system(BuildBusinessSystem(), SETTLEMENT_UPDATE_PHASE)
+        self.world.add_system(RelationshipUpdateSystem())
+        self.world.add_system(MeetNewPeopleSystem())
+        self.world.add_system(LifeEventSystem())
+        self.world.add_system(EventSystem())
+        self.world.add_system(TimeSystem())
+        self.world.add_system(CharacterAgingSystem())
+        self.world.add_system(DatingStatusSystem())
+        self.world.add_system(MarriedStatusSystem())
+        self.world.add_system(PregnantStatusSystem())
+        self.world.add_system(UnemployedStatusSystem())
+        self.world.add_system(OccupationUpdateSystem())
+        self.world.add_system(BusinessUpdateSystem())
+        self.world.add_system(FindEmployeesSystem())
+        self.world.add_system(BuildHousingSystem())
+        self.world.add_system(SpawnResidentSystem())
+        self.world.add_system(BuildBusinessSystem())
+        self.world.add_system(ReevaluateSocialRulesSystem())
+        self.world.add_system(UpdateFrequentedLocationSystem())
+        self.world.add_system(MarkUnemployedNewCharactersSystem())
+        self.world.add_system(RemoveFrequentedFromDepartedSystem())
+        self.world.add_system(AIActionSystem())
+        self.world.add_system(OnDepartSystem())
+        self.world.add_system(OnDeathSystem())
+        self.world.add_system(OnJoinSettlementSystem())
+        self.world.add_system(RemoveRetiredFromOccupationSystem())
+        self.world.add_system(OnBecomeYoungAdultSystem())
 
         # Register components
         self.world.register_component(Active)

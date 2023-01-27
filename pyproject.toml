@@ -42,12 +42,18 @@ dependencies = [
     "pyYAML",
     "pydantic",
     "tracery",
+    "pandas"
 ]
 
 [project.optional-dependencies]
 testing = [
     "pytest",
     "pytest-cov"
+]
+development = [
+    "isort",
+    "black",
+    "black[d]"
 ]
 
 [project.urls]
