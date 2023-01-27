@@ -42,6 +42,7 @@ from orrery.content_management import (
     OccupationTypeLibrary,
     ResidenceLibrary,
 )
+from orrery.core.ai import AIComponent
 from orrery.core.ecs import GameObject, ISystem, QueryBuilder
 from orrery.core.event import EventHandler
 from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
@@ -916,3 +917,10 @@ class UpdateFrequentedLocationSystem(System):
                 character,
                 self.world.get_gameobject(current_settlement.settlement),
             )
+
+
+class AIActionSystem(System):
+    def run(self, *args: Any, **kwargs: Any) -> None:
+        for guid, ai_component in self.world.get_component(AIComponent):
+            gameobject = self.world.get_gameobject(guid)
+            ai_component.execute_action(self.world, gameobject)

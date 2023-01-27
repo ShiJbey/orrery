@@ -54,6 +54,7 @@ from orrery.content_management import (
     ServiceLibrary,
     SocialRuleLibrary,
 )
+from orrery.core.ai import AIComponent
 from orrery.core.ecs import Component, IComponentFactory, ISystem, World
 from orrery.core.event import EventHandler
 from orrery.core.status import StatusManager
@@ -191,6 +192,7 @@ class Orrery:
 
         # Register components
         self.world.register_component(Active)
+        self.world.register_component(AIComponent)
         self.world.register_component(GameCharacter, factory=GameCharacterFactory())
         self.world.register_component(Name)
         self.world.register_component(RelationshipManager)

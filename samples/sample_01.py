@@ -72,9 +72,9 @@ class VirtueCompatibilityRule(ISocialRule):
         """Return true if a certain condition holds"""
         return gameobject.has_component(Virtues)
 
-    def evaluate(self, subject: GameObject, target: GameObject) -> Dict[str, int]:
+    def evaluate(self, initiator: GameObject, target: GameObject) -> Dict[str, int]:
         """Apply any modifiers associated with the social rule"""
-        character_virtues = subject.get_component(Virtues)
+        character_virtues = initiator.get_component(Virtues)
         acquaintance_virtues = target.get_component(Virtues)
 
         compatibility = character_virtues.compatibility(acquaintance_virtues)
