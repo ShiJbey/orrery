@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from orrery.components.activity import Activities, LikedActivities
 from orrery.components.business import (
@@ -43,6 +43,7 @@ from orrery.content_management import (
     BusinessLibrary,
     CharacterLibrary,
     LifeEventLibrary,
+    LocationBiasRuleLibrary,
     OccupationTypeLibrary,
     ResidenceLibrary,
     ServiceLibrary,
@@ -51,10 +52,13 @@ from orrery.content_management import (
 from orrery.core.ai import AIComponent
 from orrery.core.ecs import Component, IComponentFactory, ISystem, World
 from orrery.core.event import EventHandler
+from orrery.core.location_bias import ILocationBiasRule
+from orrery.core.social_rule import ISocialRule
 from orrery.core.status import StatusManager
 from orrery.core.time import SimDateTime, TimeDelta
 from orrery.core.tracery import Tracery
 from orrery.core.traits import TraitManager
+from orrery.data_collection import DataCollector
 from orrery.factories.activity import ActivitiesFactory, LikedActivitiesFactory
 from orrery.factories.business import BusinessFactory, ServicesFactory
 from orrery.factories.character import GameCharacterFactory
@@ -65,10 +69,12 @@ from orrery.systems import (
     BuildBusinessSystem,
     BuildHousingSystem,
     BusinessUpdateSystem,
+    BusinessUpdateSystemGroup,
     CharacterAgingSystem,
     CharacterUpdateSystemGroup,
     CleanUpSystemGroup,
     CoreSystemsSystemGroup,
+    DataCollectionSystemGroup,
     DatingStatusSystem,
     EarlyCharacterUpdateSystemGroup,
     EventListenersSystemGroup,
@@ -179,22 +185,25 @@ class Orrery:
         self.world.add_resource(ResidenceLibrary())
         self.world.add_resource(ActivityLibrary())
         self.world.add_resource(ActivityToVirtueMap())
-        self.world.add_resource(SimDateTime())
+        self.world.add_resource(SimDateTime(1, 1, 1))
         self.world.add_resource(EventHandler())
         self.world.add_resource(OccupationTypeLibrary())
         self.world.add_resource(LifeEventLibrary())
         self.world.add_resource(ServiceLibrary())
+        self.world.add_resource(DataCollector())
+        self.world.add_resource(LocationBiasRuleLibrary())
 
         # Add default system groups
         self.world.add_system(InitializationSystemGroup())
         self.world.add_system(StatusUpdateSystemGroup())
-        self.world.add_system(BusinessUpdateSystem())
+        self.world.add_system(BusinessUpdateSystemGroup())
         self.world.add_system(CharacterUpdateSystemGroup())
         self.world.add_system(EarlyCharacterUpdateSystemGroup())
         self.world.add_system(LateCharacterUpdateSystemGroup())
         self.world.add_system(RelationshipUpdateSystemGroup())
         self.world.add_system(CoreSystemsSystemGroup())
         self.world.add_system(EventListenersSystemGroup())
+        self.world.add_system(DataCollectionSystemGroup())
         self.world.add_system(CleanUpSystemGroup())
 
         # Add default systems
@@ -348,19 +357,16 @@ class Orrery:
 
         self.world.add_resource(resource)
 
-    def add_system(self, system: ISystem, priority: int = 0) -> None:
+    def add_system(self, system: ISystem) -> None:
         """Add a simulation system
 
         Parameters
         ----------
         system: ISystem
             The system to add
-        priority: int
-            The priority of this system.
-            The higher the number the sooner it runs at the beginning of a simulation step
         """
 
-        self.world.add_system(system, priority=priority)
+        self.world.add_system(system)
 
     def component(
         self,
@@ -405,22 +411,49 @@ class Orrery:
 
         return decorator
 
-    def system(self, priority: int = 0, **kwargs: Any):
+    def system(self, **kwargs: Any):
         """Add a class as a simulation system
 
         This decorator adds an instance of the decorated class as a shared resource.
 
         Parameters
         ----------
-        priority: int
-            The priority of this system.
-            The higher the number the sooner it runs at the beginning of a simulation step
         **kwargs: Any
             Keyword arguments to pass to the constructor of the decorated class
         """
 
         def decorator(cls: Type[_ST]) -> Type[_ST]:
-            self.world.add_system(cls(**kwargs), priority=priority)
+            self.world.add_system(cls(**kwargs))
             return cls
 
         return decorator
+
+    def location_bias_rule(self, **kwargs: Any):
+        def decorator(item: Union[ILocationBiasRule, LocationBiasRuleFactory]):
+            if callable(item):
+                self.world.get_resource(LocationBiasRuleLibrary).add(item(**kwargs))
+            else:
+                self.world.get_resource(LocationBiasRuleLibrary).add(item)
+            return item
+
+        return decorator
+
+    def social_rule(self, **kwargs: Any):
+        def decorator(item: Union[ISocialRule, SocialRuleFactory]):
+            if callable(item):
+                self.world.get_resource(SocialRuleLibrary).add(item(**kwargs))
+            else:
+                self.world.get_resource(SocialRuleLibrary).add(item)
+            return item
+
+        return decorator
+
+
+class LocationBiasRuleFactory(Protocol):
+    def __call__(self, **kwargs: Any) -> ILocationBiasRule:
+        raise NotImplementedError
+
+
+class SocialRuleFactory(Protocol):
+    def __call__(self, **kwargs: Any) -> ILocationBiasRule:
+        raise NotImplementedError

@@ -11,8 +11,10 @@ Orrery: social simulation framework (WIP)
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-Orrery is a fork of my other simulation Neighborly. This repo is basically a testbed
-for more radical deviations from Neighborly's design.
+Orrery is a variation of my other simulation Neighborly. This repo is basically a 
+testbed for more radical deviations from Neighborly's design. It has been extremely 
+helpful for experimentation and determining the final features for neighborly's v1.0.0
+release.
 
 The largest change between Neighborly and Orrery is the representation of physical
 space. In Neighborly, characters move from one location to the next based on their
@@ -118,45 +120,14 @@ is injecting custom components into the mix and using them
 when querying for certain types of relationships
 
 ```python
-@dataclass
-class RelationshipStatus:
-   owner: int
-   target: int
+class InDebt(StatusComponent):
+   
+    __slots__ = "amount"
+   
+    def __init__(self, amount: int) -> None:
+        self.amount: int = amount
 
-
-@dataclass
-class StatusDuration:
-   duration: int = -1
-   elapsed: int = 0
-
-
-@dataclass
-class InDebt:
-   amount: int
-
-
-class InDeptStatus(ComponentBundle):
-
-   def __init__(self, owner: int, target: int, amount: int) -> None:
-      super().__init__(
-         {
-            RelationshipStatus: {
-               "owner": owner,
-               "target": target,
-            },
-            InDebt: {
-               "amount": amount
-            },
-            StatusDuration: {}
-         }
-      )
-
-
-add_status(
-   world,
-   character,
-   InDeptStatus(character.uid, loanshark.uid, 1000)
-)
+add_relationship_status(character, other, InDept(1000))
 ```
 
 ### How do relationships change over time?

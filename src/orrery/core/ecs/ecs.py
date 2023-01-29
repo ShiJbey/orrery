@@ -22,9 +22,13 @@ from __future__ import annotations
 import dataclasses
 import logging
 from abc import ABC, abstractmethod
+from collections import defaultdict
+from dataclasses import dataclass
 from typing import (
     Any,
+    DefaultDict,
     Dict,
+    Generic,
     Iterator,
     List,
     Optional,
@@ -457,6 +461,15 @@ class GameObject:
 #         world.delete_gameobject(self.gameobject_uid)
 
 
+@dataclass(frozen=True)
+class RemovedComponentPair(Generic[_CT]):
+    guid: int
+    component: _CT
+
+    def __hash__(self) -> int:
+        return self.guid
+
+
 class Component(ABC):
     """Components are collections of related data attached to GameObjects"""
 
@@ -509,6 +522,10 @@ class ISystem(ABC, esper.Processor):
     # it is declared as 'Any' by esper, and we need it to
     # be of type World
     world: World  # type: ignore
+
+    @abstractmethod
+    def process(self, *args: Any, **kwargs: Any) -> None:
+        raise NotImplementedError
 
     @classmethod
     def get_world(cls) -> World:
@@ -680,8 +697,12 @@ class World:
         self._resources: Dict[Type[Any], Any] = {}
         self._component_types: Dict[str, ComponentInfo] = {}
         self._component_factories: Dict[Type[Component], IComponentFactory] = {}
-        self._removed_components: Dict[Type[Component], OrderedSet[int]] = {}
-        self._added_components: Dict[Type[Component], OrderedSet[int]] = {}
+        self._removed_components: DefaultDict[
+            Type[Component], OrderedSet[RemovedComponentPair]
+        ] = defaultdict(lambda: OrderedSet())
+        self._added_components: DefaultDict[
+            Type[Component], OrderedSet[int]
+        ] = defaultdict(lambda: OrderedSet())
         self._systems: SystemGroup = RootSystemGroup()
         # The RootSystemGroup should be the only system that is directly added
         # to esper
@@ -741,18 +762,24 @@ class World:
         """Add a component to an entity"""
         component.set_gameobject(self._gameobjects[gid])
         component_type = type(component)
-        if component_type not in self._added_components:
-            self._added_components[component_type] = OrderedSet([])
         self._added_components[component_type].append(int(gid))
         self._ecs.add_component(int(gid), component)
 
     def remove_component(self, gid: int, component_type: Type[Component]) -> None:
         """Remove a component from an entity"""
-        if component_type not in self._removed_components:
-            self._removed_components[component_type] = OrderedSet([])
-        self._removed_components[component_type].append(int(gid))
+
         try:
+            if not self.has_component(gid, component_type):
+                return
+
+            component = self.get_component_for_entity(gid, component_type)
+
+            self._removed_components[component_type].append(
+                RemovedComponentPair(gid, component)
+            )
+
             self._ecs.remove_component(int(gid), component_type)
+
         except KeyError:
             # This will throw a key error if the GameObject does not
             # have any components.
@@ -1115,7 +1142,9 @@ class World:
             factory if factory is not None else DefaultComponentFactory(component_type)
         )
 
-    def get_removed_component(self, component_type: Type[Component]) -> List[int]:
+    def iter_removed_component(
+        self, component_type: Type[_CT]
+    ) -> Iterator[RemovedComponentPair[_CT]]:
         """Return the IDs of GameObjects that had the given component type added
 
         Parameters
@@ -1128,9 +1157,9 @@ class World:
         List[int]
             The ID of GameObjects
         """
-        return list(self._removed_components.get(component_type, []))
+        return self._removed_components[component_type].__iter__()
 
-    def get_added_component(self, component_type: Type[Component]) -> List[int]:
+    def iter_added_component(self, component_type: Type[Component]) -> Iterator[int]:
         """Return the IDs of GameObjects that had the given component type removed
 
         Parameters
@@ -1143,4 +1172,4 @@ class World:
         List[int]
             The ID of GameObjects
         """
-        return list(self._added_components.get(component_type, []))
+        return self._added_components[component_type].__iter__()

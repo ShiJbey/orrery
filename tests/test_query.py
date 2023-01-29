@@ -123,14 +123,14 @@ def sample_world() -> World:
         [
             Hero(),
             GameCharacter(character_config, "Astrid", "", gender=Gender.Female),
-            Retired(SimDateTime().to_iso_str()),
+            Retired(SimDateTime(1, 1, 1).to_iso_str()),
         ]
     )
     world.spawn_gameobject(
         [
             DemonKing(),
             GameCharacter(character_config, "-Shi", ""),
-            Retired(SimDateTime().to_iso_str()),
+            Retired(SimDateTime(1, 1, 1).to_iso_str()),
         ]
     )
     world.spawn_gameobject(

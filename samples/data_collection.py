@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+
+"""
+samples/data_collection.py
+
+This sample script demonstrate shows how users can extract data from the simulation.
+
+Data should be collected within systems that are added to the DataCollectionSystemGroup.
+This group runs near the end of a simulation step when all the changes have occurred.
+"""
+
+
+from dataclasses import dataclass
+from typing import Any, Dict
+
+from orrery.data_collection import DataCollector
+from orrery.orrery import Component, ISystem, Orrery, OrreryConfig, SimDateTime
+
+sim = Orrery(OrreryConfig(seed=101))
+
+
+@sim.component()
+@dataclass
+class Actor(Component):
+    name: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"name": self.name}
+
+
+@sim.component()
+@dataclass
+class Money(Component):
+    amount: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"amount": self.amount}
+
+
+@sim.component()
+@dataclass
+class Job(Component):
+    title: str
+    salary: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"title": self.title, "salary": self.salary}
+
+
+@sim.system()
+class SalarySystem(ISystem):
+    sys_group = "character-update"
+
+    def process(self, *args: Any, **kwargs: Any):
+        for _, (job, money) in self.world.get_components((Job, Money)):
+            money.amount += job.salary // 12
+
+
+@sim.system()
+class WealthReporter(ISystem):
+    sys_group = "data-collection"
+
+    def process(self, *args: Any, **kwargs: Any) -> None:
+        timestamp = self.world.get_resource(SimDateTime).to_iso_str()
+        data_collector = self.world.get_resource(DataCollector)
+        for guid, (actor, money) in self.world.get_components((Actor, Money)):
+            data_collector.add_table_row(
+                "wealth",
+                {
+                    "uid": guid,
+                    "name": actor.name,
+                    "timestamp": timestamp,
+                    "money": money.amount,
+                },
+            )
+
+
+if __name__ == "__main__":
+    sim.world.get_resource(DataCollector).create_new_table(
+        "wealth", ("uid", "name", "timestamp", "money")
+    )
+
+    sim.world.spawn_gameobject([Actor("Alice"), Money(0), Job("WacArnold's", 32_000)])
+    sim.world.spawn_gameobject([Actor("Kieth"), Money(0), Job("McDonald's", 32_500)])
+
+    for _ in range(27):
+        sim.step()
+
+    data_frame = sim.world.get_resource(DataCollector).get_table_dataframe("wealth")
+
+    print(data_frame)

@@ -28,7 +28,7 @@ class SuperStrength(StatusComponent):
 def test_status_on_add() -> None:
     """Test calling the Status.on_add method"""
     world = World()
-    world.add_resource(SimDateTime())
+    world.add_resource(SimDateTime(1, 1, 1))
     current_date = world.get_resource(SimDateTime).to_iso_str()
 
     gameobject = world.spawn_gameobject([Stats(), StatusManager()])
@@ -43,7 +43,7 @@ def test_status_on_add() -> None:
 def test_status_on_remove() -> None:
     """Test calling the Status.on_remove method"""
     world = World()
-    world.add_resource(SimDateTime())
+    world.add_resource(SimDateTime(1, 1, 1))
     current_date = world.get_resource(SimDateTime).to_iso_str()
 
     gameobject = world.spawn_gameobject([Stats(), StatusManager()])

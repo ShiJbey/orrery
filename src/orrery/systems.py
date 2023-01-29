@@ -1,4 +1,5 @@
 import random
+import sys
 from abc import ABC, abstractmethod
 from collections import Counter
 from typing import Any, List, Optional
@@ -78,7 +79,7 @@ class InitializationSystemGroup(SystemGroup):
     """A group of systems that runs"""
 
     group_name = "initialization"
-    priority = int("inf")
+    priority = 99999
 
     def process(self, *args: Any, **kwargs: Any) -> None:
         super().process(*args, **kwargs)
@@ -90,7 +91,7 @@ class EarlyCharacterUpdateSystemGroup(SystemGroup):
 
     group_name = "early-character-update"
     sys_group = "character-update"
-    priority = int("inf")
+    priority = 99999
 
 
 class CharacterUpdateSystemGroup(SystemGroup):
@@ -104,7 +105,7 @@ class LateCharacterUpdateSystemGroup(SystemGroup):
 
     group_name = "late-character-update"
     sys_group = "character-update"
-    priority = int("-inf")
+    priority = -99999
 
 
 class BusinessUpdateSystemGroup(SystemGroup):
@@ -130,11 +131,17 @@ class EventListenersSystemGroup(SystemGroup):
     group_name = "event-listeners"
 
 
+class DataCollectionSystemGroup(SystemGroup):
+    sys_group = "core-systems"
+    priority = -9998
+    group_name = "data-collection"
+
+
 class CleanUpSystemGroup(SystemGroup):
     """Group of systems that clean-up residual data before the next step"""
 
     group_name = "clean-up"
-    priority = int("-inf")
+    priority = -99999
 
 
 class System(ISystem, ABC):
@@ -153,7 +160,7 @@ class System(ISystem, ABC):
         super(ISystem, self).__init__()
         self._last_run: Optional[SimDateTime] = None
         self._interval: TimeDelta = interval if interval else TimeDelta()
-        self._next_run: SimDateTime = SimDateTime() + self._interval
+        self._next_run: SimDateTime = SimDateTime(1, 1, 1) + self._interval
         self._elapsed_time: TimeDelta = TimeDelta()
 
     @property
@@ -183,6 +190,7 @@ class TimeSystem(ISystem):
     """Advances the current date of the simulation"""
 
     sys_group = "core-systems"
+    priority = -9999
 
     def process(self, *args: Any, **kwargs: Any) -> None:
         # Get time increment from the simulation configuration
@@ -900,7 +908,7 @@ class MarkUnemployedNewCharactersSystem(System):
 
     def run(self, *args: Any, **kwargs: Any) -> None:
         current_date = self.world.get_resource(SimDateTime)
-        for guid in self.world.get_added_component(CurrentSettlement):
+        for guid in self.world.iter_added_component(CurrentSettlement):
             gameobject = self.world.get_gameobject(guid)
             if game_character := gameobject.try_component(GameCharacter):
                 if game_character.life_stage >= LifeStage.YoungAdult:
@@ -913,14 +921,14 @@ class RemoveFrequentedFromDepartedSystem(System):
     sys_group = "late-character-update"
 
     def run(self, *args: Any, **kwargs: Any) -> None:
-        for guid in self.world.get_added_component(Departed):
+        for guid in self.world.iter_added_component(Departed):
             gameobject = self.world.get_gameobject(guid)
             if gameobject.has_component(GameCharacter):
                 clear_frequented_locations(gameobject)
 
 
 class OnDepartSystem(ISystem):
-    sys_group = "event_listeners"
+    sys_group = "event-listeners"
 
     def process(self, *args: Any, **kwargs: Any) -> None:
         date = self.world.get_resource(SimDateTime)
@@ -941,7 +949,7 @@ class OnDepartSystem(ISystem):
 
 
 class OnDeathSystem(ISystem):
-    sys_group = "event_listeners"
+    sys_group = "event-listeners"
 
     def process(self, *args: Any, **kwargs: Any) -> None:
 
@@ -954,7 +962,7 @@ class OnDeathSystem(ISystem):
 
 
 class OnJoinSettlementSystem(ISystem):
-    sys_group = "event_listeners"
+    sys_group = "event-listeners"
 
     def process(self, *args: Any, **kwargs: Any) -> None:
         date = self.world.get_resource(SimDateTime)
@@ -972,7 +980,7 @@ class OnJoinSettlementSystem(ISystem):
 
 
 class RemoveRetiredFromOccupationSystem(ISystem):
-    sys_group = "event_listeners"
+    sys_group = "event-listeners"
 
     def process(self, *args: Any, **kwargs: Any) -> None:
 
@@ -986,7 +994,7 @@ class RemoveRetiredFromOccupationSystem(ISystem):
 
 class OnBecomeYoungAdultSystem(ISystem):
 
-    sys_group = "event_listeners"
+    sys_group = "event-listeners"
 
     def process(self, *args: Any, **kwargs: Any) -> None:
         date = self.world.get_resource(SimDateTime)

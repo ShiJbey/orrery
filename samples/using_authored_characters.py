@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+samples/sample_01.py
+
+Sample of
+"""
 import time
 from typing import Any, Dict
 
@@ -8,7 +14,7 @@ import orrery.plugins.default.residences
 from orrery import Orrery
 from orrery.components.virtues import Virtues
 from orrery.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
-from orrery.content_management import CharacterLibrary, SocialRuleLibrary
+from orrery.content_management import CharacterLibrary
 from orrery.core.ecs import Component, GameObject
 from orrery.core.social_rule import ISocialRule
 from orrery.core.status import StatusComponent
@@ -54,6 +60,19 @@ class Robot(Component):
         return {}
 
 
+@sim.component()
+class OwesDebt(StatusComponent):
+    """Marks a character as owing money to another character"""
+
+    def __init__(self, created: str, amount: int) -> None:
+        super().__init__(created)
+        self.amount: int = amount
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"amount": self.amount}
+
+
+@sim.social_rule()
 class VirtueCompatibilityRule(ISocialRule):
     """
     Determines initial values for romance and friendship
@@ -98,21 +117,8 @@ class VirtueCompatibilityRule(ISocialRule):
         return {"Friendship": friendship_buff, "Romance": romance_buff}
 
 
-class OwesDebt(StatusComponent):
-    """Marks a character as owing money to another character"""
-
-    def __init__(self, created: str, amount: int) -> None:
-        super().__init__(created)
-        self.amount: int = amount
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {"amount": self.amount}
-
-
 def main():
     """Main entry point for this module"""
-
-    sim.world.get_resource(SocialRuleLibrary).add(VirtueCompatibilityRule())
 
     character_library = sim.world.get_resource(CharacterLibrary)
 

@@ -13,6 +13,7 @@ from .ecs import (
     IComponentFactory,
     ISystem,
     ResourceNotFoundError,
+    SystemGroup,
     World,
 )
 from .prefab import EntityPrefab
@@ -25,6 +26,7 @@ __all__ = [
     "GameObjectNotFoundError",
     "IComponentFactory",
     "ISystem",
+    "SystemGroup",
     "ResourceNotFoundError",
     "World",
     "EntityPrefab",

@@ -55,6 +55,9 @@ development = [
     "black",
     "black[d]"
 ]
+docs = [
+    "sphinx"
+]
 
 [project.urls]
 "Homepage" = "https://github.com/ShiJbey/orrery"
