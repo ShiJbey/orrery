@@ -184,9 +184,9 @@ def test_get_added_component():
     g1.add_component(ComponentA())
 
     # Test that component type is in added components list
-    assert g1.uid in world.get_added_component(ComponentA)
+    assert g1.uid in world.iter_added_component(ComponentA)
     world.step()
-    assert g1.uid not in world.get_added_component(ComponentA)
+    assert g1.uid not in world.iter_added_component(ComponentA)
 
 
 def test_get_removed_component():
@@ -197,9 +197,9 @@ def test_get_removed_component():
     g1.remove_component(ComponentA)
 
     # Test that component type is in added components list
-    assert g1.uid in world.get_removed_component(ComponentA)
+    assert g1.uid in world.iter_removed_component(ComponentA)
     world.step()
-    assert g1.uid not in world.get_removed_component(ComponentA)
+    assert g1.uid not in world.iter_removed_component(ComponentA)
 
 
 #########################################

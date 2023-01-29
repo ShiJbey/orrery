@@ -14,6 +14,7 @@ from .shared import *
 from .virtues import *
 
 __all__ = [
+    "Location",
     "activity",
     "business",
     "character",

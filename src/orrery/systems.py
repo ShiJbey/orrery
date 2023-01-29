@@ -1,4 +1,5 @@
 import random
+import sys
 from abc import ABC, abstractmethod
 from collections import Counter
 from typing import Any, List, Optional
@@ -44,6 +45,7 @@ from orrery.content_management import (
 )
 from orrery.core.ai import AIComponent
 from orrery.core.ecs import GameObject, ISystem, QueryBuilder
+from orrery.core.ecs.ecs import SystemGroup
 from orrery.core.event import EventHandler
 from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
 from orrery.prefabs import CharacterPrefab
@@ -73,6 +75,75 @@ from orrery.utils.relationships import (
 from orrery.utils.statuses import add_status, clear_statuses, remove_status
 
 
+class InitializationSystemGroup(SystemGroup):
+    """A group of systems that runs"""
+
+    group_name = "initialization"
+    priority = 99999
+
+    def process(self, *args: Any, **kwargs: Any) -> None:
+        super().process(*args, **kwargs)
+        self.world.remove_system(type(self))
+
+
+class EarlyCharacterUpdateSystemGroup(SystemGroup):
+    """The first phase of character updates"""
+
+    group_name = "early-character-update"
+    sys_group = "character-update"
+    priority = 99999
+
+
+class CharacterUpdateSystemGroup(SystemGroup):
+    """The phase of character updates"""
+
+    group_name = "character-update"
+
+
+class LateCharacterUpdateSystemGroup(SystemGroup):
+    """The last phase of character updates"""
+
+    group_name = "late-character-update"
+    sys_group = "character-update"
+    priority = -99999
+
+
+class BusinessUpdateSystemGroup(SystemGroup):
+    """The phase of character updates"""
+
+    group_name = "business-update"
+
+
+class CoreSystemsSystemGroup(SystemGroup):
+
+    group_name = "core-systems"
+
+
+class RelationshipUpdateSystemGroup(SystemGroup):
+    group_name = "relationship-update"
+
+
+class StatusUpdateSystemGroup(SystemGroup):
+    group_name = "status-update"
+
+
+class EventListenersSystemGroup(SystemGroup):
+    group_name = "event-listeners"
+
+
+class DataCollectionSystemGroup(SystemGroup):
+    sys_group = "core-systems"
+    priority = -9998
+    group_name = "data-collection"
+
+
+class CleanUpSystemGroup(SystemGroup):
+    """Group of systems that clean-up residual data before the next step"""
+
+    group_name = "clean-up"
+    priority = -99999
+
+
 class System(ISystem, ABC):
     """
     System is a more fully-featured System abstraction that
@@ -89,7 +160,7 @@ class System(ISystem, ABC):
         super(ISystem, self).__init__()
         self._last_run: Optional[SimDateTime] = None
         self._interval: TimeDelta = interval if interval else TimeDelta()
-        self._next_run: SimDateTime = SimDateTime() + self._interval
+        self._next_run: SimDateTime = SimDateTime(1, 1, 1) + self._interval
         self._elapsed_time: TimeDelta = TimeDelta()
 
     @property
@@ -118,6 +189,9 @@ class System(ISystem, ABC):
 class TimeSystem(ISystem):
     """Advances the current date of the simulation"""
 
+    sys_group = "core-systems"
+    priority = -9999
+
     def process(self, *args: Any, **kwargs: Any) -> None:
         # Get time increment from the simulation configuration
         # this may be slow, but it is the cleanest configuration thus far
@@ -128,6 +202,8 @@ class TimeSystem(ISystem):
 
 class LifeEventSystem(System):
     """Fires LifeEvents adding some spice to the simulation data"""
+
+    sys_group = "character-update"
 
     def run(self, *args: Any, **kwarg: Any) -> None:
         """Simulate LifeEvents for characters"""
@@ -143,6 +219,8 @@ class LifeEventSystem(System):
 
 class MeetNewPeopleSystem(ISystem):
     """Characters meet new people based on places they frequent"""
+
+    sys_group = "character-update"
 
     def process(self, *args: Any, **kwargs: Any):
         for gid, _ in self.world.get_components((GameCharacter, Active)):
@@ -198,6 +276,8 @@ class MeetNewPeopleSystem(ISystem):
 class FindEmployeesSystem(ISystem):
     """Finds employees to work open positions at businesses"""
 
+    sys_group = "core-systems"
+
     def process(self, *args: Any, **kwargs: Any) -> None:
         occupation_types = self.world.get_resource(OccupationTypeLibrary)
         rng = self.world.get_resource(random.Random)
@@ -232,6 +312,8 @@ class BuildHousingSystem(ISystem):
     Builds housing on unoccupied spaces on the land grid
     """
 
+    sys_group = "core-systems"
+
     def process(self, *args: Any, **kwargs: Any) -> None:
         """Build a new residence when there is space"""
         rng = self.world.get_resource(random.Random)
@@ -265,6 +347,8 @@ class BuildHousingSystem(ISystem):
 
 class BuildBusinessSystem(ISystem):
     """Build a new business building at a random free space on the land grid."""
+
+    sys_group = "core-systems"
 
     def find_business_owner(
         self, occupation_type: OccupationType
@@ -382,6 +466,8 @@ class SpawnResidentSystem(System):
     -------
     Characters can spawn as single parents with kids
     """
+
+    sys_group = "core-systems"
 
     __slots__ = "chance_spawn"
 
@@ -548,6 +634,8 @@ class SpawnResidentSystem(System):
 
 
 class BusinessUpdateSystem(System):
+    sys_group = "business-update"
+
     def run(self, *args: Any, **kwargs: Any) -> None:
         time_increment = float(self.elapsed_time.total_days) / DAYS_PER_YEAR
         business: Business
@@ -557,6 +645,8 @@ class BusinessUpdateSystem(System):
 
 
 class OccupationUpdateSystem(System):
+    sys_group = "character-update"
+
     def run(self, *args: Any, **kwargs: Any) -> None:
         for _, occupation in self.world.get_component(Occupation):
             # Increment the amount of time that a character has held this occupation
@@ -576,6 +666,8 @@ class CharacterAgingSystem(System):
     -----
     This system runs every time step
     """
+
+    sys_group = "character-update"
 
     def run(self, *args: Any, **kwargs: Any) -> None:
         current_date = self.world.get_resource(SimDateTime)
@@ -615,12 +707,15 @@ class CharacterAgingSystem(System):
 
 
 class EventSystem(ISystem):
+    sys_group = "clean-up"
+
     def process(self, *args: Any, **kwargs: Any) -> None:
         event_log = self.world.get_resource(EventHandler)
         event_log.process_event_buffer()
 
 
 class UnemployedStatusSystem(System):
+    sys_group = "status-update"
     years_to_find_a_job: float = 5.0
 
     def run(self, *args: Any, **kwargs: Any) -> None:
@@ -676,6 +771,8 @@ class UnemployedStatusSystem(System):
 
 
 class PregnantStatusSystem(System):
+    sys_group = "status-update"
+
     def run(self, *args: Any, **kwargs: Any) -> None:
         current_date = self.world.get_resource(SimDateTime)
 
@@ -775,12 +872,16 @@ class PregnantStatusSystem(System):
 
 
 class MarriedStatusSystem(System):
+    sys_group = "status-update"
+
     def run(self, *args: Any, **kwargs: Any) -> None:
         for _, married in self.world.get_component(Married):
             married.years += self.elapsed_time.total_days / DAYS_PER_YEAR
 
 
 class DatingStatusSystem(System):
+    sys_group = "status-update"
+
     def run(self, *args: Any, **kwargs: Any) -> None:
         for _, dating in self.world.get_component(Dating):
             dating.years += self.elapsed_time.total_days / DAYS_PER_YEAR
@@ -788,6 +889,8 @@ class DatingStatusSystem(System):
 
 class RelationshipUpdateSystem(System):
     """Increases the elapsed time for all statuses by one month"""
+
+    sys_group = "relationship-update"
 
     def run(self, *args: Any, **kwargs: Any):
         for _, relationship in self.world.get_component(Relationship):
@@ -801,9 +904,11 @@ class RelationshipUpdateSystem(System):
 
 
 class MarkUnemployedNewCharactersSystem(System):
+    sys_group = "late-character-update"
+
     def run(self, *args: Any, **kwargs: Any) -> None:
         current_date = self.world.get_resource(SimDateTime)
-        for guid in self.world.get_added_component(CurrentSettlement):
+        for guid in self.world.iter_added_component(CurrentSettlement):
             gameobject = self.world.get_gameobject(guid)
             if game_character := gameobject.try_component(GameCharacter):
                 if game_character.life_stage >= LifeStage.YoungAdult:
@@ -813,14 +918,18 @@ class MarkUnemployedNewCharactersSystem(System):
 
 
 class RemoveFrequentedFromDepartedSystem(System):
+    sys_group = "late-character-update"
+
     def run(self, *args: Any, **kwargs: Any) -> None:
-        for guid in self.world.get_added_component(Departed):
+        for guid in self.world.iter_added_component(Departed):
             gameobject = self.world.get_gameobject(guid)
             if gameobject.has_component(GameCharacter):
                 clear_frequented_locations(gameobject)
 
 
 class OnDepartSystem(ISystem):
+    sys_group = "event-listeners"
+
     def process(self, *args: Any, **kwargs: Any) -> None:
         date = self.world.get_resource(SimDateTime)
 
@@ -840,6 +949,8 @@ class OnDepartSystem(ISystem):
 
 
 class OnDeathSystem(ISystem):
+    sys_group = "event-listeners"
+
     def process(self, *args: Any, **kwargs: Any) -> None:
 
         for event in self.world.get_resource(EventHandler).iter_events_of_type(
@@ -851,6 +962,8 @@ class OnDeathSystem(ISystem):
 
 
 class OnJoinSettlementSystem(ISystem):
+    sys_group = "event-listeners"
+
     def process(self, *args: Any, **kwargs: Any) -> None:
         date = self.world.get_resource(SimDateTime)
 
@@ -867,6 +980,8 @@ class OnJoinSettlementSystem(ISystem):
 
 
 class RemoveRetiredFromOccupationSystem(ISystem):
+    sys_group = "event-listeners"
+
     def process(self, *args: Any, **kwargs: Any) -> None:
 
         for event in self.world.get_resource(EventHandler).iter_events_of_type(
@@ -878,11 +993,14 @@ class RemoveRetiredFromOccupationSystem(ISystem):
 
 
 class OnBecomeYoungAdultSystem(ISystem):
+
+    sys_group = "event-listeners"
+
     def process(self, *args: Any, **kwargs: Any) -> None:
         date = self.world.get_resource(SimDateTime)
 
         for event in self.world.get_resource(EventHandler).iter_events_of_type(
-            orrery.events.RetirementEvent
+            orrery.events.BecomeYoungAdultEvent
         ):
             character = self.world.get_gameobject(event["Character"])
             add_status(character, InTheWorkforce(date.to_iso_str()))
@@ -892,12 +1010,18 @@ class OnBecomeYoungAdultSystem(ISystem):
 
 
 class PrintEventBufferSystem(ISystem):
+
+    sys_group = "core-systems"
+
     def process(self, *args: Any, **kwargs: Any) -> None:
         for event in self.world.get_resource(EventHandler).iter_events():
             print(str(event))
 
 
 class ReevaluateSocialRulesSystem(System):
+
+    sys_group = "relationship-update"
+
     def run(self, *args: Any, **kwargs: Any) -> None:
         for guid, relationship_comp in self.world.get_component(Relationship):
             relationship = self.world.get_gameobject(guid)
@@ -907,6 +1031,8 @@ class ReevaluateSocialRulesSystem(System):
 
 
 class UpdateFrequentedLocationSystem(System):
+    sys_group = "character-update"
+
     def run(self, *args: Any, **kwargs: Any) -> None:
         for guid, (_, current_settlement) in self.world.get_components(
             (FrequentedLocations, CurrentSettlement)
@@ -920,6 +1046,9 @@ class UpdateFrequentedLocationSystem(System):
 
 
 class AIActionSystem(System):
+
+    sys_group = "character-update"
+
     def run(self, *args: Any, **kwargs: Any) -> None:
         for guid, ai_component in self.world.get_component(AIComponent):
             gameobject = self.world.get_gameobject(guid)

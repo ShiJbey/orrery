@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from orrery.components.activity import Activities, LikedActivities
 from orrery.components.business import (
@@ -37,18 +37,13 @@ from orrery.components.shared import (
 )
 from orrery.components.virtues import Virtues
 from orrery.config import OrreryConfig
-from orrery.constants import (
-    BUSINESS_UPDATE_PHASE,
-    CHARACTER_UPDATE_PHASE,
-    CORE_SYSTEMS_PHASE,
-    SETTLEMENT_UPDATE_PHASE,
-)
 from orrery.content_management import (
     ActivityLibrary,
     ActivityToVirtueMap,
     BusinessLibrary,
     CharacterLibrary,
     LifeEventLibrary,
+    LocationBiasRuleLibrary,
     OccupationTypeLibrary,
     ResidenceLibrary,
     ServiceLibrary,
@@ -57,33 +52,57 @@ from orrery.content_management import (
 from orrery.core.ai import AIComponent
 from orrery.core.ecs import Component, IComponentFactory, ISystem, World
 from orrery.core.event import EventHandler
+from orrery.core.location_bias import ILocationBiasRule
+from orrery.core.social_rule import ISocialRule
 from orrery.core.status import StatusManager
 from orrery.core.time import SimDateTime, TimeDelta
 from orrery.core.tracery import Tracery
 from orrery.core.traits import TraitManager
+from orrery.data_collection import DataCollector
 from orrery.factories.activity import ActivitiesFactory, LikedActivitiesFactory
 from orrery.factories.business import BusinessFactory, ServicesFactory
 from orrery.factories.character import GameCharacterFactory
 from orrery.factories.shared import FrequentedLocationsFactory, LocationFactory
 from orrery.factories.virtues import VirtuesFactory
 from orrery.systems import (
+    AIActionSystem,
     BuildBusinessSystem,
     BuildHousingSystem,
     BusinessUpdateSystem,
+    BusinessUpdateSystemGroup,
     CharacterAgingSystem,
+    CharacterUpdateSystemGroup,
+    CleanUpSystemGroup,
+    CoreSystemsSystemGroup,
+    DataCollectionSystemGroup,
     DatingStatusSystem,
+    EarlyCharacterUpdateSystemGroup,
+    EventListenersSystemGroup,
     EventSystem,
     FindEmployeesSystem,
+    InitializationSystemGroup,
+    LateCharacterUpdateSystemGroup,
     LifeEventSystem,
+    MarkUnemployedNewCharactersSystem,
     MarriedStatusSystem,
     MeetNewPeopleSystem,
     OccupationUpdateSystem,
+    OnBecomeYoungAdultSystem,
+    OnDeathSystem,
+    OnDepartSystem,
+    OnJoinSettlementSystem,
     PregnantStatusSystem,
     PrintEventBufferSystem,
+    ReevaluateSocialRulesSystem,
     RelationshipUpdateSystem,
+    RelationshipUpdateSystemGroup,
+    RemoveFrequentedFromDepartedSystem,
+    RemoveRetiredFromOccupationSystem,
     SpawnResidentSystem,
+    StatusUpdateSystemGroup,
     TimeSystem,
     UnemployedStatusSystem,
+    UpdateFrequentedLocationSystem,
 )
 
 _CT = TypeVar("_CT", bound=Component)
@@ -166,29 +185,54 @@ class Orrery:
         self.world.add_resource(ResidenceLibrary())
         self.world.add_resource(ActivityLibrary())
         self.world.add_resource(ActivityToVirtueMap())
-        self.world.add_resource(SimDateTime())
+        self.world.add_resource(SimDateTime(1, 1, 1))
         self.world.add_resource(EventHandler())
         self.world.add_resource(OccupationTypeLibrary())
         self.world.add_resource(LifeEventLibrary())
         self.world.add_resource(ServiceLibrary())
+        self.world.add_resource(DataCollector())
+        self.world.add_resource(LocationBiasRuleLibrary())
+
+        # Add default system groups
+        self.world.add_system(InitializationSystemGroup())
+        self.world.add_system(StatusUpdateSystemGroup())
+        self.world.add_system(BusinessUpdateSystemGroup())
+        self.world.add_system(CharacterUpdateSystemGroup())
+        self.world.add_system(EarlyCharacterUpdateSystemGroup())
+        self.world.add_system(LateCharacterUpdateSystemGroup())
+        self.world.add_system(RelationshipUpdateSystemGroup())
+        self.world.add_system(CoreSystemsSystemGroup())
+        self.world.add_system(EventListenersSystemGroup())
+        self.world.add_system(DataCollectionSystemGroup())
+        self.world.add_system(CleanUpSystemGroup())
 
         # Add default systems
-        self.world.add_system(RelationshipUpdateSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(MeetNewPeopleSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(LifeEventSystem(), CORE_SYSTEMS_PHASE)
-        self.world.add_system(EventSystem(), CORE_SYSTEMS_PHASE)
-        self.world.add_system(TimeSystem(), CORE_SYSTEMS_PHASE)
-        self.world.add_system(CharacterAgingSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(DatingStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(MarriedStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(PregnantStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(UnemployedStatusSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(OccupationUpdateSystem(), CHARACTER_UPDATE_PHASE)
-        self.world.add_system(BusinessUpdateSystem(), BUSINESS_UPDATE_PHASE)
-        self.world.add_system(FindEmployeesSystem(), BUSINESS_UPDATE_PHASE)
-        self.world.add_system(BuildHousingSystem(), SETTLEMENT_UPDATE_PHASE)
-        self.world.add_system(SpawnResidentSystem(), SETTLEMENT_UPDATE_PHASE)
-        self.world.add_system(BuildBusinessSystem(), SETTLEMENT_UPDATE_PHASE)
+        self.world.add_system(RelationshipUpdateSystem())
+        self.world.add_system(MeetNewPeopleSystem())
+        self.world.add_system(LifeEventSystem())
+        self.world.add_system(EventSystem())
+        self.world.add_system(TimeSystem())
+        self.world.add_system(CharacterAgingSystem())
+        self.world.add_system(DatingStatusSystem())
+        self.world.add_system(MarriedStatusSystem())
+        self.world.add_system(PregnantStatusSystem())
+        self.world.add_system(UnemployedStatusSystem())
+        self.world.add_system(OccupationUpdateSystem())
+        self.world.add_system(BusinessUpdateSystem())
+        self.world.add_system(FindEmployeesSystem())
+        self.world.add_system(BuildHousingSystem())
+        self.world.add_system(SpawnResidentSystem())
+        self.world.add_system(BuildBusinessSystem())
+        self.world.add_system(ReevaluateSocialRulesSystem())
+        self.world.add_system(UpdateFrequentedLocationSystem())
+        self.world.add_system(MarkUnemployedNewCharactersSystem())
+        self.world.add_system(RemoveFrequentedFromDepartedSystem())
+        self.world.add_system(AIActionSystem())
+        self.world.add_system(OnDepartSystem())
+        self.world.add_system(OnDeathSystem())
+        self.world.add_system(OnJoinSettlementSystem())
+        self.world.add_system(RemoveRetiredFromOccupationSystem())
+        self.world.add_system(OnBecomeYoungAdultSystem())
 
         # Register components
         self.world.register_component(Active)
@@ -313,19 +357,16 @@ class Orrery:
 
         self.world.add_resource(resource)
 
-    def add_system(self, system: ISystem, priority: int = 0) -> None:
+    def add_system(self, system: ISystem) -> None:
         """Add a simulation system
 
         Parameters
         ----------
         system: ISystem
             The system to add
-        priority: int
-            The priority of this system.
-            The higher the number the sooner it runs at the beginning of a simulation step
         """
 
-        self.world.add_system(system, priority=priority)
+        self.world.add_system(system)
 
     def component(
         self,
@@ -370,22 +411,49 @@ class Orrery:
 
         return decorator
 
-    def system(self, priority: int = 0, **kwargs: Any):
+    def system(self, **kwargs: Any):
         """Add a class as a simulation system
 
         This decorator adds an instance of the decorated class as a shared resource.
 
         Parameters
         ----------
-        priority: int
-            The priority of this system.
-            The higher the number the sooner it runs at the beginning of a simulation step
         **kwargs: Any
             Keyword arguments to pass to the constructor of the decorated class
         """
 
         def decorator(cls: Type[_ST]) -> Type[_ST]:
-            self.world.add_system(cls(**kwargs), priority=priority)
+            self.world.add_system(cls(**kwargs))
             return cls
 
         return decorator
+
+    def location_bias_rule(self, **kwargs: Any):
+        def decorator(item: Union[ILocationBiasRule, LocationBiasRuleFactory]):
+            if callable(item):
+                self.world.get_resource(LocationBiasRuleLibrary).add(item(**kwargs))
+            else:
+                self.world.get_resource(LocationBiasRuleLibrary).add(item)
+            return item
+
+        return decorator
+
+    def social_rule(self, **kwargs: Any):
+        def decorator(item: Union[ISocialRule, SocialRuleFactory]):
+            if callable(item):
+                self.world.get_resource(SocialRuleLibrary).add(item(**kwargs))
+            else:
+                self.world.get_resource(SocialRuleLibrary).add(item)
+            return item
+
+        return decorator
+
+
+class LocationBiasRuleFactory(Protocol):
+    def __call__(self, **kwargs: Any) -> ILocationBiasRule:
+        raise NotImplementedError
+
+
+class SocialRuleFactory(Protocol):
+    def __call__(self, **kwargs: Any) -> ILocationBiasRule:
+        raise NotImplementedError

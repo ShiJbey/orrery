@@ -22,7 +22,23 @@ from __future__ import annotations
 import dataclasses
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union, overload
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import (
+    Any,
+    DefaultDict,
+    Dict,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    overload,
+)
 
 import esper
 from ordered_set import OrderedSet
@@ -445,6 +461,15 @@ class GameObject:
 #         world.delete_gameobject(self.gameobject_uid)
 
 
+@dataclass(frozen=True)
+class RemovedComponentPair(Generic[_CT]):
+    guid: int
+    component: _CT
+
+    def __hash__(self) -> int:
+        return self.guid
+
+
 class Component(ABC):
     """Components are collections of related data attached to GameObjects"""
 
@@ -479,12 +504,78 @@ class Component(ABC):
 
 
 class ISystem(ABC, esper.Processor):
-    """Abstract base class implementation for ECS systems"""
+    """Abstract base class implementation for ECS systems
+
+    Class Attributes
+    ----------------
+    sys_group: str
+        The system group this system belongs to
+    run_after: str
+        The system this system must run after
+    world: World
+        The world instance this system belongs to
+    """
+
+    sys_group: str = "root"
 
     # We have to re-type the 'world' class variable because
     # it is declared as 'Any' by esper, and we need it to
     # be of type World
     world: World  # type: ignore
+
+    @abstractmethod
+    def process(self, *args: Any, **kwargs: Any) -> None:
+        raise NotImplementedError
+
+    @classmethod
+    def get_world(cls) -> World:
+        """Get the system's world instance"""
+        return cls.world
+
+
+class SystemGroup(ISystem, ABC):
+    """A group of simulation systems that run as a unit"""
+
+    group_name: str = ""
+
+    __slots__ = "_sub_systems"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._sub_systems: List[ISystem] = []
+
+    @classmethod
+    def get_name(cls) -> str:
+        """Get the name of the group"""
+        return cls.group_name
+
+    def iter_children(self) -> Iterator[ISystem]:
+        """Return an iterator for the groups children"""
+        return self._sub_systems.__iter__()
+
+    def add_child(self, sub_system: ISystem) -> None:
+        """Add a new system as a sub_system of this group
+
+        Parameters
+        ----------
+        sub_system: ISystem
+            The system to add to this group
+        """
+        self._sub_systems.append(sub_system)
+        self._sub_systems.sort(key=lambda s: s.priority, reverse=True)
+
+    def remove_child(self, sub_system_type: Type[ISystem]) -> None:
+        """Remove children of the given type"""
+        children_to_remove = [
+            c for c in self._sub_systems if type(c) == sub_system_type
+        ]
+        for c in children_to_remove:
+            self._sub_systems.remove(c)
+
+    def process(self, *args: Any, **kwargs: Any) -> None:
+        """Run all sub-systems"""
+        for child in self._sub_systems:
+            child.process(*args, **kwargs)
 
 
 class IComponentFactory(ABC):
@@ -554,6 +645,12 @@ class DefaultComponentFactory(IComponentFactory):
         return self.component_type(**kwargs)
 
 
+class RootSystemGroup(SystemGroup):
+    """This is the top-level system that runs all other systems"""
+
+    group_name = "root"
+
+
 _T1 = TypeVar("_T1", bound=Component)
 _T2 = TypeVar("_T2", bound=Component)
 _T3 = TypeVar("_T3", bound=Component)
@@ -590,6 +687,7 @@ class World:
         "_component_factories",
         "_removed_components",
         "_added_components",
+        "_systems",
     )
 
     def __init__(self) -> None:
@@ -599,8 +697,16 @@ class World:
         self._resources: Dict[Type[Any], Any] = {}
         self._component_types: Dict[str, ComponentInfo] = {}
         self._component_factories: Dict[Type[Component], IComponentFactory] = {}
-        self._removed_components: Dict[Type[Component], OrderedSet[int]] = {}
-        self._added_components: Dict[Type[Component], OrderedSet[int]] = {}
+        self._removed_components: DefaultDict[
+            Type[Component], OrderedSet[RemovedComponentPair]
+        ] = defaultdict(lambda: OrderedSet())
+        self._added_components: DefaultDict[
+            Type[Component], OrderedSet[int]
+        ] = defaultdict(lambda: OrderedSet())
+        self._systems: SystemGroup = RootSystemGroup()
+        # The RootSystemGroup should be the only system that is directly added
+        # to esper
+        self._ecs.add_processor(self._systems)
 
     def spawn_gameobject(
         self, components: Optional[List[Component]] = None, name: Optional[str] = None
@@ -656,18 +762,24 @@ class World:
         """Add a component to an entity"""
         component.set_gameobject(self._gameobjects[gid])
         component_type = type(component)
-        if component_type not in self._added_components:
-            self._added_components[component_type] = OrderedSet([])
         self._added_components[component_type].append(int(gid))
         self._ecs.add_component(int(gid), component)
 
     def remove_component(self, gid: int, component_type: Type[Component]) -> None:
         """Remove a component from an entity"""
-        if component_type not in self._removed_components:
-            self._removed_components[component_type] = OrderedSet([])
-        self._removed_components[component_type].append(int(gid))
+
         try:
+            if not self.has_component(gid, component_type):
+                return
+
+            component = self.get_component_for_entity(gid, component_type)
+
+            self._removed_components[component_type].append(
+                RemovedComponentPair(gid, component)
+            )
+
             self._ecs.remove_component(int(gid), component_type)
+
         except KeyError:
             # This will throw a key error if the GameObject does not
             # have any components.
@@ -874,23 +986,94 @@ class World:
             del self._gameobjects[gameobject_id]
         self._dead_gameobjects.clear()
 
-    def add_system(self, system: ISystem, priority: int = 0) -> None:
+    def add_system(self, system: ISystem, priority: Optional[int] = None) -> None:
         """Add a System instance to the World"""
-        self._ecs.add_processor(system, priority=priority)
         system.world = self
 
+        if priority is not None:
+            system.priority = priority
+
+        stack: List[SystemGroup] = [self._systems]
+
+        while stack:
+            current_sys = stack.pop()
+
+            if current_sys.get_name() == system.sys_group:
+                current_sys.add_child(system)
+                return
+
+            else:
+                for c in current_sys.iter_children():
+                    if isinstance(c, SystemGroup):
+                        stack.append(c)
+
+        raise Exception(f"Could not find system group, {system.sys_group}")
+
     def get_system(self, system_type: Type[_ST]) -> Optional[_ST]:
-        """Get a System of the given type"""
-        return self._ecs.get_processor(system_type)  # type: ignore
+        """Get a System of the given type
+
+        Parameters
+        ----------
+        system_type: Type[_ST]
+            The type of the system to retrieve
+
+        Returns
+        -------
+        Optional[_ST]
+            The system instance if one is found
+        """
+        stack: List[Tuple[SystemGroup, ISystem]] = [
+            (self._systems, c) for c in self._systems.iter_children()
+        ]
+
+        while stack:
+            group, current_sys = stack.pop()
+
+            if type(current_sys) == system_type:
+                return current_sys
+
+            else:
+                if isinstance(current_sys, SystemGroup):
+                    for c in current_sys.iter_children():
+                        stack.append((current_sys, c))
+
+        return None
 
     def remove_system(self, system_type: Type[ISystem]) -> None:
-        """Remove a System from the World"""
-        self._ecs.remove_processor(system_type)
+        """Remove all instances of a system type
+
+        This function performs a Depth-first search through
+        the tree of system groups to find the one with the
+        matching type.
+
+        No exception is raised if it does not find a matching
+        system
+
+        Parameters
+        ----------
+        system_type: Type[ISystem]
+            The type of the system to remove
+        """
+
+        stack: List[Tuple[SystemGroup, ISystem]] = [
+            (self._systems, c) for c in self._systems.iter_children()
+        ]
+
+        while stack:
+            group, current_sys = stack.pop()
+
+            if type(current_sys) == system_type:
+                group.remove_child(system_type)
+
+            else:
+                if isinstance(current_sys, SystemGroup):
+                    for c in current_sys.iter_children():
+                        stack.append((current_sys, c))
 
     def step(self, **kwargs: Any) -> None:
         """Call the process method on all systems"""
         self._clear_dead_gameobjects()
-        self._ecs.process(**kwargs)  # type: ignore
+        self._ecs.process(**kwargs)
         self._removed_components.clear()
         self._added_components.clear()
 
@@ -959,7 +1142,9 @@ class World:
             factory if factory is not None else DefaultComponentFactory(component_type)
         )
 
-    def get_removed_component(self, component_type: Type[Component]) -> List[int]:
+    def iter_removed_component(
+        self, component_type: Type[_CT]
+    ) -> Iterator[RemovedComponentPair[_CT]]:
         """Return the IDs of GameObjects that had the given component type added
 
         Parameters
@@ -972,9 +1157,9 @@ class World:
         List[int]
             The ID of GameObjects
         """
-        return list(self._removed_components.get(component_type, []))
+        return self._removed_components[component_type].__iter__()
 
-    def get_added_component(self, component_type: Type[Component]) -> List[int]:
+    def iter_added_component(self, component_type: Type[Component]) -> Iterator[int]:
         """Return the IDs of GameObjects that had the given component type removed
 
         Parameters
@@ -987,4 +1172,4 @@ class World:
         List[int]
             The ID of GameObjects
         """
-        return list(self._added_components.get(component_type, []))
+        return self._added_components[component_type].__iter__()
