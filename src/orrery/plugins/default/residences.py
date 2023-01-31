@@ -1,18 +1,17 @@
 import os
 import pathlib
-from typing import Any
 
-from orrery.core.ecs import World
 from orrery.loaders import load_residence_prefab
-from orrery.orrery import Plugin
+from orrery.orrery import Orrery, PluginInfo
 
 _RESOURCES_DIR = pathlib.Path(os.path.abspath(__file__)).parent / "data"
 
+plugin_info: PluginInfo = {
+    "name": "default residences plugin",
+    "plugin_id": "default.residences",
+    "version": "0.1.0",
+}
 
-class DefaultResidencesPlugin(Plugin):
-    def setup(self, world: World, **kwargs: Any) -> None:
-        load_residence_prefab(world, _RESOURCES_DIR / "residence.default.house.yaml")
 
-
-def get_plugin() -> Plugin:
-    return DefaultResidencesPlugin()
+def setup(sim: Orrery):
+    load_residence_prefab(sim.world, _RESOURCES_DIR / "residence.default.house.yaml")

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import os
 import pathlib
@@ -13,7 +12,7 @@ import yaml
 from orrery import __version__
 from orrery.config import OrreryCLIConfig
 from orrery.exporter import export_to_json
-from orrery.orrery import Orrery, Plugin, PluginSetupError
+from orrery.orrery import Orrery
 
 
 def get_args() -> argparse.Namespace:
@@ -93,39 +92,6 @@ def try_load_local_config() -> Optional[Dict[str, Any]]:
     return None
 
 
-def load_plugin(module_name: str, path: Optional[str] = None) -> Plugin:
-    """
-    Load a plugin
-
-    Parameters
-    ----------
-    module_name: str
-        Name of module to load
-    path: Optional[str]
-        Path where the Python module lives
-    """
-    path_prepended = False
-
-    if path:
-        path_prepended = True
-        plugin_abs_path = os.path.abspath(path)
-        sys.path.insert(0, plugin_abs_path)
-
-    try:
-        plugin_module = importlib.import_module(module_name)
-        plugin: Plugin = getattr(plugin_module, "get_plugin")()
-        return plugin
-    except KeyError:
-        raise PluginSetupError(
-            f"'get_plugin' function not found for plugin: {module_name}"
-        )
-    finally:
-        # Remove the given plugin path from the front
-        # of the system path to prevent module resolution bugs
-        if path_prepended:
-            sys.path.pop(0)
-
-
 def run():
     args = get_args()
 
@@ -133,29 +99,22 @@ def run():
         print(__version__)
         sys.exit(0)
 
-    config = OrreryCLIConfig(years_to_simulate=10)
+    config = OrreryCLIConfig(
+        years_to_simulate=10,
+        verbose=not not args.quiet,
+        path=os.path.abspath(args.config),
+    )
 
     if args.config:
         config = OrreryCLIConfig.from_partial(
             load_config_from_path(args.config), config
         )
-        config.path = os.path.abspath(args.config)
     else:
         loaded_settings = try_load_local_config()
         if loaded_settings:
             config = OrreryCLIConfig.from_partial(loaded_settings, config)
 
-    config.verbose = not not args.quiet
-
     sim = Orrery(config)
-
-    for plugin_entry in config.plugins:
-        if isinstance(plugin_entry, str):
-            plugin = load_plugin(plugin_entry)
-            sim.load_plugin(plugin)
-        else:
-            plugin = load_plugin(plugin_entry.name, plugin_entry.path)
-            sim.load_plugin(plugin, **plugin_entry.options)
 
     sim.run_for(config.years_to_simulate)
 

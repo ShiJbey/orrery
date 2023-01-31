@@ -157,7 +157,6 @@ class PluginConfig(pydantic.BaseModel):
 
     name: str
     path: Optional[str] = None
-    options: Dict[str, Any] = pydantic.Field(default_factory=dict)
 
 
 class OrreryConfig(pydantic.BaseModel):
@@ -167,6 +166,7 @@ class OrreryConfig(pydantic.BaseModel):
     relationship_schema: RelationshipSchema = pydantic.Field(
         default_factory=RelationshipSchema
     )
+    plugins: List[Union[str, PluginConfig]] = pydantic.Field(default_factory=list)
     # Months to increment time by each simulation step
     time_increment: int = 1
     verbose: bool = True
@@ -174,8 +174,7 @@ class OrreryConfig(pydantic.BaseModel):
 
 class OrreryCLIConfig(OrreryConfig):
     years_to_simulate: int
-    plugins: List[Union[str, PluginConfig]] = pydantic.Field(default_factory=list)
-    path: str = "core"
+    path: str = "."
 
     @classmethod
     def from_partial(

@@ -26,7 +26,7 @@ from orrery.core.event import Event, EventHandler, EventRoleType, RoleList
 from orrery.core.life_event import ILifeEvent, LifeEvent, LifeEventInstance
 from orrery.core.time import SimDateTime
 from orrery.events import DeathEvent
-from orrery.orrery import Plugin
+from orrery.orrery import Orrery, PluginInfo
 from orrery.utils.common import depart_town, end_job, set_residence, shutdown_business
 from orrery.utils.query import (
     filter_relationship_has_statuses,
@@ -449,20 +449,22 @@ def go_out_of_business_event() -> ILifeEvent:
     )
 
 
-class DefaultLifeEventPlugin(Plugin):
-    def setup(self, world: World, **kwargs: Any) -> None:
-        life_event_library = world.get_resource(LifeEventLibrary)
-
-        life_event_library.add(marriage_event())
-        life_event_library.add(start_dating_event())
-        life_event_library.add(stop_dating_event())
-        life_event_library.add(divorce_event())
-        life_event_library.add(pregnancy_event())
-        life_event_library.add(retire_event())
-        life_event_library.add(find_own_place_event())
-        life_event_library.add(die_of_old_age())
-        life_event_library.add(go_out_of_business_event())
+plugin_info: PluginInfo = {
+    "name": "default life events plugin",
+    "plugin_id": "default.life-events",
+    "version": "0.1.0",
+}
 
 
-def get_plugin() -> Plugin:
-    return DefaultLifeEventPlugin()
+def setup(sim: Orrery):
+    life_event_library = sim.world.get_resource(LifeEventLibrary)
+
+    life_event_library.add(marriage_event())
+    life_event_library.add(start_dating_event())
+    life_event_library.add(stop_dating_event())
+    life_event_library.add(divorce_event())
+    life_event_library.add(pregnancy_event())
+    life_event_library.add(retire_event())
+    life_event_library.add(find_own_place_event())
+    life_event_library.add(die_of_old_age())
+    life_event_library.add(go_out_of_business_event())

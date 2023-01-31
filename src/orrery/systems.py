@@ -1,5 +1,4 @@
 import random
-import sys
 from abc import ABC, abstractmethod
 from collections import Counter
 from typing import Any, List, Optional

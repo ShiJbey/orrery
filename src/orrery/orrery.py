@@ -1,8 +1,23 @@
 from __future__ import annotations
 
+import importlib
+import os
 import random
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Protocol, Tuple, Type, TypeVar, Union
+import sys
+from types import ModuleType
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Tuple,
+    Type,
+    TypedDict,
+    TypeVar,
+    Union,
+)
 
 from orrery.components.activity import Activities, LikedActivities
 from orrery.components.business import (
@@ -133,22 +148,10 @@ class PluginSetupError(Exception):
         return f"PluginSetupError('{self.message}')"
 
 
-class Plugin(ABC):
-    """
-    Plugins are loaded before the simulation runs and can modify
-    a Simulation's World instance to add new components, systems,
-    resources, and entity archetypes.
-    """
-
-    @classmethod
-    def get_name(cls) -> str:
-        """Return the name of this plugin"""
-        return cls.__name__
-
-    @abstractmethod
-    def setup(self, world: World, **kwargs: Any) -> None:
-        """Add the plugin data to the simulation"""
-        raise NotImplementedError
+class PluginInfo(TypedDict):
+    name: str
+    plugin_id: str
+    version: str
 
 
 class Orrery:
@@ -170,7 +173,7 @@ class Orrery:
     def __init__(self, config: Optional[OrreryConfig] = None) -> None:
         self.world: World = World()
         self.config: OrreryConfig = config if config else OrreryConfig()
-        self.plugins: List[Tuple[Plugin, Dict[str, Any]]] = []
+        self.plugins: Dict[str, ModuleType] = {}
 
         # Seed RNG for libraries we don't control, like Tracery
         random.seed(self.config.seed)
@@ -275,19 +278,57 @@ class Orrery:
         if self.config.verbose:
             self.world.add_system(PrintEventBufferSystem())
 
-    def load_plugin(self, plugin: Plugin, **kwargs: Any) -> None:
-        """
-        Add plugin to simulation
+        # Load plugins from the config
+        for plugin_entry in config.plugins:
+            if isinstance(plugin_entry, str):
+                self.load_plugin(plugin_entry)
+            else:
+                self.load_plugin(plugin_entry.name, plugin_entry.path)
+
+    def load_plugin(self, module_name: str, path: Optional[str] = None) -> None:
+        """Load a plugin
 
         Parameters
-        ---------
-        plugin: Plugin
-            The plugin instance to load
-        **kwargs: Any
-            Keyword arguments to pass to the plugin's 'setup()' function
+        ----------
+        module_name: str
+            Name of module to load
+        path: Optional[str]
+            Path where the Python module lives
         """
-        self.plugins.append((plugin, {**kwargs}))
-        plugin.setup(self.world, **kwargs)
+
+        if path is not None:
+            plugin_abs_path = os.path.abspath(path)
+            sys.path.insert(0, plugin_abs_path)
+
+        plugin_module = importlib.import_module(module_name)
+        plugin_info: PluginInfo = getattr(plugin_module, "plugin_info", None)
+        plugin_setup_fn: Optional[Callable[[Orrery], None]] = getattr(
+            plugin_module, "setup", None
+        )
+
+        if plugin_info is None:
+            raise PluginSetupError(
+                f"Cannot find 'plugin_info' dict in plugin: {module_name}."
+            )
+
+        if plugin_setup_fn is None:
+            raise PluginSetupError(
+                f"'setup' function not found for plugin: {module_name}"
+            )
+
+        if not callable(plugin_setup_fn):
+            raise PluginSetupError(
+                f"'setup' function is not callable in plugin: {module_name}"
+            )
+
+        plugin_setup_fn(self)
+
+        self.plugins[plugin_info["plugin_id"]] = plugin_module
+
+        # Remove the given plugin path from the front
+        # of the system path to prevent module resolution bugs
+        if path is not None:
+            sys.path.pop(0)
 
     def run_for(self, years: int) -> None:
         """

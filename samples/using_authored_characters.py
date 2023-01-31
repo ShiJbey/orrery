@@ -7,10 +7,6 @@ Sample of
 import time
 from typing import Any, Dict
 
-import orrery.plugins.default.businesses
-import orrery.plugins.default.characters
-import orrery.plugins.default.names
-import orrery.plugins.default.residences
 from orrery import Orrery
 from orrery.components.virtues import Virtues
 from orrery.config import OrreryConfig, RelationshipSchema, RelationshipStatConfig
@@ -43,13 +39,14 @@ sim = Orrery(
                 ),
             }
         ),
+        plugins=[
+            "orrery.plugins.default.names",
+            "orrery.plugins.default.characters",
+            "orrery.plugins.default.businesses",
+            "orrery.plugins.default.residences",
+        ],
     )
 )
-
-sim.load_plugin(orrery.plugins.default.names.get_plugin())
-sim.load_plugin(orrery.plugins.default.characters.get_plugin())
-sim.load_plugin(orrery.plugins.default.businesses.get_plugin())
-sim.load_plugin(orrery.plugins.default.residences.get_plugin())
 
 
 @sim.component()
