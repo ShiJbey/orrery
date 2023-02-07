@@ -25,3 +25,4 @@ components:
   StatusManager: {}
   TraitManager: {}
   FrequentedLocations: {}
+  LifeEventQueue: {}

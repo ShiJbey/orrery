@@ -63,7 +63,9 @@ class CharacterAgingConfig(pydantic.BaseModel):
 class CharacterConfig(pydantic.BaseModel):
     name: str
     aging: CharacterAgingConfig
-    spawning: CharacterSpawnConfig
+    spawning: CharacterSpawnConfig = pydantic.Field(
+        default_factory=CharacterSpawnConfig
+    )
 
 
 class ResidenceSpawnConfig(pydantic.BaseModel):

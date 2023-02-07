@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, TypeVar
+from typing import Any, Dict, List
 
 import pydantic
 
 from .ecs import GameObject, World
 
-_KT = TypeVar("_KT")
-
 
 class EntityPrefab(pydantic.BaseModel):
-    """Data for creating a new entity and it's children
+    """Configuration data for creating a new entity and any children
 
     Attributes
     ----------

@@ -17,7 +17,7 @@ from .ecs import (
     World,
 )
 from .prefab import EntityPrefab
-from .query import Query, QueryBuilder, QueryFilterFn, QueryFromFn, QueryGetFn
+from .query import QB, Query, QueryFromFn, QueryGetFn
 
 __all__ = [
     "Component",
@@ -31,8 +31,7 @@ __all__ = [
     "World",
     "EntityPrefab",
     "Query",
-    "QueryBuilder",
-    "QueryFilterFn",
+    "QB",
     "QueryFromFn",
     "QueryGetFn",
 ]

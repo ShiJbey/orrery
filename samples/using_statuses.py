@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from orrery import Component, GameObject, ISystem, Orrery, OrreryConfig, SimDateTime
-from orrery.core.event import Event, EventHandler, EventRole
+from orrery.core.event import Event, EventHandler, RoleInstance
 from orrery.core.status import StatusComponent, StatusManager
 from orrery.utils.statuses import add_status, has_status
 
@@ -86,7 +86,7 @@ class BecomeMillionaireEvent(Event):
         super().__init__(
             name="become-millionaire",
             timestamp=date.to_iso_str(),
-            roles=[EventRole("Character", character.uid)],
+            roles=[RoleInstance("Character", character.uid)],
         )
 
 

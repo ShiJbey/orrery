@@ -55,6 +55,7 @@ from orrery.config import OrreryConfig
 from orrery.content_management import (
     ActivityLibrary,
     ActivityToVirtueMap,
+    AIBrainLibrary,
     BusinessLibrary,
     CharacterLibrary,
     LifeEventLibrary,
@@ -67,6 +68,7 @@ from orrery.content_management import (
 from orrery.core.ai import AIComponent
 from orrery.core.ecs import Component, IComponentFactory, ISystem, World
 from orrery.core.event import EventHandler
+from orrery.core.life_event import LifeEventConfig, LifeEventQueue
 from orrery.core.location_bias import ILocationBiasRule
 from orrery.core.social_rule import ISocialRule
 from orrery.core.status import StatusManager
@@ -75,6 +77,7 @@ from orrery.core.tracery import Tracery
 from orrery.core.traits import TraitManager
 from orrery.data_collection import DataCollector
 from orrery.factories.activity import ActivitiesFactory, LikedActivitiesFactory
+from orrery.factories.ai import AIComponentFactory
 from orrery.factories.business import BusinessFactory, ServicesFactory
 from orrery.factories.character import GameCharacterFactory
 from orrery.factories.shared import FrequentedLocationsFactory, LocationFactory
@@ -195,6 +198,8 @@ class Orrery:
         self.world.add_resource(ServiceLibrary())
         self.world.add_resource(DataCollector())
         self.world.add_resource(LocationBiasRuleLibrary())
+        self.world.add_resource(AIBrainLibrary())
+        self.world.add_resource(LifeEventConfig())
 
         # Add default system groups
         self.world.add_system(InitializationSystemGroup())
@@ -239,7 +244,7 @@ class Orrery:
 
         # Register components
         self.world.register_component(Active)
-        self.world.register_component(AIComponent)
+        self.world.register_component(AIComponent, factory=AIComponentFactory())
         self.world.register_component(GameCharacter, factory=GameCharacterFactory())
         self.world.register_component(Name)
         self.world.register_component(RelationshipManager)
@@ -268,18 +273,18 @@ class Orrery:
         self.world.register_component(Building)
         self.world.register_component(Position2D)
         self.world.register_component(StatusManager)
-        self.world.register_component(StatusManager)
         self.world.register_component(
             FrequentedLocations, factory=FrequentedLocationsFactory()
         )
         self.world.register_component(Settlement)
+        self.world.register_component(LifeEventQueue)
 
         # Configure printing every event to the console
         if self.config.verbose:
             self.world.add_system(PrintEventBufferSystem())
 
         # Load plugins from the config
-        for plugin_entry in config.plugins:
+        for plugin_entry in self.config.plugins:
             if isinstance(plugin_entry, str):
                 self.load_plugin(plugin_entry)
             else:

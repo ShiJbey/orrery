@@ -44,6 +44,7 @@ sim = Orrery(
             "orrery.plugins.default.characters",
             "orrery.plugins.default.businesses",
             "orrery.plugins.default.residences",
+            "orrery.plugins.default.life_events",
         ],
     )
 )

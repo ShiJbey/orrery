@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from orrery.core.ecs import GameObject
-from orrery.core.event import Event, EventRole
+from orrery.core.event import Event, RoleInstance
 from orrery.core.time import SimDateTime
 
 
@@ -18,8 +18,8 @@ class JoinSettlementEvent(Event):
             name="JoinSettlement",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Settlement", settlement.uid),
-                EventRole("Character", character.uid),
+                RoleInstance("Settlement", settlement.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
 
@@ -32,8 +32,8 @@ class LeaveSettlementEvent(Event):
             name="LeaveSettlement",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Settlement", settlement.uid),
-                EventRole("Character", character.uid),
+                RoleInstance("Settlement", settlement.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
 
@@ -50,9 +50,9 @@ class ChildBirthEvent(Event):
             name="ChildBirth",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("BirthingParent", birthing_parent.uid),
-                EventRole("OtherParent", other_parent.uid),
-                EventRole("Child", child.uid),
+                RoleInstance("BirthingParent", birthing_parent.uid),
+                RoleInstance("OtherParent", other_parent.uid),
+                RoleInstance("Child", child.uid),
             ],
         )
 
@@ -63,7 +63,7 @@ class DeathEvent(Event):
             name="Death",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Character", character.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
 
@@ -75,7 +75,7 @@ class DepartEvent(Event):
         super().__init__(
             name="Depart",
             timestamp=date.to_iso_str(),
-            roles=[EventRole("Character", c.uid) for c in characters],
+            roles=[RoleInstance("Character", c.uid) for c in characters],
         )
         self.reason = reason
 
@@ -94,8 +94,8 @@ class MoveIntoTownEvent(Event):
             name="MoveIntoTown",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Residence", residence.uid),
-                *[EventRole("Character", c.uid) for c in characters],
+                RoleInstance("Residence", residence.uid),
+                *[RoleInstance("Character", c.uid) for c in characters],
             ],
         )
 
@@ -105,7 +105,7 @@ class MoveResidenceEvent(Event):
         super().__init__(
             name="MoveResidence",
             timestamp=date.to_iso_str(),
-            roles=[EventRole("Character", c.uid) for c in characters],
+            roles=[RoleInstance("Character", c.uid) for c in characters],
         )
 
 
@@ -115,7 +115,7 @@ class BusinessClosedEvent(Event):
             name="BusinessClosed",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Business", business.uid),
+                RoleInstance("Business", business.uid),
             ],
         )
 
@@ -125,7 +125,7 @@ class BirthEvent(Event):
         super().__init__(
             name="Birth",
             timestamp=date.to_iso_str(),
-            roles=[EventRole("Character", character.uid)],
+            roles=[RoleInstance("Character", character.uid)],
         )
 
 
@@ -141,9 +141,9 @@ class GiveBirthEvent(Event):
             name="GiveBirth",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("BirthingParent", birthing_parent.uid),
-                EventRole("OtherParent", other_parent.uid),
-                EventRole("Baby", baby.uid),
+                RoleInstance("BirthingParent", birthing_parent.uid),
+                RoleInstance("OtherParent", other_parent.uid),
+                RoleInstance("Baby", baby.uid),
             ],
         )
 
@@ -159,8 +159,8 @@ class PregnantEvent(Event):
             name="Pregnant",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("PregnantOne", pregnant_one.uid),
-                EventRole("Partner", partner.uid),
+                RoleInstance("PregnantOne", pregnant_one.uid),
+                RoleInstance("Partner", partner.uid),
             ],
         )
 
@@ -179,8 +179,8 @@ class StartJobEvent(Event):
             name="StartJob",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Business", business.uid),
-                EventRole("Character", character.uid),
+                RoleInstance("Business", business.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
         self.occupation: str = occupation
@@ -210,8 +210,8 @@ class EndJobEvent(Event):
             name="LeaveJob",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Business", business.uid),
-                EventRole("Character", character.uid),
+                RoleInstance("Business", business.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
         self.occupation: str = occupation
@@ -239,7 +239,7 @@ class MarriageEvent(Event):
         super().__init__(
             name="Marriage",
             timestamp=date.to_iso_str(),
-            roles=[EventRole("Character", c.uid) for c in characters],
+            roles=[RoleInstance("Character", c.uid) for c in characters],
         )
 
 
@@ -252,7 +252,7 @@ class DivorceEvent(Event):
         super().__init__(
             name="Divorce",
             timestamp=date.to_iso_str(),
-            roles=[EventRole("Character", c.uid) for c in characters],
+            roles=[RoleInstance("Character", c.uid) for c in characters],
         )
 
 
@@ -271,8 +271,8 @@ class StartBusinessEvent(Event):
             name="StartBusiness",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Business", business.uid),
-                EventRole("Character", character.uid),
+                RoleInstance("Business", business.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
         self.occupation: str = occupation
@@ -302,7 +302,7 @@ class BusinessOpenEvent(Event):
             name="business-open",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Business", business.uid),
+                RoleInstance("Business", business.uid),
             ],
         )
         self.business_name: str = business_name
@@ -327,7 +327,7 @@ class NewSettlementEvent(Event):
             name="new-settlement",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Settlement", settlement.uid),
+                RoleInstance("Settlement", settlement.uid),
             ],
         )
 
@@ -342,7 +342,7 @@ class NewCharacterEvent(Event):
             name="new-character",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Character", character.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
 
@@ -357,7 +357,7 @@ class NewBusinessEvent(Event):
             name="new-business",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Business", business.uid),
+                RoleInstance("Business", business.uid),
             ],
         )
 
@@ -372,7 +372,7 @@ class NewResidenceEvent(Event):
             name="new-residence",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Residence", residence.uid),
+                RoleInstance("Residence", residence.uid),
             ],
         )
 
@@ -387,7 +387,7 @@ class BecomeAdolescentEvent(Event):
             name="BecomeAdolescent",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Character", character.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
 
@@ -402,7 +402,7 @@ class BecomeYoungAdultEvent(Event):
             name="BecomeYoungAdult",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Character", character.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
 
@@ -417,7 +417,7 @@ class BecomeAdultEvent(Event):
             name="BecomeAdult",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Character", character.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
 
@@ -432,7 +432,7 @@ class BecomeSeniorEvent(Event):
             name="BecomeSenior",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Character", character.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
 
@@ -451,8 +451,8 @@ class RetirementEvent(Event):
             name="LeaveJob",
             timestamp=date.to_iso_str(),
             roles=[
-                EventRole("Business", business.uid),
-                EventRole("Character", character.uid),
+                RoleInstance("Business", business.uid),
+                RoleInstance("Character", character.uid),
             ],
         )
         self.occupation: str = occupation

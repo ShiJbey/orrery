@@ -23,19 +23,19 @@ class RoleList:
 
     __slots__ = "_roles", "_sorted_roles"
 
-    def __init__(self, roles: Optional[List[EventRole]] = None) -> None:
-        self._roles: List[EventRole] = []
-        self._sorted_roles: Dict[str, List[EventRole]] = {}
+    def __init__(self, roles: Optional[List[RoleInstance]] = None) -> None:
+        self._roles: List[RoleInstance] = []
+        self._sorted_roles: Dict[str, List[RoleInstance]] = {}
 
         if roles:
             for role in roles:
                 self.add_role(role)
 
     @property
-    def roles(self) -> List[EventRole]:
+    def roles(self) -> List[RoleInstance]:
         return self._roles
 
-    def add_role(self, role: EventRole) -> None:
+    def add_role(self, role: RoleInstance) -> None:
         """Add role to the event"""
         self._roles.append(role)
         if role.name not in self._sorted_roles:
@@ -72,14 +72,14 @@ class Event:
 
     _next_event_id: ClassVar[int] = 0
 
-    def __init__(self, name: str, timestamp: str, roles: List[EventRole]) -> None:
+    def __init__(self, name: str, timestamp: str, roles: List[RoleInstance]) -> None:
         self.uid: int = Event._next_event_id
         Event._next_event_id += 1
         self.name: str = name
         self.timestamp: str = timestamp
         self.roles: RoleList = RoleList(roles)
 
-    def add_role(self, role: EventRole) -> None:
+    def add_role(self, role: RoleInstance) -> None:
         """Add role to the event"""
         self.roles.add_role(role)
 
@@ -123,25 +123,24 @@ class Event:
         return f"{self.name} [at {self.timestamp}] : {', '.join(map(lambda r: f'{r.name}:{r.gid}', self.roles))}"
 
 
-class EventRole:
-    """
-    Role is a role that has a GameObject bound to it.
-    It does not contain any information about filtering for
-    the role.
+class RoleInstance:
+    """A role name bound to a GameObject ID"""
 
-    Attributes
-    ----------
-    name: str
-        Name of the role
-    gid: int
-        Unique identifier for the GameObject bound to this role
-    """
-
-    __slots__ = "name", "gid"
+    __slots__ = "_name", "_gid"
 
     def __init__(self, name: str, gid: int) -> None:
-        self.name: str = name
-        self.gid: int = gid
+        self._name: str = name
+        self._gid: int = gid
+
+    @property
+    def name(self):
+        """Get the name of the role"""
+        return self._name
+
+    @property
+    def gid(self):
+        """Get the ID of the GameObject bound to the role"""
+        return self._gid
 
     def to_dict(self) -> Dict[str, Any]:
         return {"name": self.name, "gid": self.gid}
@@ -236,40 +235,64 @@ class RoleBinder(Protocol):
     """Function used to fill a RoleList"""
 
     def __call__(
-        self, world: World, *args: GameObject, **kwargs: GameObject
+        self, world: World, bindings: Optional[Dict[str, GameObject]] = None
     ) -> Optional[RoleList]:
         raise NotImplementedError
 
 
-class EventRoleType:
-    """
-    Information about a role within a LifeEvent, and logic
-    for how to filter which gameobjects can be bound to the
-    role.
+class RoleType:
+    """Definition of a role that a GameObject can be bound to
+
+    This class creates RoleInstances using a binder function that
+    defines what preconditions need to be met by a GameObject, and
+    retrieves one that meets those requirements.
     """
 
-    __slots__ = "binder_fn", "name"
+    __slots__ = "_binder_fn", "_name"
 
     def __init__(
         self,
         name: str,
         binder_fn: Optional[RoleTypeBindFn] = None,
     ) -> None:
-        self.name: str = name
-        self.binder_fn: Optional[RoleTypeBindFn] = binder_fn
+        self._name: str = name
+        self._binder_fn: Optional[RoleTypeBindFn] = binder_fn
+
+    @property
+    def name(self):
+        """Get the name of this RoleType"""
+        return self._name
 
     def fill_role(
         self, world: World, roles: RoleList, candidate: Optional[GameObject] = None
-    ) -> Optional[EventRole]:
+    ) -> Optional[RoleInstance]:
+        """Try to create a RoleInstance from this RoleType
 
-        if self.binder_fn is None:
+        Parameters
+        ----------
+        world: World
+            The world instance
+        roles: RoleList
+            A collection of previously bound RoleInstances associated
+            with this role
+        candidate: GameObject, optional
+            A GameObject to attempt to bind to this role
+
+        Returns
+        -------
+        Optional[RoleInstance]
+            Returns a RoleInstance instance with a gameobject or candidate
+            bound to it. Or None if the binding failed
+        """
+
+        if self._binder_fn is None:
             if candidate is None:
                 return None
             else:
-                return EventRole(self.name, candidate.uid)
+                return RoleInstance(self._name, candidate.uid)
 
-        if gameobject := self.binder_fn(world, roles, candidate):
-            return EventRole(self.name, gameobject.uid)
+        if gameobject := self._binder_fn(world, roles, candidate):
+            return RoleInstance(self._name, gameobject.uid)
 
         return None
 

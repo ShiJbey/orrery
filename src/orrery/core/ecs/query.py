@@ -4,6 +4,7 @@ import itertools
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import (
+    Callable,
     DefaultDict,
     Dict,
     List,
@@ -11,86 +12,11 @@ from typing import (
     Protocol,
     Tuple,
     Type,
-    TypeVar,
     Union,
     overload,
 )
 
 from .ecs import Component, GameObject, World
-
-
-class QueryFilterFn(Protocol):
-    """
-    Function that attempts to reduce the number of results within a query
-    by defining a precondition that must be true for a result to be valid
-    """
-
-    def __call__(self, world: World, *gameobjects: GameObject) -> bool:
-        """
-        Check the precondition for the given result
-
-        Parameters
-        ----------
-        world: World
-            The current world instance
-
-        *gameobjects: Tuple[GameObject, ...]
-            GameObject references from the current relation
-
-        Returns
-        -------
-        bool
-            True if the precondition passes, False otherwise
-        """
-        raise NotImplementedError
-
-
-def and_(
-    *preconditions: QueryFilterFn,
-) -> QueryFilterFn:
-    """Join multiple occupation precondition functions into a single function"""
-
-    def wrapper(world: World, *gameobjects: GameObject) -> bool:
-        return all([p(world, *gameobjects) for p in preconditions])
-
-    return wrapper
-
-
-def or_(
-    *preconditions: QueryFilterFn,
-) -> QueryFilterFn:
-    """Only one of the given preconditions has to pass to return True"""
-
-    def wrapper(world: World, *gameobjects: GameObject) -> bool:
-        for p in preconditions:
-            if p(world, *gameobjects):
-                return True
-        return False
-
-    return wrapper
-
-
-def not_(
-    precondition: QueryFilterFn,
-) -> QueryFilterFn:
-    """Only one of the given preconditions has to pass to return True"""
-
-    def wrapper(world: World, *gameobjects: GameObject) -> bool:
-        return not precondition(world, *gameobjects)
-
-    return wrapper
-
-
-class QueryFromFn(Protocol):
-    def __call__(self, world: World) -> List[Tuple[int, ...]]:
-        raise NotImplementedError
-
-
-class QueryGetFn(Protocol):
-    def __call__(
-        self, ctx: QueryContext, world: World, *variables: str
-    ) -> List[Tuple[int, ...]]:
-        raise NotImplementedError
 
 
 class SymbolsNotInRelation(Exception):
@@ -110,12 +36,18 @@ class Relation:
     from a query.
     """
 
+    __slots__ = "_symbols", "_symbol_map", "_bindings", "_is_initialized"
+
     def __init__(
-        self, symbols: Tuple[str, ...], bindings: List[Tuple[int, ...]]
+        self,
+        symbols: Tuple[str, ...],
+        bindings: List[Tuple[int, ...]],
+        is_initialized: bool = True,
     ) -> None:
         self._symbols: Tuple[str, ...] = symbols
         self._symbol_map: Dict[str, int] = {s: i for i, s in enumerate(symbols)}
         self._bindings: List[Tuple[int, ...]] = bindings
+        self._is_initialized: bool = is_initialized
 
     def get_symbols(self) -> Tuple[str]:
         return self._symbols
@@ -192,6 +124,9 @@ class Relation:
 
         return self._bindings
 
+    def is_uninitialized(self) -> bool:
+        return not self._is_initialized
+
     def is_empty(self) -> bool:
         """Return True if the relation has no bindings"""
         return len(self._bindings) == 0
@@ -202,25 +137,28 @@ class Relation:
         return cls(symbols, [])
 
     @classmethod
-    def from_bindings(cls, **bindings: int) -> Relation:
+    def from_bindings(cls, bindings: Dict[str, int]) -> Relation:
         return Relation(tuple(bindings.keys()), [tuple(bindings.values())])
 
     def hash_join(self, other: Relation, *symbols: str) -> Relation:
-        """Perform a join between the relations using the given symbols for equivalency"""
+        """Perform an inner join between the relations using the given symbols"""
         h: DefaultDict[Tuple[int, ...], List[int]] = defaultdict(list)
 
+        # Map tuples of the values of the given symbols in one
+        # relation to a list of row indexes
         for i, s in enumerate(other.get_tuples(*symbols)):
             h[s].append(i)
 
         results: List[Tuple[int, ...]] = []
 
+        # Get the symbols present in the second relation only
         symbols_to_concat = tuple(
             set(other.get_symbols()).difference(set(self.get_symbols()))
         )
 
         for i, s in enumerate(self.get_tuples(*symbols)):
             binding = self.get_bindings()[i]
-            matches = h.get(s)
+            matches = h[s]
             if matches is not None:  # join
                 for match in matches:
                     if symbols_to_concat:
@@ -256,6 +194,32 @@ class Relation:
             # Perform a cross product
             return self.cross_merge(other)
 
+    @staticmethod
+    def left_join(a: Relation, b: Relation, *symbols: str) -> Relation:
+        """Join two relations keeping rows only present in the first relation"""
+        h: DefaultDict[Tuple[int, ...], List[int]] = defaultdict(list)
+
+        symbols_to_join = tuple(
+            symbols
+            if symbols
+            else set(a.get_symbols()).intersection(set(b.get_symbols()))
+        )
+
+        # Map tuples of the values of the given symbols in one
+        # relation to a list of row indexes
+        # Any rows in the first relation that match keys in this
+        # dict are excluded (i.e. left-join)
+        for i, s in enumerate(b.get_tuples(*symbols_to_join)):
+            h[s].append(i)
+
+        results: List[Tuple[int, ...]] = []
+
+        for i, s in enumerate(a.get_tuples(*symbols_to_join)):
+            if s not in h:
+                results.append(a.get_bindings()[i])
+
+        return Relation(a.get_symbols(), results)
+
     def copy(self) -> Relation:
         return Relation(tuple(self._symbols), [*self._bindings])
 
@@ -265,285 +229,329 @@ class Relation:
         )
 
 
-class IQueryClause(Protocol):
-    """A callable sued in a Query"""
+class QueryClause(Protocol):
+    """An interface implemented by call clauses in a query"""
 
-    def __call__(self, ctx: QueryContext, world: World) -> Relation:
+    def __call__(self, ctx: QueryContext) -> Relation:
         raise NotImplementedError
+
+
+class WithClause:
+
+    __slots__ = "component_types", "variable"
+
+    def __init__(
+        self,
+        component_types: Tuple[Type[Component], ...],
+        variable: Optional[str] = None,
+    ) -> None:
+        self.component_types: Type[Type[Component], ...] = component_types
+        self.variable: Optional[str] = variable
+
+    def __call__(self, ctx: QueryContext) -> Relation:
+        results = list(
+            map(
+                lambda result: (result[0],),
+                ctx.world.get_components(self.component_types),
+            )
+        )
+
+        chosen_variable = (
+            self.variable if self.variable is not None else ctx.output_symbols[0]
+        )
+
+        if results:
+            if ctx.relation.is_uninitialized():
+                return Relation((chosen_variable,), results)
+
+            return ctx.relation.unify(Relation((chosen_variable,), results))
+
+        return Relation.create_empty()
+
+
+class QueryFromFn(Protocol):
+    def __call__(self, world: World) -> List[Tuple[int, ...]]:
+        raise NotImplementedError
+
+
+class FromClause:
+
+    __slots__ = "fetch_fn", "variables"
+
+    def __init__(self, fetch_fn: QueryFromFn, *variables: str) -> None:
+        self.fetch_fn: QueryFromFn = fetch_fn
+        self.variables: Tuple[str, ...] = variables
+
+    def __call__(self, ctx: QueryContext) -> Relation:
+        results = self.fetch_fn(ctx.world)
+
+        if results:
+
+            if ctx.relation.is_uninitialized():
+                return Relation(self.variables, results)
+
+            return ctx.relation.unify(Relation(self.variables, results))
+
+        return Relation.create_empty()
+
+
+class FilterClause:
+
+    __slots__ = "filter_fn", "variables"
+
+    @overload
+    def __init__(
+        self,
+        filter_fn: Callable[[GameObject], bool],
+        variables: str,
+    ) -> None:
+        ...
+
+    @overload
+    def __init__(
+        self,
+        filter_fn: Callable[[GameObject, GameObject], bool],
+        variables: Tuple[str, str],
+    ) -> None:
+        ...
+
+    @overload
+    def __init__(
+        self,
+        filter_fn: Callable[[GameObject, GameObject, GameObject], bool],
+        variables: Tuple[str, str, str],
+    ) -> None:
+        ...
+
+    @overload
+    def __init__(
+        self,
+        filter_fn: Callable[[GameObject, GameObject, GameObject, GameObject], bool],
+        variables: Tuple[str, str, str, str],
+    ) -> None:
+        ...
+
+    def __init__(
+        self,
+        filter_fn: Union[
+            Callable[[GameObject], bool],
+            Callable[[GameObject, GameObject], bool],
+            Callable[[GameObject, GameObject, GameObject], bool],
+            Callable[[GameObject, GameObject, GameObject, GameObject], bool],
+        ],
+        variables: Union[
+            str, Tuple[str, str], Tuple[str, str, str], Tuple[str, str, str, str]
+        ],
+    ) -> None:
+        self.filter_fn: Union[
+            Callable[[GameObject], bool],
+            Callable[[GameObject, GameObject], bool],
+            Callable[[GameObject, GameObject, GameObject], bool],
+            Callable[[GameObject, GameObject, GameObject, GameObject], bool],
+        ] = filter_fn
+        self.variables: Tuple[str, ...] = tuple(variables)
+
+    def __call__(self, ctx: QueryContext) -> Relation:
+        if ctx.relation.is_uninitialized():
+            raise RuntimeError("Cannot filter a query with no prior clauses")
+
+        relation_symbols = ctx.relation.get_symbols()
+        variables_to_check = self.variables
+
+        # Just assume we are filtering on the only symbol bound
+        # in the relation if no variable names were given
+        if len(relation_symbols) == 1 and len(variables_to_check) == 0:
+            variables_to_check = relation_symbols
+
+        # Only keep rows that pass the filter
+        valid_bindings = [
+            row
+            for i, row in enumerate(ctx.relation.get_bindings())
+            if self.filter_fn(
+                *[
+                    ctx.world.get_gameobject(gid)
+                    for gid in ctx.relation.get_as_tuple(i, *variables_to_check)
+                ],
+            )
+        ]
+
+        return Relation(relation_symbols, valid_bindings)
+
+
+class QueryGetFn(Protocol):
+    def __call__(
+        self, ctx: QueryContext, world: World, *variables: str
+    ) -> List[Tuple[int, ...]]:
+        raise NotImplementedError
+
+
+class GetClause:
+
+    __slots__ = "get_fn", "variables"
+
+    def __init__(self, get_fn: QueryGetFn, *variables: str) -> None:
+        self.get_fn: QueryGetFn = get_fn
+        self.variables: Tuple[str, ...] = variables
+
+    def __call__(self, ctx: QueryContext) -> Relation:
+        results = self.get_fn(ctx, ctx.world, *self.variables)
+
+        if results:
+
+            if ctx.relation.is_uninitialized():
+                return Relation(self.variables, results)
+
+            return ctx.relation.unify(Relation(self.variables, results))
+
+        return Relation.create_empty()
+
+
+class AndClause:
+    """Perform inner join on all sub-clauses"""
+
+    __slots__ = "clauses"
+
+    def __init__(self, *clauses: QueryClause) -> None:
+        self.clauses: Tuple[QueryClause] = clauses
+
+    def __call__(self, ctx: QueryContext) -> Relation:
+        joined_relation = ctx.relation
+
+        for clause in self.clauses:
+            joined_relation = joined_relation.unify(clause(ctx))
+
+        return joined_relation
+
+
+class OrClause:
+    """Perform inner join on all sub-clauses"""
+
+    __slots__ = "clauses"
+
+    def __init__(self, *clauses: QueryClause) -> None:
+        self.clauses: Tuple[QueryClause] = clauses
+
+    def __call__(self, ctx: QueryContext) -> Relation:
+        joined_relation = ctx.relation
+
+        for clause in self.clauses:
+            joined_relation = joined_relation.unify(clause(ctx))
+
+        return joined_relation
+
+
+class NotClause:
+
+    __slots__ = "clause"
+
+    def __init__(self, clause: QueryClause) -> None:
+        self.clause: QueryClause = clause
+
+    def __call__(self, ctx: QueryContext) -> Relation:
+        return Relation.left_join(ctx.relation, self.clause(ctx))
 
 
 @dataclass
 class QueryContext:
-    relation: Optional[Relation] = None
-    output_symbols: Tuple[str, ...] = ()
+    world: World
+    relation: Relation
+    output_symbols: Tuple[str, ...]
 
 
-_T1 = TypeVar("_T1", bound=Component)
-_T2 = TypeVar("_T2", bound=Component)
-_T3 = TypeVar("_T3", bound=Component)
-_T4 = TypeVar("_T4", bound=Component)
-_T5 = TypeVar("_T5", bound=Component)
-_T6 = TypeVar("_T6", bound=Component)
-_T7 = TypeVar("_T7", bound=Component)
-_T8 = TypeVar("_T8", bound=Component)
-
-
-class QueryBuilder:
+class QB:
     """
     Helper class that allows users to create ECS queries one operation at a time
     """
 
-    __slots__ = "_output_vars", "_clauses"
+    @staticmethod
+    def query(variables: Union[str, Tuple[str, ...]], *clauses: QueryClause) -> Query:
+        return Query(tuple(variables), [*clauses])
 
-    def __init__(self, *output_vars: str) -> None:
-        self._output_vars: Tuple[str, ...] = output_vars
-        self._clauses: List[IQueryClause] = []
-
-        if len(self._output_vars) == 0:
-            # Create a default symbol
-            self._output_vars = ("_",)
-
-    def build(self) -> Query:
-        return Query(find=self._output_vars, clauses=self._clauses)
-
-    @overload
+    @staticmethod
     def with_(
-        self,
-        component_types: Tuple[Type[_T1]],
+        component_types: Union[Type[Component], Tuple[Type[Component], ...]],
         variable: Optional[str] = None,
-    ) -> QueryBuilder:
-        ...
-
-    @overload
-    def with_(
-        self,
-        component_types: Tuple[Type[_T1], Type[_T2]],
-        variable: Optional[str] = None,
-    ) -> QueryBuilder:
-        ...
-
-    @overload
-    def with_(
-        self,
-        component_types: Tuple[Type[_T1], Type[_T2], Type[_T3]],
-        variable: Optional[str] = None,
-    ) -> QueryBuilder:
-        ...
-
-    @overload
-    def with_(
-        self,
-        component_types: Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4]],
-        variable: Optional[str] = None,
-    ) -> QueryBuilder:
-        ...
-
-    @overload
-    def with_(
-        self,
-        component_types: Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5]],
-        variable: Optional[str] = None,
-    ) -> QueryBuilder:
-        ...
-
-    @overload
-    def with_(
-        self,
-        component_types: Tuple[
-            Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5], Type[_T6]
-        ],
-        variable: Optional[str] = None,
-    ) -> QueryBuilder:
-        ...
-
-    @overload
-    def with_(
-        self,
-        component_types: Tuple[
-            Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5], Type[_T6], Type[_T7]
-        ],
-        variable: Optional[str] = None,
-    ) -> QueryBuilder:
-        ...
-
-    @overload
-    def with_(
-        self,
-        component_types: Tuple[
-            Type[_T1],
-            Type[_T2],
-            Type[_T3],
-            Type[_T4],
-            Type[_T5],
-            Type[_T6],
-            Type[_T7],
-            Type[_T8],
-        ],
-    ) -> QueryBuilder:
-        ...
-
-    def with_(
-        self,
-        component_types: Union[
-            Tuple[Type[_T1]],
-            Tuple[Type[_T1], Type[_T2]],
-            Tuple[Type[_T1], Type[_T2], Type[_T3]],
-            Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4]],
-            Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5]],
-            Tuple[Type[_T1], Type[_T2], Type[_T3], Type[_T4], Type[_T5], Type[_T6]],
-            Tuple[
-                Type[_T1],
-                Type[_T2],
-                Type[_T3],
-                Type[_T4],
-                Type[_T5],
-                Type[_T6],
-                Type[_T7],
-            ],
-            Tuple[
-                Type[_T1],
-                Type[_T2],
-                Type[_T3],
-                Type[_T4],
-                Type[_T5],
-                Type[_T6],
-                Type[_T7],
-                Type[_T8],
-            ],
-        ],
-        variable: Optional[str] = None,
-    ) -> QueryBuilder:
+    ) -> WithClause:
         """Adds results to the current query for game objects with all the given components"""
+        if isinstance(component_types, tuple):
+            return WithClause(component_types, variable)
+        else:
+            return WithClause((component_types,), variable)
 
-        def clause(ctx: QueryContext, world: World) -> Relation:
-            results = list(
-                map(lambda result: (result[0],), world.get_components(component_types))
-            )
+    @staticmethod
+    def from_(fn: QueryFromFn, *variables: str) -> FromClause:
+        return FromClause(fn, *variables)
 
-            chosen_variable = (
-                variable if variable is not None else ctx.output_symbols[0]
-            )
-
-            if results:
-                if ctx.relation is None:
-                    return Relation((chosen_variable,), results)
-
-                return ctx.relation.unify(Relation((chosen_variable,), results))
-
-            return Relation.create_empty()
-
-        self._clauses.append(clause)
-
-        return self
-
-    # def without_(
-    #     self,
-    #     component_types: Tuple[Type[Component], ...],
-    #     variable: Optional[str] = None,
-    # ) -> QueryBuilder:
-    #     """Adds results to the current query for game objects without the given components"""
-
-    #     def clause(ctx: QueryContext, world: World) -> Relation:
-    #         results = list(
-    #             map(lambda result: (result[0],), world.get_components(component_types))
-    #         )
-
-    #         chosen_variable = (
-    #             variable if variable is not None else ctx.output_symbols[0]
-    #         )
-
-    #         if results:
-    #             if ctx.relation is None:
-    #                 raise RuntimeError(
-    #                     "where_not clause is missing relation within context"
-    #                 )
-
-    #             new_data = ctx.relation.get_data_frame().merge(  # type: ignore
-    #                 data, how="outer", indicator=True
-    #             )
-
-    #             new_data = new_data.loc[new_data["_merge"] == "left_only"]
-
-    #             new_relation = Relation(new_data)
-
-    #             return new_relation
-    #         else:
-    #             if ctx.relation is None:
-    #                 return Relation.create_empty()
-
-    #             return ctx.relation.copy()
-
-    #     self._clauses.append(clause)
-
-    #     return self
-
-    def from_(self, fn: QueryFromFn, *symbols: str) -> QueryBuilder:
-        def clause(ctx: QueryContext, world: World) -> Relation:
-            results = fn(world)
-
-            if results:
-
-                if ctx.relation is None:
-                    return Relation(symbols, results)
-
-                return ctx.relation.unify(Relation(symbols, results))
-
-            return Relation.create_empty()
-
-        self._clauses.append(clause)
-
-        return self
-
-    def filter_(self, filter_fn: QueryFilterFn, *variables: str) -> QueryBuilder:
+    @staticmethod
+    @overload
+    def filter_(
+        filter_fn: Callable[[GameObject], bool],
+        variables: str,
+    ) -> FilterClause:
         """Adds results to the current query for game objects with all the given components"""
+        ...
 
-        def clause(ctx: QueryContext, world: World) -> Relation:
+    @staticmethod
+    @overload
+    def filter_(
+        filter_fn: Callable[[GameObject, GameObject], bool],
+        variables: Tuple[str, str],
+    ) -> FilterClause:
+        """Adds results to the current query for game objects with all the given components"""
+        ...
 
-            if ctx.relation is None:
-                raise RuntimeError("Cannot filter a query with no prior clauses")
+    @staticmethod
+    @overload
+    def filter_(
+        filter_fn: Callable[[GameObject, GameObject, GameObject], bool],
+        variables: Tuple[str, str, str],
+    ) -> FilterClause:
+        """Adds results to the current query for game objects with all the given components"""
+        ...
 
-            relation_symbols = ctx.relation.get_symbols()
-            variables_to_check = variables
+    @staticmethod
+    @overload
+    def filter_(
+        filter_fn: Callable[[GameObject, GameObject, GameObject, GameObject], bool],
+        variables: Tuple[str, str, str, str],
+    ) -> FilterClause:
+        """Adds results to the current query for game objects with all the given components"""
+        ...
 
-            # Just assume we are filtering on the only symbol bound
-            # in the relation if no variable names were given
-            if len(relation_symbols) == 1 and len(variables_to_check) == 0:
-                variables_to_check = relation_symbols
+    @staticmethod
+    def filter_(
+        filter_fn: Union[
+            Callable[[GameObject], bool],
+            Callable[[GameObject, GameObject], bool],
+            Callable[[GameObject, GameObject, GameObject], bool],
+            Callable[[GameObject, GameObject, GameObject, GameObject], bool],
+        ],
+        variables: Union[
+            str, Tuple[str, str], Tuple[str, str, str], Tuple[str, str, str, str]
+        ],
+    ) -> FilterClause:
+        """Adds results to the current query for game objects with all the given components"""
+        return FilterClause(filter_fn, *variables)
 
-            # Only keep rows that pass the filter
-            valid_bindings = [
-                row
-                for i, row in enumerate(ctx.relation.get_bindings())
-                if filter_fn(
-                    world,
-                    *[
-                        world.get_gameobject(gid)
-                        for gid in ctx.relation.get_as_tuple(i, *variables_to_check)
-                    ],
-                )
-            ]
+    @staticmethod
+    def get_(fn: QueryGetFn, *variables: str) -> GetClause:
+        """Get entities from the ecs and bind them to variables"""
+        return GetClause(fn, *variables)
 
-            return Relation(relation_symbols, valid_bindings)
+    @staticmethod
+    def and_(*clauses: QueryClause) -> AndClause:
+        """Get entities from the ecs and bind them to variables"""
+        return AndClause(*clauses)
 
-        self._clauses.append(clause)
-        return self
+    @staticmethod
+    def or_(*clauses: QueryClause) -> OrClause:
+        """Get entities from the ecs and bind them to variables"""
+        return OrClause(*clauses)
 
-    def get_(self, fn: QueryGetFn, *variables: str) -> QueryBuilder:
-        def clause(ctx: QueryContext, world: World) -> Relation:
-            results = fn(ctx, world, *variables)
-
-            if results:
-
-                if ctx.relation is None:
-                    return Relation(variables, results)
-
-                return ctx.relation.unify(Relation(variables, results))
-
-            return Relation.create_empty()
-
-        self._clauses.append(clause)
-
-        return self
+    @staticmethod
+    def not_(clause: QueryClause) -> NotClause:
+        """Get entities from the ecs and bind them to variables"""
+        return NotClause(clause)
 
 
 class Query:
@@ -553,7 +561,7 @@ class Query:
 
     __slots__ = "_clauses", "_symbols"
 
-    def __init__(self, find: Tuple[str, ...], clauses: List[IQueryClause]) -> None:
+    def __init__(self, find: Tuple[str, ...], clauses: List[QueryClause]) -> None:
         """
         _summary_
 
@@ -561,17 +569,19 @@ class Query:
         ----------
         find : Tuple[str, ...]
             Logical variable names used within the query and returned when executed
-        clauses : List[IQueryClause]
+        clauses : List[QueryClause]
             List of clauses executed to find entities
         """
-        self._clauses: List[IQueryClause] = clauses
+        self._clauses: List[QueryClause] = clauses
         self._symbols: Tuple[str, ...] = find
 
     def get_symbols(self) -> Tuple[str, ...]:
         """Get the output symbols for this pattern"""
         return self._symbols
 
-    def execute(self, world: World, *args: int, **kwargs: int) -> List[Tuple[int, ...]]:
+    def execute(
+        self, world: World, bindings: Optional[Dict[str, int]] = None
+    ) -> List[Tuple[int, ...]]:
         """
         Perform a query on the world instance
 
@@ -579,10 +589,8 @@ class Query:
         ----------
         world: World
             The world instance to run the query on
-        *args: GameObject
-            Positional GameObject bindings to variables
-        **kwargs: GameObject
-            Keyword bindings of GameObjects to variables
+        bindings: Dict[str, int], optional
+            Bindings of GameObjects to variables
 
         Returns
         -------
@@ -590,23 +598,22 @@ class Query:
             Tuples of GameObjectIDs that match the requirements of the query
         """
         # Construct a starting relation with the variables mapped to values
-        ctx = QueryContext(output_symbols=self._symbols)
 
-        if len(args) and len(kwargs):
-            raise RuntimeError(
-                "Cannot use positional and keyword binding at the same time"
+        if bindings is not None:
+            ctx = QueryContext(
+                world=world,
+                output_symbols=self._symbols,
+                relation=Relation.from_bindings(bindings),
             )
-
-        if len(args):
-            ctx.relation = Relation.from_bindings(
-                **{str(s): x for s, x in list(zip(self.get_symbols(), args))}
+        else:
+            ctx = QueryContext(
+                world=world,
+                output_symbols=self._symbols,
+                relation=Relation(("_",), [], is_initialized=False),
             )
-
-        if len(kwargs):
-            ctx.relation = Relation.from_bindings(**kwargs)
 
         for clause in self._clauses:
-            current_relation = clause(ctx, world)
+            current_relation = clause(ctx)
             ctx.relation = current_relation
 
             if ctx.relation.is_empty():
@@ -615,7 +622,7 @@ class Query:
                 return []
 
         # Return tuples for only the symbols specified in the constructor
-        if ctx.relation is not None:
+        if not ctx.relation.is_uninitialized():
             return ctx.relation.get_tuples(*self._symbols)
 
         return []

@@ -43,9 +43,10 @@ from orrery.content_management import (
     ResidenceLibrary,
 )
 from orrery.core.ai import AIComponent
-from orrery.core.ecs import GameObject, ISystem, QueryBuilder
+from orrery.core.ecs import QB, GameObject, ISystem
 from orrery.core.ecs.ecs import SystemGroup
 from orrery.core.event import EventHandler
+from orrery.core.life_event import LifeEventInstance, LifeEventQueue
 from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
 from orrery.prefabs import CharacterPrefab
 from orrery.utils.common import (
@@ -210,10 +211,27 @@ class LifeEventSystem(System):
         life_events = self.world.get_resource(LifeEventLibrary)
         all_events = life_events.get_all()
 
-        if all_events:
-            for _, _ in self.world.get_component(Settlement):
-                for life_event in rng.choices(all_events, k=10):
-                    life_event.try_execute_event(self.world)
+        for guid, (_, _, life_event_queue) in self.world.get_components(
+            (GameCharacter, Active, LifeEventQueue)
+        ):
+            character = self.world.get_gameobject(guid)
+
+            # Go through all the life events and queue the ones that pass
+            for life_event in all_events:
+                event_instance = life_event.instantiate(
+                    self.world,
+                    bindings={life_event.get_initiator_role(): character.uid},
+                )
+
+                if event_instance:
+                    life_event_queue.push(event_instance)
+
+            if len(life_event_queue):
+                chosen_event: LifeEventInstance = self.world.get_resource(
+                    random.Random
+                ).choice(list(life_event_queue.__iter__()))
+                chosen_event.execute()
+                life_event_queue.clear()
 
 
 class MeetNewPeopleSystem(ISystem):
@@ -289,7 +307,7 @@ class FindEmployeesSystem(ISystem):
             for occupation_name in open_positions:
                 occupation_type = occupation_types.get(occupation_name)
 
-                candidate_query = QueryBuilder(occupation_name).with_(
+                candidate_query = QB(occupation_name).with_(
                     (InTheWorkforce, Active, Unemployed)
                 )
 
@@ -371,7 +389,7 @@ class BuildBusinessSystem(ISystem):
         """
         rng = self.world.get_resource(random.Random)
 
-        query_builder = QueryBuilder().with_((InTheWorkforce, Active, Unemployed))
+        query_builder = QB().with_((InTheWorkforce, Active, Unemployed))
 
         if occupation_type.precondition:
             query_builder.filter_(occupation_type.precondition)

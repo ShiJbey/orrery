@@ -36,7 +36,7 @@ def test_settlement_to_dict():
     sim = Orrery()
     town = create_settlement(sim.world, "Test Town", (5, 5))
     town.get_component(Settlement).population = 3
-    town_dict = town.to_dict()
+    town_dict = town.get_component(Settlement).to_dict()
     assert town_dict["name"] == "Test Town"
     assert town_dict["population"] == 3
 

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
+from orrery import GameObject, World
 from orrery.config import BusinessConfig
-from orrery.core.ecs import Component, query
+from orrery.core.ecs import Component
 from orrery.core.status import StatusComponent
 
 logger = logging.getLogger(__name__)
@@ -383,7 +384,7 @@ class OccupationType:
     name: str
     level: int = 1
     description: str = ""
-    precondition: Optional[query.QueryFilterFn] = None
+    precondition: Optional[Callable[[World, GameObject], bool]] = None
 
 
 @dataclass

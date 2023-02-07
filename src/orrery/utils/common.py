@@ -81,7 +81,8 @@ def create_settlement(
     generated_name = world.get_resource(Tracery).generate(settlement_name)
 
     settlement = world.spawn_gameobject(
-        [Settlement(generated_name, GridSettlementMap(settlement_size))]
+        [Settlement(generated_name, GridSettlementMap(settlement_size))],
+        name=generated_name,
     )
 
     world.get_resource(EventHandler).emit(

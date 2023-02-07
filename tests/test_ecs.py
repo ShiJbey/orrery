@@ -197,9 +197,12 @@ def test_get_removed_component():
     g1.remove_component(ComponentA)
 
     # Test that component type is in added components list
-    assert g1.uid in world.iter_removed_component(ComponentA)
+    for pair in world.iter_removed_component(ComponentA):
+        assert pair.guid == g1.uid
+
     world.step()
-    assert g1.uid not in world.iter_removed_component(ComponentA)
+
+    assert len(list(world.iter_removed_component(ComponentA))) == 0
 
 
 #########################################

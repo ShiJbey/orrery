@@ -62,9 +62,9 @@ def test_virtue_vect_to_dict() -> None:
     vect_1 = Virtues({"HEALTH": 10, "POWER": 20, "TRADITION": -120})
     virtue_dict = vect_1.to_dict()
 
-    assert virtue_dict["virtues"]["HEALTH"] == 10
-    assert virtue_dict["virtues"]["POWER"] == 20
-    assert virtue_dict["virtues"]["TRADITION"] == -50
+    assert virtue_dict["HEALTH"] == 10
+    assert virtue_dict["POWER"] == 20
+    assert virtue_dict["TRADITION"] == -50
 
 
 def test_virtue_vect_factory() -> None:

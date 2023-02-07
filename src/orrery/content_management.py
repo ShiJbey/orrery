@@ -8,6 +8,7 @@ from orrery.components.activity import ActivityInstance
 from orrery.components.business import OccupationType, ServiceType, logger
 from orrery.components.settlement import Settlement
 from orrery.components.virtues import Virtues
+from orrery.core.ai import IAIBrain
 from orrery.core.ecs import GameObject, World
 from orrery.core.life_event import ILifeEvent
 from orrery.core.location_bias import ILocationBiasRule
@@ -470,3 +471,30 @@ class LocationBiasRuleLibrary:
 
     def __iter__(self) -> Iterator[ILocationBiasRule]:
         return self.rules.values().__iter__()
+
+
+class AIBrainLibrary:
+    """A repository of AI brain instances used when constructing AI components"""
+
+    __slots__ = "brains"
+
+    def __init__(self) -> None:
+        self.brains: Dict[str, IAIBrain] = {}
+
+    def add(self, name: str, brain: IAIBrain) -> None:
+        """Add a brain instance to the library
+
+        Parameters
+        ----------
+        name: str
+            The name to map the brain to
+        brain: IAIBrain
+            A brain instance
+        """
+        self.brains[name] = brain
+
+    def __getitem__(self, item: str) -> IAIBrain:
+        return self.brains[item]
+
+    def __iter__(self) -> Iterator[IAIBrain]:
+        return self.brains.values().__iter__()

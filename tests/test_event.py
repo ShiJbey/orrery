@@ -1,6 +1,6 @@
 import pytest
 
-from orrery.core.event import Event, EventRole
+from orrery.core.event import Event, RoleInstance
 
 
 @pytest.fixture
@@ -9,8 +9,8 @@ def sample_event():
         name="Price Dispute",
         timestamp="2022-01-01T00:00:00.000000",
         roles=[
-            EventRole("Merchant", 1),
-            EventRole("Customer", 2),
+            RoleInstance("Merchant", 1),
+            RoleInstance("Customer", 2),
         ],
     )
 
@@ -21,8 +21,8 @@ def shared_role_event():
         name="Declare Rivalry",
         timestamp="2022-01-01T00:00:00.000000",
         roles=[
-            EventRole("Actor", 1),
-            EventRole("Actor", 2),
+            RoleInstance("Actor", 1),
+            RoleInstance("Actor", 2),
         ],
     )
 
