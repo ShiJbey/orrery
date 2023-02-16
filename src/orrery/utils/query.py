@@ -40,7 +40,9 @@ def with_components(
 def with_statuses(
     variable: str, component_types: Union[Type[Component], Tuple[Type[Component], ...]]
 ) -> QueryClause:
-    return WithClause(tuple(component_types), variable)
+    if isinstance(component_types, tuple):
+        return WithClause(component_types, variable)
+    return WithClause((component_types,), variable)
 
 
 def with_relationship(
@@ -78,7 +80,7 @@ def filter_relationship_stat_gte(
         if value_type == "raw":
             return relationship[stat_name].get_raw_value() >= threshold
         elif value_type == "scaled":
-            return relationship[stat_name].get_scaled_value() >= threshold
+            return relationship[stat_name].get_value() >= threshold
         elif value_type == "norm":
             return relationship[stat_name].get_normalized_value() >= threshold
         else:
@@ -102,7 +104,7 @@ def filter_relationship_stat_lte(
         if value_type == "raw":
             return relationship[stat_name].get_raw_value() <= threshold
         elif value_type == "scaled":
-            return relationship[stat_name].get_scaled_value() <= threshold
+            return relationship[stat_name].get_value() <= threshold
         elif value_type == "norm":
             return relationship[stat_name].get_normalized_value() <= threshold
         else:
@@ -142,7 +144,7 @@ def find_with_relationship_stat_gte(
                 if value_type == "raw":
                     value = relationship[stat_name].get_raw_value()
                 elif value_type == "scaled":
-                    value = relationship[stat_name].get_scaled_value()
+                    value = relationship[stat_name].get_value()
                 elif value_type == "norm":
                     value = relationship[stat_name].get_normalized_value()
                 else:
@@ -189,7 +191,7 @@ def find_with_relationship_stat_lte(
                 if value_type == "raw":
                     value = relationship[stat_name].get_raw_value()
                 elif value_type == "scaled":
-                    value = relationship[stat_name].get_scaled_value()
+                    value = relationship[stat_name].get_value()
                 elif value_type == "norm":
                     value = relationship[stat_name].get_normalized_value()
                 else:

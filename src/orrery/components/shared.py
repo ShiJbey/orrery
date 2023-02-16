@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Iterator, Optional, Set
 
-from orrery.components.activity import ActivityInstance
+from ordered_set import OrderedSet
+
 from orrery.core.ecs import Component
 from orrery.core.status import StatusComponent
 
@@ -16,6 +17,7 @@ class Active(StatusComponent):
 
 
 class FrequentedLocations(Component):
+    """Tracks the locations that a character frequents"""
 
     __slots__ = "locations"
 
@@ -25,9 +27,6 @@ class FrequentedLocations(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {"locations": list(self.locations)}
-
-    def __contains__(self, location: int) -> bool:
-        return location in self.locations
 
     def __str__(self) -> str:
         return super().__repr__()
@@ -47,6 +46,8 @@ class Building(Component):
         What kind of building is this
     lot: int
         ID of the lot this building is on
+    settlement: int
+        The ID of the settlement this building belongs to
     """
 
     __slots__ = "building_type", "lot", "settlement"
@@ -73,46 +74,59 @@ class Building(Component):
         )
 
 
-class Name(Component):
-    """The name of the GameObject"""
+class FrequentedBy(Component):
+    """Tracks the characters that frequent a location"""
 
-    __slots__ = "name"
+    __slots__ = "_characters"
 
-    def __init__(self, name: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.name: str = name
+        self._characters: OrderedSet[int] = OrderedSet()
+
+    def add(self, character: int) -> None:
+        self._characters.add(character)
+
+    def remove(self, character: int) -> None:
+        self._characters.remove(character)
+
+    def clear(self) -> None:
+        self._characters.clear()
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"name": self.name}
+        return {
+            "characters": list(self._characters),
+        }
 
-    def __str__(self) -> str:
-        return self.name
+    def __contains__(self, item: int) -> bool:
+        return item in self._characters
+
+    def __iter__(self) -> Iterator[int]:
+        return self._characters.__iter__()
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.name})"
+        return "{}({})".format(
+            self.__class__.__name__,
+            self._characters,
+        )
 
 
 class Location(Component):
 
-    __slots__ = "frequented_by", "activities"
+    __slots__ = "entities_present"
 
-    def __init__(self, activities: Optional[Set[ActivityInstance]] = None) -> None:
+    def __init__(
+        self,
+    ) -> None:
         super().__init__()
-        self.frequented_by: Set[int] = set()
-        self.activities: Set[ActivityInstance] = activities if activities else set()
+        self.entities_present: OrderedSet[int] = OrderedSet()
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "frequented_by": list(self.frequented_by),
-            "activities": [str(a) for a in self.activities],
+            "entities_present": list(self.entities_present),
         }
 
     def __repr__(self):
-        return "{}(activities={}, frequented_by={})".format(
-            self.__class__.__name__,
-            self.activities,
-            self.frequented_by,
-        )
+        return "{}(entities={})".format(self.__class__.__name__, self.entities_present)
 
 
 @dataclass

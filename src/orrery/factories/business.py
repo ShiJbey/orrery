@@ -24,7 +24,6 @@ class BusinessFactory(IComponentFactory):
 
     def create(self, world: World, **kwargs: Any) -> Component:
         name_pattern: str = kwargs["name"]
-        owner_type: str = kwargs.get("owner_type", None)
         employee_types: Dict[str, int] = {**kwargs.get("employees", {})}
 
         config_name = kwargs["config"]
@@ -36,6 +35,5 @@ class BusinessFactory(IComponentFactory):
         return Business(
             config=config,
             name=name_generator.generate(name_pattern),
-            owner_type=owner_type,
             open_positions=employee_types,
         )

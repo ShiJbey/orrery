@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import random
 from typing import Any, Dict, Optional
 
-from orrery.components.virtues import Virtues, VirtueType, logger
+from orrery.components.virtues import Virtues, VirtueType
 from orrery.core.ecs import IComponentFactory, World
+
+logger = logging.getLogger(__name__)
 
 
 class VirtuesFactory(IComponentFactory):

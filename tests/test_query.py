@@ -6,7 +6,6 @@ from orrery.components.character import GameCharacter, Gender, Retired
 from orrery.config import CharacterAgingConfig, CharacterConfig, CharacterSpawnConfig
 from orrery.core.ecs import Component, World
 from orrery.core.ecs.query import QB, Relation
-from orrery.core.time import SimDateTime
 from orrery.utils.query import is_gender
 
 
@@ -130,14 +129,14 @@ def sample_world() -> World:
         [
             Hero(),
             GameCharacter(character_config, "Astrid", "", gender=Gender.Female),
-            Retired(SimDateTime(1, 1, 1).to_iso_str()),
+            Retired(),
         ]
     )
     world.spawn_gameobject(
         [
             DemonKing(),
             GameCharacter(character_config, "-Shi", ""),
-            Retired(SimDateTime(1, 1, 1).to_iso_str()),
+            Retired(),
         ]
     )
     world.spawn_gameobject(

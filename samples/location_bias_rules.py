@@ -5,15 +5,16 @@ This sample shows how location bias rules are used to create probability distrib
 of where a character may frequent within a town. LocationBiasRules are can be imported
 from plugins and authored within the same script.
 """
-import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Optional
 
 from orrery import Component, GameObject, Orrery
-from orrery.components import Location
+from orrery.components import Activities, Location
 from orrery.content_management import ActivityLibrary
-from orrery.core.location_bias import ILocationBiasRule
-from orrery.utils.common import score_location
+from orrery.utils.common import (
+    calculate_location_probabilities,
+    location_has_activities,
+)
 
 sim = Orrery()
 
@@ -57,117 +58,44 @@ class Shopaholic(Component):
         return {}
 
 
-@sim.location_bias_rule()
-class SocialButterflyLocationBias(ILocationBiasRule):
-    def get_rule_name(self) -> str:
-        return "social-butterfly"
-
-    def check_location(self, location: GameObject) -> bool:
-        return (
-            location.world.get_resource(ActivityLibrary).get("Socializing")
-            in location.get_component(Location).activities
-        )
-
-    def check_character(self, character: GameObject) -> bool:
-        return character.has_component(SocialButterfly)
-
-    def evaluate(self, character: GameObject, location: GameObject) -> int:
+@sim.location_bias_rule("social-butterfly")
+def rule(character: GameObject, location: GameObject) -> Optional[int]:
+    if character.has_component(SocialButterfly) and location_has_activities(
+        location, "Socializing"
+    ):
         return 2
 
 
-@sim.location_bias_rule()
-class RecoveringAlcoholicLocationBias(ILocationBiasRule):
-    def get_rule_name(self) -> str:
-        return "recovering-alcoholic"
-
-    def check_location(self, location: GameObject) -> bool:
-        return (
-            location.world.get_resource(ActivityLibrary).get("Drinking")
-            in location.get_component(Location).activities
-        )
-
-    def check_character(self, character: GameObject) -> bool:
-        return character.has_component(RecoveringAlcoholic)
-
-    def evaluate(self, character: GameObject, location: GameObject) -> int:
+@sim.location_bias_rule("recovering-alcoholic")
+def rule(character: GameObject, location: GameObject) -> Optional[int]:
+    if character.has_component(RecoveringAlcoholic) and location_has_activities(
+        location, "Drinking"
+    ):
         return -3
 
 
-@sim.location_bias_rule()
-class ShopaholicLocationBias(ILocationBiasRule):
-    def get_rule_name(self) -> str:
-        return "shop-alcoholic"
-
-    def check_location(self, location: GameObject) -> bool:
-        return (
-            location.world.get_resource(ActivityLibrary).get("Shopping")
-            in location.get_component(Location).activities
-        )
-
-    def check_character(self, character: GameObject) -> bool:
-        return character.has_component(Shopaholic)
-
-    def evaluate(self, character: GameObject, location: GameObject) -> int:
+@sim.location_bias_rule("shop-alcoholic")
+def rule(character: GameObject, location: GameObject) -> Optional[int]:
+    if character.has_component(Shopaholic) and location_has_activities(
+        location, "Shopping"
+    ):
         return 3
 
 
-@sim.location_bias_rule()
-class BookWormLocationBias(ILocationBiasRule):
-    def get_rule_name(self) -> str:
-        return "book-worm"
-
-    def check_location(self, location: GameObject) -> bool:
-        return (
-            location.world.get_resource(ActivityLibrary).get("Reading")
-            in location.get_component(Location).activities
-        )
-
-    def check_character(self, character: GameObject) -> bool:
-        return character.has_component(BookWorm)
-
-    def evaluate(self, character: GameObject, location: GameObject) -> int:
+@sim.location_bias_rule("book-worm")
+def rule(character: GameObject, location: GameObject) -> Optional[int]:
+    if character.has_component(BookWorm) and location_has_activities(
+        location, "Reading"
+    ):
         return 2
 
 
-@sim.location_bias_rule()
-class HealthNutLocationBias(ILocationBiasRule):
-    def get_rule_name(self) -> str:
-        return "health-nut"
-
-    def check_location(self, location: GameObject) -> bool:
-        return (
-            location.world.get_resource(ActivityLibrary).get("Recreation")
-            in location.get_component(Location).activities
-        )
-
-    def check_character(self, character: GameObject) -> bool:
-        return character.has_component(HealthNut)
-
-    def evaluate(self, character: GameObject, location: GameObject) -> int:
+@sim.location_bias_rule("health-nut")
+def rule(character: GameObject, location: GameObject) -> Optional[int]:
+    if character.has_component(HealthNut) and location_has_activities(
+        location, "Recreation"
+    ):
         return 2
-
-
-def calculate_location_probabilities(
-    character: GameObject, locations: List[GameObject]
-) -> List[Tuple[float, GameObject]]:
-    """Calculate the probability distribution for a character and set of locations"""
-
-    score_total: int = 0
-    scores: List[Tuple[float, GameObject]] = []
-
-    # Score each location
-    for loc in locations:
-        score = score_location(character, loc)
-        score_total += math.exp(score)
-        scores.append((math.exp(score), loc))
-
-    # Perform softmax
-    probabilities = [(score / score_total, loc) for score, loc in scores]
-
-    # Sort
-    probabilities.sort(key=lambda pair: pair[0], reverse=True)
-
-    return probabilities
 
 
 def main():
@@ -179,45 +107,49 @@ def main():
     locations = [
         sim.world.spawn_gameobject(
             [
-                Location(
+                Location(),
+                Activities(
                     activities={
                         sim.world.get_resource(ActivityLibrary).get("Recreation"),
                         sim.world.get_resource(ActivityLibrary).get("Socializing"),
                     }
-                )
+                ),
             ],
             name="Gym",
         ),
         sim.world.spawn_gameobject(
             [
-                Location(
+                Location(),
+                Activities(
                     activities={
                         sim.world.get_resource(ActivityLibrary).get("Reading"),
                     }
-                )
+                ),
             ],
             name="Library",
         ),
         sim.world.spawn_gameobject(
             [
-                Location(
+                Location(),
+                Activities(
                     activities={
                         sim.world.get_resource(ActivityLibrary).get("Shopping"),
                         sim.world.get_resource(ActivityLibrary).get("Socializing"),
                         sim.world.get_resource(ActivityLibrary).get("People Watching"),
                     }
-                )
+                ),
             ],
             name="Mall",
         ),
         sim.world.spawn_gameobject(
             [
-                Location(
+                Location(),
+                Activities(
                     activities={
                         sim.world.get_resource(ActivityLibrary).get("Drinking"),
                         sim.world.get_resource(ActivityLibrary).get("Socializing"),
                     }
-                )
+                ),
             ],
             name="Bar",
         ),

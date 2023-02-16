@@ -120,14 +120,34 @@ is injecting custom components into the mix and using them
 when querying for certain types of relationships
 
 ```python
+from orrery import Orrery
+from orrery.core.status import StatusComponent
+from orrery.utils.relationships import add_relationship_status
+
+sim = Orrery()
+
+# ... other code
+
 class InDebt(StatusComponent):
    
     __slots__ = "amount"
    
-    def __init__(self, amount: int) -> None:
+    def __init__(self, created: str, amount: int) -> None:
+        super().__init__(created)
         self.amount: int = amount
 
-add_relationship_status(character, other, InDept(1000))
+character = sim.world.spawn_gameobject(
+    [
+        # Some components
+    ]
+)
+other = sim.world.spawn_gameobject(
+    [
+        # Some components
+    ]
+)
+        
+add_relationship_status(character, other, InDebt("2023-02-11", 1000))
 ```
 
 ### How do relationships change over time?

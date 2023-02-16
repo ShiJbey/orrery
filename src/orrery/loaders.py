@@ -12,7 +12,6 @@ import yaml
 
 from orrery.components.business import OccupationType
 from orrery.content_management import (
-    ActivityToVirtueMap,
     BusinessLibrary,
     CharacterLibrary,
     OccupationTypeLibrary,
@@ -22,16 +21,6 @@ from orrery.core.ecs import World
 from orrery.core.tracery import Tracery
 from orrery.prefabs import BusinessPrefab, CharacterPrefab, ResidencePrefab
 from orrery.utils.common import deep_merge
-
-
-def load_activity_virtues(world: World, data: Dict[str, Any]) -> None:
-    """Load virtue mappings for activities"""
-    section_data: Dict[str, List[str]] = data.get("ActivityVirtues", {})
-
-    config = world.get_resource(ActivityToVirtueMap)
-
-    for activity_name, virtue_names in section_data.items():
-        config.add_by_name(world, activity_name, *virtue_names)
 
 
 def load_occupation_types(world: World, file_path: Union[str, pathlib.Path]) -> None:
@@ -52,7 +41,6 @@ def load_occupation_types(world: World, file_path: Union[str, pathlib.Path]) -> 
             OccupationType(
                 name=entry["name"],
                 level=entry.get("level", 1),
-                description=entry.get("description", ""),
             )
         )
 

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+import dataclasses
 import random
 import re
-from typing import Dict, Iterator, List, Optional, Set
+from typing import Dict, Iterator, List, Optional, Type
 
-from orrery.components.activity import ActivityInstance
-from orrery.components.business import OccupationType, ServiceType, logger
+from orrery.components.activity import Activity
+from orrery.components.business import OccupationType, Service
 from orrery.components.settlement import Settlement
-from orrery.components.virtues import Virtues
 from orrery.core.ai import IAIBrain
 from orrery.core.ecs import GameObject, World
-from orrery.core.life_event import ILifeEvent
+from orrery.core.life_event import LifeEvent
 from orrery.core.location_bias import ILocationBiasRule
 from orrery.core.social_rule import ISocialRule
 from orrery.core.time import SimDateTime
@@ -19,79 +19,63 @@ from orrery.prefabs import BusinessPrefab, CharacterPrefab, ResidencePrefab
 
 class ActivityLibrary:
     """
-    Repository of all the various activities that can exist
-    in the simulated world
-
-    Attributes
-    ----------
-    _next_id: int
-        The unique identifier assigned to the next created
-        activity instance
-    _name_to_activity: Dict[str, Activity]
-        Map of the names of activities to Activity instances
-    _id_to_name: Dict[int, str]
-        Map of the unique ids of activities to their names
+    Repository of all the various activities that can exist in the simulated world
 
     Notes
     -----
-    This classes uses the flyweight design pattern to save
-    memory space since many activities are shared between
-    location instances.
+    This classes uses the flyweight design pattern to save memory since many activities
+    are shared between location instances. Also, it makes activity comparisons faster
+    by mapping activity names to integers and comparing those values instead of the
+    name strings.
     """
 
-    __slots__ = "_next_id", "_name_to_activity", "_id_to_name"
+    __slots__ = "_activities", "_name_to_id"
 
-    def __init__(self) -> None:
-        self._next_id: int = 0
-        self._name_to_activity: Dict[str, ActivityInstance] = {}
-        self._id_to_name: Dict[int, str] = {}
+    def __init__(self, activities: Optional[List[str]] = None) -> None:
+        self._activities: List[Activity] = []
+        self._name_to_id: Dict[str, int] = {}
 
-    def __contains__(self, activity_name: str) -> bool:
-        """Return True if a service type exists with the given name"""
-        return activity_name.lower() in self._name_to_activity
+        if activities:
+            for activity_name in activities:
+                self.get(activity_name)
 
-    def __iter__(self) -> Iterator[ActivityInstance]:
-        """Return iterator for the ActivityLibrary"""
-        return self._name_to_activity.values().__iter__()
+    def get(self, activity_name: str) -> Activity:
+        """Get an Activity instance
 
-    def get(self, activity_name: str, create_new: bool = True) -> ActivityInstance:
-        """
-        Get an Activity instance and create a new one if a
-        matching instance does not exist
+        Parameters
+        ----------
+        activity_name: str
+            A name of an activity
+
+        Returns
+        -------
+        Activity
+            The activity instance with the given activity name
         """
         lc_activity_name = activity_name.lower()
 
-        if lc_activity_name in self._name_to_activity:
-            return self._name_to_activity[lc_activity_name]
+        if lc_activity_name in self._name_to_id:
+            return self._activities[self._name_to_id[lc_activity_name]]
 
-        if create_new is False:
-            raise KeyError(f"No activity found with name {activity_name}")
+        activity_id = len(self._activities)
+        activity = Activity(activity_id, lc_activity_name)
+        self._activities.append(activity)
+        self._name_to_id[lc_activity_name] = activity_id
 
-        uid = self._next_id
-        self._next_id = self._next_id + 1
-        activity = ActivityInstance(uid, lc_activity_name)
-        self._name_to_activity[lc_activity_name] = activity
-        self._id_to_name[uid] = lc_activity_name
         return activity
 
+    def __contains__(self, activity_name: str) -> bool:
+        """Return True if a service type exists with the given name"""
+        return activity_name.lower() in self._name_to_id
 
-class ActivityToVirtueMap:
-    """
-    Mapping of activities to character virtues.
-    We use this class to determine what activities
-    characters like to engage in based on their virtues
-    """
+    def __iter__(self) -> Iterator[Activity]:
+        """Return iterator for the ActivityLibrary"""
+        return self._activities.__iter__()
 
-    __slots__ = "mappings"
-
-    def __init__(self) -> None:
-        self.mappings: Dict[ActivityInstance, Virtues] = {}
-
-    def add_by_name(self, world: World, activity_name: str, *virtues: str) -> None:
-        """Add a new virtue to the mapping"""
-        activity = world.get_resource(ActivityLibrary).get(activity_name)
-
-        self.mappings[activity] = Virtues({v: 1 for v in virtues})
+    def __repr__(self) -> str:
+        return "{}({})".format(
+            self.__class__.__name__, str([str(a) for a in self._activities])
+        )
 
 
 class ServiceLibrary:
@@ -102,7 +86,7 @@ class ServiceLibrary:
     ----------
     _next_id: int
         The next ID assigned to a new ServiceType instance
-    _services: List[ServiceType]
+    _services: List[Service]
         A list of all the possible services a business could have
     _name_to_id: Dict[str, int]
         Mapping of service names to indexes into the _services list
@@ -112,14 +96,14 @@ class ServiceLibrary:
 
     def __init__(self) -> None:
         self._next_id: int = 0
-        self._services: List[ServiceType] = []
+        self._services: List[Service] = []
         self._name_to_id: Dict[str, int] = {}
 
     def __contains__(self, service_name: str) -> bool:
         """Return True if a service type exists with the given name"""
         return service_name.lower() in self._name_to_id
 
-    def get(self, service_name: str) -> ServiceType:
+    def get(self, service_name: str) -> Service:
         lc_service_name = service_name.lower()
 
         if lc_service_name in self._name_to_id:
@@ -127,7 +111,7 @@ class ServiceLibrary:
 
         uid = self._next_id
         self._next_id += 1
-        service_type = ServiceType(uid, lc_service_name)
+        service_type = Service(uid, lc_service_name)
         self._services.append(service_type)
         self._name_to_id[lc_service_name] = uid
         return service_type
@@ -153,8 +137,6 @@ class OccupationTypeLibrary:
         occupation_type: OccupationType
             The occupation type instance to add
         """
-        if occupation_type.name in self._registry:
-            logger.debug(f"Overwriting OccupationType: ({occupation_type.name})")
         self._registry[occupation_type.name] = occupation_type
 
     def get(self, name: str) -> OccupationType:
@@ -359,118 +341,60 @@ class LifeEventLibrary:
     use at runtime.
     """
 
-    _registry: Dict[str, ILifeEvent] = {}
+    __slots__ = "_registry"
 
-    @classmethod
-    def add(cls, life_event: ILifeEvent, name: Optional[str] = None) -> None:
+    def __init__(self) -> None:
+        self._registry: Dict[str, Type[LifeEvent]] = {}
+
+    def add(self, life_event_type: Type[LifeEvent]) -> None:
         """Register a new LifeEventType mapped to a name"""
-        key_name = name if name else life_event.get_name()
-        cls._registry[key_name] = life_event
+        self._registry[life_event_type.__name__] = life_event_type
 
-    @classmethod
-    def get_all(cls) -> List[ILifeEvent]:
+    def get_all(self) -> List[Type[LifeEvent]]:
         """Get all LifeEventTypes stores in the Library"""
-        return list(cls._registry.values())
+        return list(self._registry.values())
 
-    @classmethod
-    def get(cls, name: str) -> ILifeEvent:
-        """Get a LifeEventType using a name"""
-        return cls._registry[name]
+
+@dataclasses.dataclass(frozen=True)
+class SocialRuleInfo:
+    rule: ISocialRule
+    description: str = ""
 
 
 class SocialRuleLibrary:
-    """
-    Repository of ISocialRule instances to use during the simulation.
+    """Repository of ISocialRule instances to use during the simulation."""
 
-    Attributes
-    ----------
-    _all_rules: Dict[str, ISocialRule]
-        All the rules added to the library, including ones not actively used in
-        relationship calculations. (allows filtering)
-    _active_rules: List[ISocialRule]
-        List of the rules that are actively used for relationship calculations
-    _active_rule_names: List[str]
-        List of regular expression strings that correspond to rules to
-        set as active for use in relationship calculations
-    """
+    __slots__ = "_rules"
 
-    __slots__ = "_all_rules", "_active_rules", "_active_rule_names"
+    def __init__(self) -> None:
+        self._rules: List[SocialRuleInfo] = []
 
-    def __init__(
-        self,
-        rules: Optional[List[ISocialRule]] = None,
-        active_rules: Optional[List[str]] = None,
-    ) -> None:
-        self._all_rules: List[ISocialRule] = []
-        self._active_rules: Set[int] = set()
-        self._active_rule_names: List[str] = active_rules if active_rules else [".*"]
+    def add(self, rule: ISocialRule, description: str = "") -> None:
+        self._rules.append(SocialRuleInfo(rule, description))
 
-        if rules:
-            for rule in rules:
-                self.add(rule)
+    def __iter__(self) -> Iterator[SocialRuleInfo]:
+        return self._rules.__iter__()
 
-    def add(self, rule: ISocialRule) -> None:
-        """
-        Add a rule to the library
 
-        Parameters
-        ----------
-        rule: ISocialRule
-            The rule to add
-        """
-        rule_index = len(self._all_rules)
-        self._all_rules.append(rule)
-        if any(
-            [
-                re.match(pattern, rule.get_rule_name())
-                for pattern in self._active_rule_names
-            ]
-        ):
-            self._active_rules.add(rule_index)
-
-    def reset_active_rules(self) -> None:
-        self.set_active_rules([".*"])
-
-    def set_active_rules(self, rule_names: List[str]) -> None:
-        """
-        Sets the rules with names that match the regex strings as active
-
-        Parameters
-        ----------
-        rule_names: List[str]
-            Regex strings for rule names to activate
-        """
-        self._active_rules.clear()
-        self._active_rule_names = rule_names
-        for i, rule in enumerate(self._all_rules):
-            if any(
-                [
-                    re.match(pattern, rule.get_rule_name())
-                    for pattern in self._active_rule_names
-                ]
-            ):
-                self._active_rules.add(i)
-
-    def get_active_rules(self) -> List[ISocialRule]:
-        """Return social rules that are active for relationship calculations"""
-        return [
-            rule for i, rule in enumerate(self._all_rules) if i in self._active_rules
-        ]
+@dataclasses.dataclass(frozen=True)
+class LocationBiasRuleInfo:
+    rule: ILocationBiasRule
+    description: str = ""
 
 
 class LocationBiasRuleLibrary:
     """Repository of active rules that determine what location characters frequent"""
 
-    __slots__ = "rules"
+    __slots__ = "_rules"
 
     def __init__(self) -> None:
-        self.rules: Dict[str, ILocationBiasRule] = {}
+        self._rules: List[LocationBiasRuleInfo] = []
 
-    def add(self, rule: ILocationBiasRule) -> None:
-        self.rules[rule.get_rule_name()] = rule
+    def add(self, rule: ILocationBiasRule, description: str = "") -> None:
+        self._rules.append(LocationBiasRuleInfo(rule, description))
 
-    def __iter__(self) -> Iterator[ILocationBiasRule]:
-        return self.rules.values().__iter__()
+    def __iter__(self) -> Iterator[LocationBiasRuleInfo]:
+        return self._rules.__iter__()
 
 
 class AIBrainLibrary:

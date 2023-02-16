@@ -16,10 +16,9 @@ from typing import (
     Type,
     TypedDict,
     TypeVar,
-    Union,
 )
 
-from orrery.components.activity import Activities, LikedActivities
+from orrery.components.activity import Activities
 from orrery.components.business import (
     Business,
     ClosedForBusiness,
@@ -45,16 +44,16 @@ from orrery.components.settlement import Settlement
 from orrery.components.shared import (
     Active,
     Building,
+    CurrentSettlement,
+    FrequentedBy,
     FrequentedLocations,
     Location,
-    Name,
     Position2D,
 )
 from orrery.components.virtues import Virtues
 from orrery.config import OrreryConfig
 from orrery.content_management import (
     ActivityLibrary,
-    ActivityToVirtueMap,
     AIBrainLibrary,
     BusinessLibrary,
     CharacterLibrary,
@@ -67,8 +66,7 @@ from orrery.content_management import (
 )
 from orrery.core.ai import AIComponent
 from orrery.core.ecs import Component, IComponentFactory, ISystem, World
-from orrery.core.event import EventHandler
-from orrery.core.life_event import LifeEventConfig, LifeEventQueue
+from orrery.core.event import AllEvents, EventBuffer
 from orrery.core.location_bias import ILocationBiasRule
 from orrery.core.social_rule import ISocialRule
 from orrery.core.status import StatusManager
@@ -76,7 +74,7 @@ from orrery.core.time import SimDateTime, TimeDelta
 from orrery.core.tracery import Tracery
 from orrery.core.traits import TraitManager
 from orrery.data_collection import DataCollector
-from orrery.factories.activity import ActivitiesFactory, LikedActivitiesFactory
+from orrery.factories.activity import ActivitiesFactory
 from orrery.factories.ai import AIComponentFactory
 from orrery.factories.business import BusinessFactory, ServicesFactory
 from orrery.factories.character import GameCharacterFactory
@@ -190,16 +188,15 @@ class Orrery:
         self.world.add_resource(BusinessLibrary())
         self.world.add_resource(ResidenceLibrary())
         self.world.add_resource(ActivityLibrary())
-        self.world.add_resource(ActivityToVirtueMap())
         self.world.add_resource(SimDateTime(1, 1, 1))
-        self.world.add_resource(EventHandler())
+        self.world.add_resource(EventBuffer())
+        self.world.add_resource(AllEvents())
         self.world.add_resource(OccupationTypeLibrary())
         self.world.add_resource(LifeEventLibrary())
         self.world.add_resource(ServiceLibrary())
         self.world.add_resource(DataCollector())
         self.world.add_resource(LocationBiasRuleLibrary())
         self.world.add_resource(AIBrainLibrary())
-        self.world.add_resource(LifeEventConfig())
 
         # Add default system groups
         self.world.add_system(InitializationSystemGroup())
@@ -246,13 +243,13 @@ class Orrery:
         self.world.register_component(Active)
         self.world.register_component(AIComponent, factory=AIComponentFactory())
         self.world.register_component(GameCharacter, factory=GameCharacterFactory())
-        self.world.register_component(Name)
         self.world.register_component(RelationshipManager)
         self.world.register_component(TraitManager)
         self.world.register_component(Location, factory=LocationFactory())
+        self.world.register_component(FrequentedBy)
+        self.world.register_component(CurrentSettlement)
         self.world.register_component(Virtues, factory=VirtuesFactory())
         self.world.register_component(Activities, factory=ActivitiesFactory())
-        self.world.register_component(LikedActivities, factory=LikedActivitiesFactory())
         self.world.register_component(Occupation)
         self.world.register_component(WorkHistory)
         self.world.register_component(Services, factory=ServicesFactory())
@@ -277,7 +274,6 @@ class Orrery:
             FrequentedLocations, factory=FrequentedLocationsFactory()
         )
         self.world.register_component(Settlement)
-        self.world.register_component(LifeEventQueue)
 
         # Configure printing every event to the console
         if self.config.verbose:
@@ -474,23 +470,21 @@ class Orrery:
 
         return decorator
 
-    def location_bias_rule(self, **kwargs: Any):
-        def decorator(item: Union[ILocationBiasRule, LocationBiasRuleFactory]):
-            if callable(item):
-                self.world.get_resource(LocationBiasRuleLibrary).add(item(**kwargs))
-            else:
-                self.world.get_resource(LocationBiasRuleLibrary).add(item)
-            return item
+    def add_location_bias_rule(self, rule: ILocationBiasRule, description: str = ""):
+        self.world.get_resource(LocationBiasRuleLibrary).add(rule, description)
+
+    def location_bias_rule(self, description: str = ""):
+        def decorator(rule: ILocationBiasRule):
+            self.world.get_resource(LocationBiasRuleLibrary).add(rule, description)
 
         return decorator
 
-    def social_rule(self, **kwargs: Any):
-        def decorator(item: Union[ISocialRule, SocialRuleFactory]):
-            if callable(item):
-                self.world.get_resource(SocialRuleLibrary).add(item(**kwargs))
-            else:
-                self.world.get_resource(SocialRuleLibrary).add(item)
-            return item
+    def add_social_rule(self, rule: ISocialRule, description: str = ""):
+        self.world.get_resource(SocialRuleLibrary).add(rule, description)
+
+    def social_rule(self, description: str = ""):
+        def decorator(rule: ISocialRule):
+            self.world.get_resource(SocialRuleLibrary).add(rule, description)
 
         return decorator
 

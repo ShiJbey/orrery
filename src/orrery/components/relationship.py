@@ -80,6 +80,14 @@ class IncrementCounter:
             (self.increments + other.increments, self.decrements + other.decrements)
         )
 
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    def __repr__(self) -> str:
+        return "{}(increments={}, decrements={})".format(
+            self.__class__.__name__, self.increments, self.decrements
+        )
+
 
 class RelationshipStat:
     """
@@ -93,7 +101,7 @@ class RelationshipStat:
         The maximum scaled value this stat can hold
     _raw_value: int
         The current raw score for this stat
-    _scaled_value: int
+    _clamped_value: int
         Scales the normalized score between the minimum and maximum
     _normalized_value: float
         The  normalized stat value on the interval [0.0, 1.0]
@@ -105,7 +113,7 @@ class RelationshipStat:
         "_min_value",
         "_max_value",
         "_raw_value",
-        "_scaled_value",
+        "_clamped_value",
         "_normalized_value",
         "_base",
         "_from_modifiers",
@@ -117,7 +125,7 @@ class RelationshipStat:
         self._min_value: int = min_value
         self._max_value: int = max_value
         self._raw_value: int = 0
-        self._scaled_value: int = 0
+        self._clamped_value: int = 0
         self._normalized_value: float = 0.5
         self._base: IncrementCounter = IncrementCounter()
         self._from_modifiers: IncrementCounter = IncrementCounter()
@@ -146,11 +154,11 @@ class RelationshipStat:
             self._recalculate_values()
         return self._raw_value
 
-    def get_scaled_value(self) -> int:
+    def get_value(self) -> int:
         """Return the scaled value of this relationship stat between the max and min values"""
         if self._is_dirty:
             self._recalculate_values()
-        return self._scaled_value
+        return self._clamped_value
 
     def get_normalized_value(self) -> float:
         """Return the normalized value of this relationship stat on the interval [0.0, 1.0]"""
@@ -161,7 +169,7 @@ class RelationshipStat:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "raw": self.get_raw_value(),
-            "scaled": self.get_scaled_value(),
+            "scaled": self.get_value(),
             "normalized": self.get_normalized_value(),
         }
 
@@ -182,8 +190,8 @@ class RelationshipStat:
                 float(combined_increments.increments) / total_changes
             )
 
-        self._scaled_value = math.ceil(
-            lerp(self._min_value, self._max_value, self._normalized_value)
+        self._clamped_value = math.ceil(
+            max(self._min_value, min(self._max_value, self._raw_value))
         )
 
         self._is_dirty = False
@@ -198,10 +206,11 @@ class RelationshipStat:
         return self.__repr__()
 
     def __repr__(self) -> str:
-        return "RelationshipStat(norm={}, raw={}, scaled={},  max={}, min={})".format(
+        return "{}(value={}, norm={}, raw={},  max={}, min={})".format(
+            self.__class__.__name__,
+            self.get_value(),
             self.get_normalized_value(),
             self.get_raw_value(),
-            self.get_scaled_value(),
             self._max_value,
             self._min_value,
         )
@@ -278,6 +287,18 @@ class Relationship(Component):
             "modifiers": [m.to_dict() for m in self.modifiers],
         }
 
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    def __repr__(self) -> str:
+        return "{}(owner={}, target={}, stats={}, modifiers={})".format(
+            self.__class__.__name__,
+            self.owner,
+            self.target,
+            self._stats,
+            self.modifiers,
+        )
+
 
 class RelationshipManager(Component):
     """Tracks all relationships associated with a GameObject
@@ -297,3 +318,9 @@ class RelationshipManager(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {str(k): v for k, v in self.relationships.items()}
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    def __repr__(self) -> str:
+        return "{}({})".format(self.__class__.__name__, self.relationships)

@@ -1,5 +1,6 @@
 from typing import Type, TypeVar
 
+from orrery import SimDateTime
 from orrery.core.ecs import GameObject
 from orrery.core.status import StatusComponent, StatusManager
 
@@ -18,6 +19,7 @@ def add_status(gameobject: GameObject, status: StatusComponent) -> None:
         The status to add
     """
     gameobject.get_component(StatusManager).add(type(status))
+    status.set_created(str(gameobject.world.get_resource(SimDateTime)))
     gameobject.add_component(status)
 
 

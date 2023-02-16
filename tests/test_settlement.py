@@ -2,7 +2,7 @@ import pytest
 
 from orrery import Orrery
 from orrery.components.settlement import Grid, GridSettlementMap, Settlement
-from orrery.utils.common import create_settlement
+from orrery.utils.common import spawn_settlement
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def test_set_item_raises_index_error(int_grid: Grid[int]):
 
 def test_settlement_to_dict():
     sim = Orrery()
-    town = create_settlement(sim.world, "Test Town", (5, 5))
+    town = spawn_settlement(sim.world, "Test Town", (5, 5))
     town.get_component(Settlement).population = 3
     town_dict = town.get_component(Settlement).to_dict()
     assert town_dict["name"] == "Test Town"

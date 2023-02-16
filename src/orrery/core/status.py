@@ -25,12 +25,21 @@ class StatusComponent(Component, ABC):
 
     __slots__ = "created"
 
-    def __init__(self, created: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.created: str = created
+        self.created: str = ""
+
+    def set_created(self, timestamp: str) -> None:
+        self.created = timestamp
 
     def to_dict(self) -> Dict[str, Any]:
         return {"created": self.created}
+
+    def __str__(self) -> str:
+        return f"Status::{self.__class__.__name__}"
+
+    def __repr__(self) -> str:
+        return "{}(created={})".format(self.__class__.__name__, self.created)
 
 
 class StatusManager(Component):

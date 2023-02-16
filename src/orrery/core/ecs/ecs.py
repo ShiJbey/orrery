@@ -362,7 +362,7 @@ class GameObject:
     def __eq__(self, other: object) -> bool:
         if isinstance(other, GameObject):
             return self.uid == other.uid
-        raise TypeError(f"Expected GameObject but was {type(object)}")
+        raise TypeError(f"Expected GameObject but was {type(other)}")
 
     def __int__(self) -> int:
         return self._id
@@ -714,7 +714,7 @@ class World:
         """Create a new gameobject and attach any given component instances"""
         components_to_add = components if components else []
 
-        entity_id = self._ecs.create_entity(*components_to_add)
+        entity_id = self._ecs.create_entity()
 
         gameobject = GameObject(
             unique_id=entity_id,
@@ -724,10 +724,9 @@ class World:
 
         self._gameobjects[gameobject.uid] = gameobject
 
-        # Since we did not add the component through the GameObject's add_component
-        # method, we have to set the references here
+        # Add components
         for c in components_to_add:
-            c.set_gameobject(gameobject)
+            gameobject.add_component(c)
 
         return gameobject
 

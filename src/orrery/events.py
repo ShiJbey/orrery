@@ -1,40 +1,65 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from orrery.core.ecs import GameObject
-from orrery.core.event import Event, RoleInstance
+from orrery.core.event import Event
+from orrery.core.roles import RoleInstance
 from orrery.core.time import SimDateTime
 
 
 class JoinSettlementEvent(Event):
+
+    __slots__ = "settlement", "character"
+
     def __init__(
         self,
         date: SimDateTime,
         settlement: GameObject,
         character: GameObject,
     ) -> None:
-        super().__init__(
-            name="JoinSettlement",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Settlement", settlement.uid),
-                RoleInstance("Character", character.uid),
-            ],
+        super().__init__(timestamp=date)
+        self.settlement: GameObject = settlement
+        self.character: GameObject = character
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "settlement": self.settlement.uid,
+            "character": self.character.uid,
+        }
+
+    def __str__(self) -> str:
+        return (
+            super().__str__()
+            + f" Settlement: {self.settlement}, "
+            + f"Character: {self.character}"
         )
 
 
 class LeaveSettlementEvent(Event):
+
+    __slots__ = "settlement", "character"
+
     def __init__(
         self, date: SimDateTime, settlement: GameObject, character: GameObject
     ) -> None:
-        super().__init__(
-            name="LeaveSettlement",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Settlement", settlement.uid),
-                RoleInstance("Character", character.uid),
-            ],
+        super().__init__(timestamp=date)
+        self.settlement: GameObject = settlement
+        self.character: GameObject = character
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            **super().to_dict(),
+            "settlement": self.settlement.uid,
+            "character": self.character.uid,
+        }
+
+    def __str__(self) -> str:
+        return (
+            super().__str__()
+            + f"Settlement: {self.settlement}"
+            + f"Character: {self.character}"
         )
 
 
@@ -48,7 +73,7 @@ class ChildBirthEvent(Event):
     ) -> None:
         super().__init__(
             name="ChildBirth",
-            timestamp=date.to_iso_str(),
+            timestamp=date,
             roles=[
                 RoleInstance("BirthingParent", birthing_parent.uid),
                 RoleInstance("OtherParent", other_parent.uid),
@@ -59,24 +84,16 @@ class ChildBirthEvent(Event):
 
 class DeathEvent(Event):
     def __init__(self, date: SimDateTime, character: GameObject) -> None:
-        super().__init__(
-            name="Death",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Character", character.uid),
-            ],
-        )
+        super().__init__(date)
+        self.character: GameObject = character
 
 
 class DepartEvent(Event):
     def __init__(
         self, date: SimDateTime, characters: List[GameObject], reason: str
     ) -> None:
-        super().__init__(
-            name="Depart",
-            timestamp=date.to_iso_str(),
-            roles=[RoleInstance("Character", c.uid) for c in characters],
-        )
+        super().__init__(date)
+        self.characters: List[GameObject] = characters
         self.reason = reason
 
     def to_dict(self) -> Dict[str, Any]:
@@ -90,43 +107,27 @@ class MoveIntoTownEvent(Event):
     def __init__(
         self, date: SimDateTime, residence: GameObject, *characters: GameObject
     ) -> None:
-        super().__init__(
-            name="MoveIntoTown",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Residence", residence.uid),
-                *[RoleInstance("Character", c.uid) for c in characters],
-            ],
-        )
+        super().__init__(date)
+        self.characters: Tuple[GameObject, ...] = characters
+        self.residence: GameObject = residence
 
 
 class MoveResidenceEvent(Event):
     def __init__(self, date: SimDateTime, *characters: GameObject) -> None:
-        super().__init__(
-            name="MoveResidence",
-            timestamp=date.to_iso_str(),
-            roles=[RoleInstance("Character", c.uid) for c in characters],
-        )
+        super().__init__(date)
+        self.characters: Tuple[GameObject, ...] = characters
 
 
 class BusinessClosedEvent(Event):
     def __init__(self, date: SimDateTime, business: GameObject) -> None:
-        super().__init__(
-            name="BusinessClosed",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Business", business.uid),
-            ],
-        )
+        super().__init__(date)
+        self.business: GameObject = business
 
 
 class BirthEvent(Event):
     def __init__(self, date: SimDateTime, character: GameObject) -> None:
-        super().__init__(
-            name="Birth",
-            timestamp=date.to_iso_str(),
-            roles=[RoleInstance("Character", character.uid)],
-        )
+        super().__init__(date)
+        self.character: GameObject = character
 
 
 class GiveBirthEvent(Event):
@@ -139,7 +140,7 @@ class GiveBirthEvent(Event):
     ) -> None:
         super().__init__(
             name="GiveBirth",
-            timestamp=date.to_iso_str(),
+            timestamp=date,
             roles=[
                 RoleInstance("BirthingParent", birthing_parent.uid),
                 RoleInstance("OtherParent", other_parent.uid),
@@ -157,7 +158,7 @@ class PregnantEvent(Event):
     ) -> None:
         super().__init__(
             name="Pregnant",
-            timestamp=date.to_iso_str(),
+            timestamp=date,
             roles=[
                 RoleInstance("PregnantOne", pregnant_one.uid),
                 RoleInstance("Partner", partner.uid),
@@ -177,7 +178,7 @@ class StartJobEvent(Event):
     ) -> None:
         super().__init__(
             name="StartJob",
-            timestamp=date.to_iso_str(),
+            timestamp=date,
             roles=[
                 RoleInstance("Business", business.uid),
                 RoleInstance("Character", character.uid),
@@ -208,7 +209,7 @@ class EndJobEvent(Event):
     ) -> None:
         super().__init__(
             name="LeaveJob",
-            timestamp=date.to_iso_str(),
+            timestamp=date,
             roles=[
                 RoleInstance("Business", business.uid),
                 RoleInstance("Character", character.uid),
@@ -238,7 +239,7 @@ class MarriageEvent(Event):
     ) -> None:
         super().__init__(
             name="Marriage",
-            timestamp=date.to_iso_str(),
+            timestamp=date,
             roles=[RoleInstance("Character", c.uid) for c in characters],
         )
 
@@ -251,7 +252,7 @@ class DivorceEvent(Event):
     ) -> None:
         super().__init__(
             name="Divorce",
-            timestamp=date.to_iso_str(),
+            timestamp=date,
             roles=[RoleInstance("Character", c.uid) for c in characters],
         )
 
@@ -269,7 +270,7 @@ class StartBusinessEvent(Event):
     ) -> None:
         super().__init__(
             name="StartBusiness",
-            timestamp=date.to_iso_str(),
+            timestamp=date,
             roles=[
                 RoleInstance("Business", business.uid),
                 RoleInstance("Character", character.uid),
@@ -290,21 +291,14 @@ class StartBusinessEvent(Event):
 
 
 class BusinessOpenEvent(Event):
-    __slots__ = "business_name"
-
     def __init__(
         self,
         date: SimDateTime,
         business: GameObject,
         business_name: str,
     ) -> None:
-        super().__init__(
-            name="business-open",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Business", business.uid),
-            ],
-        )
+        super().__init__(date)
+        self.business: GameObject = business
         self.business_name: str = business_name
 
     def to_dict(self) -> Dict[str, Any]:
@@ -318,33 +312,35 @@ class BusinessOpenEvent(Event):
 
 
 class NewSettlementEvent(Event):
+
+    __slots__ = "settlement"
+
     def __init__(
         self,
         date: SimDateTime,
         settlement: GameObject,
     ) -> None:
-        super().__init__(
-            name="new-settlement",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Settlement", settlement.uid),
-            ],
-        )
+        super().__init__(timestamp=date)
+        self.settlement: GameObject = settlement
+
+    def __str__(self) -> str:
+        return f"{super().__str__()} Settlement: {self.settlement}"
 
 
 class NewCharacterEvent(Event):
+
+    __slots__ = "character"
+
     def __init__(
         self,
         date: SimDateTime,
         character: GameObject,
     ) -> None:
-        super().__init__(
-            name="new-character",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Character", character.uid),
-            ],
-        )
+        super().__init__(timestamp=date)
+        self.character: GameObject = character
+
+    def __str__(self) -> str:
+        return f"{super().__str__()} Character: {self.character}"
 
 
 class NewBusinessEvent(Event):
@@ -353,13 +349,11 @@ class NewBusinessEvent(Event):
         date: SimDateTime,
         business: GameObject,
     ) -> None:
-        super().__init__(
-            name="new-business",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Business", business.uid),
-            ],
-        )
+        super().__init__(date)
+        self.business: GameObject = business
+
+    def __str__(self) -> str:
+        return f"{super().__str__()} Business: {self.business}"
 
 
 class NewResidenceEvent(Event):
@@ -368,13 +362,11 @@ class NewResidenceEvent(Event):
         date: SimDateTime,
         residence: GameObject,
     ) -> None:
-        super().__init__(
-            name="new-residence",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Residence", residence.uid),
-            ],
-        )
+        super().__init__(date)
+        self.residence: GameObject = residence
+
+    def __str__(self) -> str:
+        return f"{super().__str__()} Residence: {self.residence}"
 
 
 class BecomeAdolescentEvent(Event):
@@ -383,13 +375,11 @@ class BecomeAdolescentEvent(Event):
         date: SimDateTime,
         character: GameObject,
     ) -> None:
-        super().__init__(
-            name="BecomeAdolescent",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Character", character.uid),
-            ],
-        )
+        super().__init__(date)
+        self.character: GameObject = character
+
+    def __str__(self) -> str:
+        return f"{super().__str__()} Character: {self.character}"
 
 
 class BecomeYoungAdultEvent(Event):
@@ -398,13 +388,11 @@ class BecomeYoungAdultEvent(Event):
         date: SimDateTime,
         character: GameObject,
     ) -> None:
-        super().__init__(
-            name="BecomeYoungAdult",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Character", character.uid),
-            ],
-        )
+        super().__init__(date)
+        self.character: GameObject = character
+
+    def __str__(self) -> str:
+        return f"{super().__str__()} Character: {self.character}"
 
 
 class BecomeAdultEvent(Event):
@@ -413,13 +401,11 @@ class BecomeAdultEvent(Event):
         date: SimDateTime,
         character: GameObject,
     ) -> None:
-        super().__init__(
-            name="BecomeAdult",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Character", character.uid),
-            ],
-        )
+        super().__init__(date)
+        self.character: GameObject = character
+
+    def __str__(self) -> str:
+        return f"{super().__str__()} Character: {self.character}"
 
 
 class BecomeSeniorEvent(Event):
@@ -428,13 +414,11 @@ class BecomeSeniorEvent(Event):
         date: SimDateTime,
         character: GameObject,
     ) -> None:
-        super().__init__(
-            name="BecomeSenior",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Character", character.uid),
-            ],
-        )
+        super().__init__(date)
+        self.character: GameObject = character
+
+    def __str__(self) -> str:
+        return f"{super().__str__()} Character: {self.character}"
 
 
 class RetirementEvent(Event):
@@ -447,14 +431,9 @@ class RetirementEvent(Event):
         business: GameObject,
         occupation: str,
     ) -> None:
-        super().__init__(
-            name="LeaveJob",
-            timestamp=date.to_iso_str(),
-            roles=[
-                RoleInstance("Business", business.uid),
-                RoleInstance("Character", character.uid),
-            ],
-        )
+        super().__init__(date)
+        self.character: GameObject = character
+        self.business: GameObject = business
         self.occupation: str = occupation
 
     def to_dict(self) -> Dict[str, Any]:

@@ -1,6 +1,5 @@
-from orrery.components.activity import Activities, LikedActivities
-from orrery.components.virtues import VirtueType
-from orrery.content_management import ActivityLibrary, ActivityToVirtueMap
+from orrery.components.activity import Activities
+from orrery.content_management import ActivityLibrary
 from orrery.core.ecs import World
 from orrery.factories.activity import ActivitiesFactory
 
@@ -18,14 +17,11 @@ def test_get_activity_from_library() -> None:
 
 
 def test_iterate_activity_library() -> None:
-    activity_library = ActivityLibrary()
-    activity_library.get("Running")
-    activity_library.get("Eating")
-    activity_library.get("Drinking")
-    activity_library.get("Socializing")
-    activity_library.get("Shopping")
+    activity_library = ActivityLibrary(
+        ["Running", "Eating", "Drinking", "Socializing", "Shopping"]
+    )
 
-    all_activities = set([a.name for a in activity_library])
+    all_activities = set([str(a) for a in activity_library])
     assert all_activities == {
         "running",
         "eating",
@@ -47,13 +43,8 @@ def test_activity_library_contains() -> None:
     assert ("shopping" in activity_library) is False
 
 
-def test_activity_manager_contains() -> None:
+def test_activities_contains() -> None:
     activity_library = ActivityLibrary()
-    activity_library.get("Running")
-    activity_library.get("Eating")
-    activity_library.get("Drinking")
-    activity_library.get("Socializing")
-    activity_library.get("Shopping")
 
     activity_manager = Activities(
         {
@@ -67,13 +58,8 @@ def test_activity_manager_contains() -> None:
     assert activity_library.get("Shopping") not in activity_manager
 
 
-def test_activity_manager_to_dict() -> None:
+def test_activities_to_dict() -> None:
     activity_library = ActivityLibrary()
-    activity_library.get("Running")
-    activity_library.get("Eating")
-    activity_library.get("Drinking")
-    activity_library.get("Socializing")
-    activity_library.get("Shopping")
 
     activity_manager = Activities(
         {
@@ -88,15 +74,10 @@ def test_activity_manager_to_dict() -> None:
     }
 
 
-def test_activity_manager_factory() -> None:
+def test_activities_factory() -> None:
     world = World()
 
     activity_library = ActivityLibrary()
-    activity_library.get("Running")
-    activity_library.get("Eating")
-    activity_library.get("Drinking")
-    activity_library.get("Socializing")
-    activity_library.get("Shopping")
 
     world.add_resource(activity_library)
 
@@ -109,66 +90,3 @@ def test_activity_manager_factory() -> None:
     assert activity_library.get("Drinking") not in activity_manager
     assert activity_library.get("Shopping") in activity_manager
     assert activity_library.get("Eating") in activity_manager
-
-
-def test_liked_activities_contains() -> None:
-    activity_library = ActivityLibrary()
-    activity_library.get("Running")
-    activity_library.get("Eating")
-    activity_library.get("Drinking")
-    activity_library.get("Socializing")
-    activity_library.get("Shopping")
-
-    liked_activities = LikedActivities(
-        {activity_library.get("socializing"), activity_library.get("shopping")}
-    )
-
-    assert activity_library.get("drinking") not in liked_activities
-    assert activity_library.get("eating") not in liked_activities
-    assert activity_library.get("socializing") in liked_activities
-
-
-def test_liked_activities_to_dict() -> None:
-    activity_library = ActivityLibrary()
-    activity_library.get("Running")
-    activity_library.get("Eating")
-    activity_library.get("Drinking")
-    activity_library.get("Socializing")
-    activity_library.get("Shopping")
-
-    liked_activities = LikedActivities(
-        {activity_library.get("socializing"), activity_library.get("shopping")}
-    )
-
-    assert liked_activities.to_dict() == {"activities": ["socializing", "shopping"]}
-
-
-def test_activity_virtue_map() -> None:
-    activity_library = ActivityLibrary()
-
-    activity_library.get("Running")
-    activity_library.get("Eating")
-    activity_library.get("Drinking")
-    activity_library.get("Socializing")
-    activity_library.get("Shopping")
-
-    world = World()
-    world.add_resource(activity_library)
-
-    virtue_map = ActivityToVirtueMap()
-
-    virtue_map.add_by_name(world, "Running", "HEALTH")
-
-    assert (
-        virtue_map.mappings[activity_library.get("Running")].to_array()[
-            VirtueType.HEALTH
-        ]
-        == 1
-    )
-
-    assert (
-        virtue_map.mappings[activity_library.get("Running")].to_array()[
-            VirtueType.POWER
-        ]
-        == 0
-    )

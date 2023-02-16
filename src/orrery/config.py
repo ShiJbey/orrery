@@ -172,6 +172,7 @@ class OrreryConfig(pydantic.BaseModel):
     # Months to increment time by each simulation step
     time_increment: int = 1
     verbose: bool = True
+    settings: Dict[str, Any] = pydantic.Field(default_factory=dict)
 
 
 class OrreryCLIConfig(OrreryConfig):

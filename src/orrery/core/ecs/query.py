@@ -349,7 +349,10 @@ class FilterClause:
             Callable[[GameObject, GameObject, GameObject], bool],
             Callable[[GameObject, GameObject, GameObject, GameObject], bool],
         ] = filter_fn
-        self.variables: Tuple[str, ...] = tuple(variables)
+        if isinstance(variables, tuple):
+            self.variables: Tuple[str, ...] = variables
+        else:
+            self.variables: Tuple[str, ...] = (variables,)
 
     def __call__(self, ctx: QueryContext) -> Relation:
         if ctx.relation.is_uninitialized():
@@ -531,7 +534,7 @@ class QB:
         ],
     ) -> FilterClause:
         """Adds results to the current query for game objects with all the given components"""
-        return FilterClause(filter_fn, *variables)
+        return FilterClause(filter_fn, variables)
 
     @staticmethod
     def get_(fn: QueryGetFn, *variables: str) -> GetClause:

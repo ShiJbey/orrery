@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from orrery import GameObject, World
+from orrery import GameObject
 from orrery.config import BusinessConfig
 from orrery.core.ecs import Component
 from orrery.core.status import StatusComponent
-
-logger = logging.getLogger(__name__)
 
 
 class Occupation(Component):
@@ -175,9 +172,8 @@ class WorkHistory(Component):
 
 
 @dataclass(frozen=True, slots=True)
-class ServiceType:
-    """
-    A service that can be offered by a business establishment
+class Service:
+    """A service offered by a business establishment
 
     Attributes
     ----------
@@ -201,11 +197,8 @@ class ServiceType:
     def __str__(self) -> str:
         return self.name
 
-    def __repr__(self) -> str:
-        return self.name
-
     def __eq__(self, other: object) -> bool:
-        if isinstance(other, ServiceType):
+        if isinstance(other, Service):
             return self.uid == other.uid
         raise TypeError(f"Expected ServiceType but was {type(object)}")
 
@@ -216,23 +209,23 @@ class Services(Component):
 
     Attributes
     ----------
-    services: Set[ServiceType]
+    services: Set[Service]
         The set of services offered by the business
     """
 
     __slots__ = "services"
 
-    def __init__(self, services: Set[ServiceType]) -> None:
+    def __init__(self, services: Set[Service]) -> None:
         super().__init__()
-        self.services: Set[ServiceType] = services
+        self.services: Set[Service] = services
 
-    def has_service(self, service: ServiceType) -> bool:
+    def has_service(self, service: Service) -> bool:
         """
         Check if a business offers a service
 
         Parameters
         ----------
-        service: ServiceType
+        service: Service
             The service to check for
 
         Returns
@@ -277,8 +270,6 @@ class Business(Component):
         Occupation type names mapped to the number of open positions for that type
     owner: Optional[int]
         The GameObject ID of the character that owns this business
-    owner_type: Optional[str]
-        The occupation type name of the owner of this business
     years_in_business: float
         The number of years this business was/is active in the simulation
     """
@@ -289,7 +280,6 @@ class Business(Component):
         "_employees",
         "_open_positions",
         "owner",
-        "owner_type",
         "years_in_business",
     )
 
@@ -297,7 +287,6 @@ class Business(Component):
         self,
         config: BusinessConfig,
         name: str,
-        owner_type: Optional[str] = None,
         owner: Optional[int] = None,
         open_positions: Optional[Dict[str, int]] = None,
         years_in_business: float = 0.0,
@@ -305,7 +294,6 @@ class Business(Component):
         super().__init__()
         self.config: BusinessConfig = config
         self.name: str = name
-        self.owner_type: Optional[str] = owner_type
         self._open_positions: Dict[str, int] = open_positions if open_positions else {}
         self._employees: Dict[int, str] = {}
         self.owner: Optional[int] = owner
@@ -327,7 +315,7 @@ class Business(Component):
 
     def needs_owner(self) -> bool:
         """Returns True if this business needs to hire an owner"""
-        return self.owner is None and self.owner_type is not None
+        return self.owner is None and self.config.owner_type is not None
 
     def get_open_positions(self) -> List[str]:
         """Returns all the open job titles"""
@@ -383,23 +371,22 @@ class OccupationType:
 
     name: str
     level: int = 1
-    description: str = ""
-    precondition: Optional[Callable[[World, GameObject], bool]] = None
+    precondition: Optional[Callable[[GameObject], bool]] = None
 
 
-@dataclass
 class BusinessOwner(StatusComponent):
+    """Marks a character as owning a business"""
 
-    created: str
-    business: int
+    def __init__(self, business: int) -> None:
+        super().__init__()
+        self.business: int = business
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"business": self.business}
+        return {**super().to_dict(), "business": self.business}
 
 
 class Unemployed(StatusComponent):
-    """
-    Status component that marks a character as being able to work but lacking a job
+    """Marks a character as being able to work but lacking a job
 
     Attributes
     ----------
@@ -409,8 +396,8 @@ class Unemployed(StatusComponent):
 
     __slots__ = "years"
 
-    def __init__(self, created: str, years: float = 0.0) -> None:
-        super().__init__(created)
+    def __init__(self, years: float = 0.0) -> None:
+        super().__init__()
         self.years: float = years
 
     def to_dict(self) -> Dict[str, Any]:

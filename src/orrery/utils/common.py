@@ -1,9 +1,10 @@
 import json
+import math
 import random
-from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar
+from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import orrery.events
-from orrery.components.activity import ActivityInstance, LikedActivities
+from orrery.components.activity import Activities, Activity
 from orrery.components.business import (
     BossOf,
     Business,
@@ -30,20 +31,20 @@ from orrery.components.shared import (
     Active,
     Building,
     CurrentSettlement,
+    FrequentedBy,
     FrequentedLocations,
     Location,
     Position2D,
 )
-from orrery.components.virtues import Virtues
 from orrery.content_management import (
     ActivityLibrary,
-    ActivityToVirtueMap,
+    BusinessLibrary,
     CharacterLibrary,
     LocationBiasRuleLibrary,
     ServiceLibrary,
 )
 from orrery.core.ecs import GameObject, World
-from orrery.core.event import EventHandler
+from orrery.core.event import EventBuffer
 from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
 from orrery.prefabs import BusinessPrefab, CharacterPrefab, ResidencePrefab
@@ -56,7 +57,7 @@ from orrery.utils.relationships import (
 from orrery.utils.statuses import add_status, has_status, remove_status
 
 
-def create_settlement(
+def spawn_settlement(
     world: World,
     settlement_name: str = "#settlement_name#",
     settlement_size: Tuple[int, int] = (5, 5),
@@ -85,7 +86,7 @@ def create_settlement(
         name=generated_name,
     )
 
-    world.get_resource(EventHandler).emit(
+    world.get_resource(EventBuffer).append(
         orrery.events.NewSettlementEvent(
             date=world.get_resource(SimDateTime), settlement=settlement
         )
@@ -126,9 +127,9 @@ def remove_location_from_settlement(
     settlement.get_component(Settlement).locations.remove(location.uid)
 
 
-def create_character(
+def spawn_character(
     world: World,
-    prefab: CharacterPrefab,
+    prefab: Union[str, CharacterPrefab],
     first_name: Optional[str] = None,
     last_name: Optional[str] = None,
     age: Optional[int] = None,
@@ -159,7 +160,12 @@ def create_character(
     GameObject
         The newly constructed character
     """
-    character = prefab.spawn(world)
+    if isinstance(prefab, str):
+        character_library = world.get_resource(CharacterLibrary)
+        character_prefab = character_library.get(prefab)
+        character = character_prefab.spawn(world)
+    else:
+        character = prefab.spawn(world)
 
     if first_name:
         character.get_component(GameCharacter).first_name = first_name
@@ -176,7 +182,9 @@ def create_character(
     if gender:
         character.get_component(GameCharacter).gender = gender
 
-    world.get_resource(EventHandler).emit(
+    character.name = character.get_component(GameCharacter).full_name
+
+    world.get_resource(EventBuffer).append(
         orrery.events.NewCharacterEvent(
             date=world.get_resource(SimDateTime), character=character
         )
@@ -195,15 +203,13 @@ def add_character_to_settlement(character: GameObject, settlement: GameObject) -
     settlement: GameObject
         The settlement to add the character to
     """
-    current_date = character.world.get_resource(SimDateTime).to_iso_str()
-    set_liked_activities(character.world, character)
-    set_frequented_locations(character.world, character, settlement)
+    set_frequented_locations(character, settlement)
 
-    add_status(character, Active(current_date))
+    add_status(character, Active())
 
     character.add_component(CurrentSettlement(settlement.uid))
 
-    character.world.get_resource(EventHandler).emit(
+    character.world.get_resource(EventBuffer).append(
         orrery.events.JoinSettlementEvent(
             character.world.get_resource(SimDateTime), settlement, character
         )
@@ -223,12 +229,11 @@ def remove_character_from_settlement(
         The settlement to add the character to
     """
 
-    set_liked_activities(character.world, character)
-    set_frequented_locations(character.world, character, settlement)
+    set_frequented_locations(character, settlement)
 
     remove_status(character, Active)
 
-    character.world.get_resource(EventHandler).emit(
+    character.world.get_resource(EventBuffer).append(
         orrery.events.LeaveSettlementEvent(
             character.world.get_resource(SimDateTime), settlement, character
         )
@@ -241,7 +246,7 @@ def create_residence(
 ) -> GameObject:
     residence = prefab.spawn(world)
 
-    world.get_resource(EventHandler).emit(
+    world.get_resource(EventBuffer).append(
         orrery.events.NewResidenceEvent(
             date=world.get_resource(SimDateTime), residence=residence
         )
@@ -253,7 +258,6 @@ def create_residence(
 def add_residence(
     residence: GameObject, settlement: GameObject, lot: int
 ) -> GameObject:
-    current_date = residence.world.get_resource(SimDateTime).to_iso_str()
     settlement_comp = settlement.get_component(Settlement)
 
     # Reserve the space
@@ -269,8 +273,8 @@ def add_residence(
         Building(building_type="residential", lot=lot, settlement=settlement.uid)
     )
 
-    add_status(residence, Vacant(current_date))
-    add_status(residence, Active(current_date))
+    add_status(residence, Vacant())
+    add_status(residence, Active())
 
     return residence
 
@@ -316,7 +320,6 @@ def set_residence(
     """
     Moves a character into a new permanent residence
     """
-    current_date = world.get_resource(SimDateTime).to_iso_str()
 
     if resident := character.try_component(Resident):
         # This character is currently a resident at another location
@@ -336,7 +339,7 @@ def set_residence(
         former_settlement.population -= 1
 
         if len(former_residence_comp.residents) <= 0:
-            add_status(former_residence, Vacant(current_date))
+            add_status(former_residence, Vacant())
 
         character.remove_component(CurrentSettlement)
 
@@ -355,7 +358,7 @@ def set_residence(
 
     add_status(
         character,
-        Resident(created=current_date, residence=new_residence.uid),
+        Resident(new_residence.uid),
     )
 
     character.add_component(CurrentSettlement(new_settlement.uid))
@@ -408,7 +411,7 @@ def depart_town(world: World, character: GameObject, reason: str = "") -> None:
             set_residence(world, resident, None)
             departing_characters.append(resident)
 
-    world.get_resource(EventHandler).emit(
+    world.get_resource(EventBuffer).append(
         orrery.events.DepartEvent(
             date=world.get_resource(SimDateTime),
             characters=departing_characters,
@@ -436,17 +439,25 @@ def set_business_name(business: GameObject, name: str) -> None:
     business.get_component(Business).name = name
 
 
-def create_business(
+def spawn_business(
     world: World,
-    prefab: BusinessPrefab,
-    name: Optional[str] = None,
+    prefab: Union[str, BusinessPrefab],
+    name: str = "",
 ) -> GameObject:
-    business = prefab.spawn(world)
+
+    if isinstance(prefab, str):
+        business_library = world.get_resource(BusinessLibrary)
+        business_prefab = business_library.get(prefab)
+        business = business_prefab.spawn(world)
+    else:
+        business = prefab.spawn(world)
 
     if name:
         business.get_component(Business).name = name
 
-    world.get_resource(EventHandler).emit(
+    business.name = business.get_component(Business).name
+
+    world.get_resource(EventBuffer).append(
         orrery.events.NewBusinessEvent(
             date=world.get_resource(SimDateTime), business=business
         )
@@ -455,7 +466,7 @@ def create_business(
     return business
 
 
-def startup_business(
+def add_business_to_settlement(
     business: GameObject,
     settlement: GameObject,
     lot_id: Optional[int] = None,
@@ -471,7 +482,6 @@ def startup_business(
     lot_id: int, optional
         The lot to place the business on (defaults to None)
     """
-    current_date = settlement.world.get_resource(SimDateTime).to_iso_str()
 
     settlement_comp = settlement.get_component(Settlement)
 
@@ -499,8 +509,8 @@ def startup_business(
     )
 
     # Mark the business as an active GameObject
-    add_status(business, Active(current_date))
-    add_status(business, OpenForBusiness(current_date))
+    add_status(business, Active())
+    add_status(business, OpenForBusiness())
 
     # Add the business as a location within the town if it has a location component
     if business.has_component(Location):
@@ -529,23 +539,25 @@ def shutdown_business(business: GameObject) -> None:
 
     # Update the business as no longer active
     remove_status(business, OpenForBusiness)
-    add_status(business, ClosedForBusiness(date.to_iso_str()))
+    add_status(business, ClosedForBusiness())
 
     # Remove all the employees
     for employee in business_comp.get_employees():
-        end_job(world.get_gameobject(employee), reason=event.name)
+        end_job(world.get_gameobject(employee), reason=event.get_type())
 
     # Remove the owner if applicable
     if business_comp.owner is not None:
-        end_job(world.get_gameobject(business_comp.owner), reason=event.name)
+        end_job(world.get_gameobject(business_comp.owner), reason=event.get_type())
 
-    location = business.get_component(Location)
+    frequented_by_comp = business.get_component(FrequentedBy)
 
     # Remove this location from the places that characters frequent
-    for frequenter_id in location.frequented_by:
+    for frequenter_id in frequented_by_comp:
         world.get_gameobject(frequenter_id).get_component(
             FrequentedLocations
         ).locations.remove(business.uid)
+
+    frequented_by_comp.clear()
 
     # Decrement the number of this type
     settlement.business_counts[business_comp.config.name] -= 1
@@ -563,7 +575,7 @@ def shutdown_business(business: GameObject) -> None:
     business.remove_component(Location)
     remove_status(business, Active)
 
-    world.get_resource(EventHandler).emit(event)
+    world.get_resource(EventBuffer).append(event)
 
 
 def end_job(
@@ -580,7 +592,6 @@ def end_job(
         The reason for them leaving their job (defaults to "")
     """
     world = character.world
-    current_date = world.get_resource(SimDateTime).to_iso_str()
     occupation = character.get_component(Occupation)
     business = world.get_gameobject(occupation.business)
     business_comp = business.get_component(Business)
@@ -623,7 +634,7 @@ def end_job(
 
     character.remove_component(Occupation)
 
-    add_status(character, Unemployed(current_date))
+    add_status(character, Unemployed())
 
     # Update the former employee's work history
     if not character.has_component(WorkHistory):
@@ -637,7 +648,7 @@ def end_job(
     )
 
     # Emit the event
-    world.get_resource(EventHandler).emit(
+    world.get_resource(EventBuffer).append(
         orrery.events.EndJobEvent(
             date=world.get_resource(SimDateTime),
             character=character,
@@ -675,7 +686,6 @@ def start_job(
         and the business owner is not None
     """
     world = character.world
-    current_date = world.get_resource(SimDateTime).to_iso_str()
     business_comp = business.get_component(Business)
     occupation = Occupation(occupation_name, business.uid)
 
@@ -701,14 +711,12 @@ def start_job(
             )
 
         business_comp.set_owner(character.uid)
-        add_status(
-            character, BusinessOwner(business=business.uid, created=current_date)
-        )
+        add_status(character, BusinessOwner(business=business.uid))
 
         for employee_id in business.get_component(Business).get_employees():
             employee = world.get_gameobject(employee_id)
-            add_relationship_status(character, employee, BossOf(current_date))
-            add_relationship_status(employee, character, EmployeeOf(current_date))
+            add_relationship_status(character, employee, BossOf())
+            add_relationship_status(employee, character, EmployeeOf())
             get_relationship(character, employee).interaction_score += 1
             get_relationship(employee, character).interaction_score += 1
 
@@ -716,8 +724,8 @@ def start_job(
         # Update boss/employee relationships if needed
         if business_comp.owner is not None:
             owner = world.get_gameobject(business_comp.owner)
-            add_relationship_status(owner, character, BossOf(current_date))
-            add_relationship_status(character, owner, EmployeeOf(current_date))
+            add_relationship_status(owner, character, BossOf())
+            add_relationship_status(character, owner, EmployeeOf())
 
             get_relationship(character, owner).interaction_score += 1
             get_relationship(owner, character).interaction_score += 1
@@ -725,14 +733,14 @@ def start_job(
         # Update employee/employee relationships
         for employee_id in business.get_component(Business).get_employees():
             employee = world.get_gameobject(employee_id)
-            add_relationship_status(character, employee, CoworkerOf(current_date))
-            add_relationship_status(employee, character, CoworkerOf(current_date))
+            add_relationship_status(character, employee, CoworkerOf())
+            add_relationship_status(employee, character, CoworkerOf())
             get_relationship(character, employee).interaction_score += 1
             get_relationship(employee, character).interaction_score += 1
 
         business_comp.add_employee(character.uid, occupation.occupation_type)
 
-    character.world.get_resource(EventHandler).emit(
+    character.world.get_resource(EventBuffer).append(
         orrery.events.StartJobEvent(
             character.world.get_resource(SimDateTime),
             business=business,
@@ -742,7 +750,7 @@ def start_job(
     )
 
 
-def find_places_with_services(world: World, *services: str) -> List[int]:
+def get_places_with_services(world: World, *services: str) -> List[int]:
     """
     Get all the active locations with the given services
 
@@ -773,46 +781,7 @@ def find_places_with_services(world: World, *services: str) -> List[int]:
 #######################################
 
 
-def set_liked_activities(
-    world: World, character: GameObject, max_activities: int = 3
-) -> None:
-    """
-    Determine the activities a character likes to do
-
-    Parameters
-    ----------
-    world: World
-        The World instance of the simulation
-    character: GameObject
-        The character to set liked activities for
-    max_activities: int
-        The maximum number of activities to select
-    """
-
-    scores: List[Tuple[float, ActivityInstance]] = []
-
-    activities_to_virtues = world.get_resource(ActivityToVirtueMap)
-
-    virtue_vect = character.get_component(Virtues)
-
-    for activity in world.get_resource(ActivityLibrary):
-        activity_virtues = activities_to_virtues.mappings.get(activity, Virtues())
-        score = virtue_vect.compatibility(activity_virtues)
-        scores.append((score, activity))
-
-    liked_activities = LikedActivities(
-        set(
-            [
-                activity_score[1]
-                for activity_score in sorted(scores, key=lambda s: s[0], reverse=True)
-            ][:max_activities]
-        )
-    )
-
-    character.add_component(liked_activities)
-
-
-def find_places_with_activities(
+def get_places_with_activities(
     world: World, settlement: GameObject, *activities: str
 ) -> List[int]:
     """
@@ -838,11 +807,11 @@ def find_places_with_activities(
 
     settlement_comp = settlement.get_component(Settlement)
 
-    activity_instances = [activity_library.get(a, create_new=False) for a in activities]
+    activity_instances = [activity_library.get(a) for a in activities]
 
     for location_id in settlement_comp.locations:
-        location_activities = (
-            world.get_gameobject(location_id).get_component(Location).activities
+        location_activities = world.get_gameobject(location_id).get_component(
+            Activities
         )
         if all([a in location_activities for a in activity_instances]):
             matches.append(location_id)
@@ -850,7 +819,7 @@ def find_places_with_activities(
     return matches
 
 
-def find_places_with_any_activities(
+def get_places_with_any_activities(
     world: World, settlement: GameObject, *activities: str
 ) -> List[int]:
     """
@@ -872,9 +841,9 @@ def find_places_with_any_activities(
     """
     activity_library = world.get_resource(ActivityLibrary)
 
-    activity_instances = [activity_library.get(a, create_new=False) for a in activities]
+    activity_instances = [activity_library.get(a) for a in activities]
 
-    def score_loc(act_list: Iterable[ActivityInstance]) -> int:
+    def score_loc(act_list: Iterable[Activity]) -> int:
         location_score: int = 0
         for activity in activity_instances:
             if activity in act_list:
@@ -886,13 +855,31 @@ def find_places_with_any_activities(
     settlement_comp = settlement.get_component(Settlement)
 
     for location_id in settlement_comp.locations:
-        score = score_loc(
-            world.get_gameobject(location_id).get_component(Location).activities
-        )
+        score = score_loc(world.get_gameobject(location_id).get_component(Activities))
         if score > 0:
             matches.append((score, location_id))
 
     return [match[1] for match in sorted(matches, key=lambda m: m[0], reverse=True)]
+
+
+def location_has_activities(location: GameObject, *activities: str) -> bool:
+    """Check if the location has the given activities
+
+    Parameters
+    ----------
+    location: GameObject
+        The location to check
+    *activities: str
+        Activity names
+
+    Return
+    ------
+    bool
+        Return True if the activities are offered by the location
+    """
+    activity_library = location.world.get_resource(ActivityLibrary)
+    activities_comp = location.get_component(Activities)
+    return all([activity_library.get(a) in activities_comp for a in activities])
 
 
 def score_location(character: GameObject, location: GameObject) -> int:
@@ -901,18 +888,38 @@ def score_location(character: GameObject, location: GameObject) -> int:
 
     score: int = 0
 
-    for rule in rules:
-        if rule.check_location(location) is False:
-            continue
-        if rule.check_character(character) is False:
-            continue
-        score += rule.evaluate(character, location)
+    for rule_info in rules:
+        if modifier := rule_info.rule(character, location):
+            score += modifier
 
     return score
 
 
+def calculate_location_probabilities(
+    character: GameObject, locations: List[GameObject]
+) -> List[Tuple[float, GameObject]]:
+    """Calculate the probability distribution for a character and set of locations"""
+
+    score_total: int = 0
+    scores: List[Tuple[float, GameObject]] = []
+
+    # Score each location
+    for loc in locations:
+        score = score_location(character, loc)
+        score_total += math.exp(score)
+        scores.append((math.exp(score), loc))
+
+    # Perform softmax
+    probabilities = [(score / score_total, loc) for score, loc in scores]
+
+    # Sort
+    probabilities.sort(key=lambda pair: pair[0], reverse=True)
+
+    return probabilities
+
+
 def set_frequented_locations(
-    world: World, character: GameObject, settlement: GameObject, max_locations: int = 3
+    character: GameObject, settlement: GameObject, max_locations: int = 3
 ) -> None:
     """
     Set what locations a character frequents based on the locations within
@@ -920,10 +927,8 @@ def set_frequented_locations(
 
     Parameters
     ----------
-    world: World
-        The world instance of the simulation
     character: GameObject
-        The character oto set frequented locations for
+        The character to set frequented locations for
     settlement: GameObject
         The settlement to sample frequented locations from
     max_locations: int
@@ -933,8 +938,8 @@ def set_frequented_locations(
 
     # For all locations available in the settlement
     locations = [
-        world.get_gameobject(guid)
-        for guid, (_, current_settlement) in world.get_components(
+        character.world.get_gameobject(guid)
+        for guid, (_, current_settlement) in character.world.get_components(
             (Location, CurrentSettlement)
         )
         if current_settlement.settlement == settlement.uid
@@ -951,7 +956,7 @@ def set_frequented_locations(
     character.add_component(FrequentedLocations(set(selected_locations)))
 
     for loc_id in selected_locations:
-        world.get_gameobject(loc_id).get_component(Location).frequented_by.add(
+        character.world.get_gameobject(loc_id).get_component(FrequentedBy).add(
             character.uid
         )
 
@@ -966,12 +971,15 @@ def clear_frequented_locations(character: GameObject) -> None:
         The GameObject to remove as a frequenter
     """
     world = character.world
-    if frequented_locations := character.try_component(FrequentedLocations):
-        for location_id in frequented_locations.locations:
-            location = world.get_gameobject(location_id).get_component(Location)
-            location.frequented_by.remove(character.uid)
-        frequented_locations.locations.clear()
-        character.remove_component(FrequentedLocations)
+    frequented_locations = character.get_component(FrequentedLocations)
+
+    for location_id in frequented_locations.locations:
+        frequented_by_comp = world.get_gameobject(location_id).get_component(
+            FrequentedBy
+        )
+        frequented_by_comp.remove(character.uid)
+
+    frequented_locations.locations.clear()
 
 
 #######################################

@@ -80,7 +80,7 @@ if __name__ == "__main__":
         "wealth", ("uid", "name", "timestamp", "money")
     )
 
-    sim.world.spawn_gameobject([Actor("Alice"), Money(0), Job("WacArnold's", 32_000)])
+    sim.world.spawn_gameobject([Actor("Alice"), Money(0), Job("WacArnold's", 20_000)])
     sim.world.spawn_gameobject([Actor("Kieth"), Money(0), Job("McDonald's", 32_500)])
 
     for _ in range(27):

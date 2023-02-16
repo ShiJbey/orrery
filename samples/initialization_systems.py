@@ -6,11 +6,11 @@ the first timestep.
 """
 from typing import Any
 
-from orrery import ISystem, Orrery
+from orrery import ISystem, Orrery, OrreryConfig
 from orrery.components import Settlement
-from orrery.utils.common import create_settlement
+from orrery.utils.common import spawn_settlement
 
-sim = Orrery()
+sim = Orrery(OrreryConfig(verbose=False))
 
 
 @sim.system()
@@ -19,13 +19,13 @@ class InitializeMajorSettlements(ISystem):
 
     def process(self, *args: Any, **kwargs: Any) -> None:
         print("Setting up settlements...")
-        create_settlement(self.world, "Winterfell")
-        create_settlement(self.world, "The Cale of Arryn")
-        create_settlement(self.world, "Casterly Rock")
-        create_settlement(self.world, "King's Landing")
-        create_settlement(self.world, "Highgarden")
-        create_settlement(self.world, "Braavos")
-        create_settlement(self.world, "Pentos")
+        spawn_settlement(self.world, "Winterfell")
+        spawn_settlement(self.world, "The Vale of Arryn")
+        spawn_settlement(self.world, "Casterly Rock")
+        spawn_settlement(self.world, "King's Landing")
+        spawn_settlement(self.world, "Highgarden")
+        spawn_settlement(self.world, "Braavos")
+        spawn_settlement(self.world, "Pentos")
 
 
 def main():

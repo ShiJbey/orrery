@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from orrery import Component, GameObject, ISystem, Orrery, OrreryConfig, SimDateTime
-from orrery.core.event import Event, EventHandler, RoleInstance
+from orrery.core.event import Event, EventBuffer
 
 sim = Orrery(OrreryConfig(verbose=False))
 
@@ -71,7 +71,7 @@ class BecomeMillionaireEventSystem(ISystem):
         for guid, money in self.world.get_component(Money):
             character = self.world.get_gameobject(guid)
             if money.amount > 1_000_000:
-                self.world.get_resource(EventHandler).emit(
+                self.world.get_resource(EventBuffer).append(
                     BecomeMillionaireEvent(
                         self.world.get_resource(SimDateTime), character
                     )
@@ -80,11 +80,8 @@ class BecomeMillionaireEventSystem(ISystem):
 
 class BecomeMillionaireEvent(Event):
     def __init__(self, date: SimDateTime, character: GameObject) -> None:
-        super().__init__(
-            name="become-millionaire",
-            timestamp=date.to_iso_str(),
-            roles=[RoleInstance("Character", character.uid)],
-        )
+        super().__init__(date)
+        self.character: GameObject = character
 
 
 @sim.system()
@@ -93,13 +90,12 @@ class OnBecomeMillionaireSystem(ISystem):
     sys_group = "event-listeners"
 
     def process(self, *args: Any, **kwargs: Any) -> None:
-        for event in self.world.get_resource(EventHandler).iter_events_of_type(
+        for event in self.world.get_resource(EventBuffer).iter_events_of_type(
             BecomeMillionaireEvent
         ):
-            character = self.world.get_gameobject(event["Character"])
-            actor = character.get_component(Actor)
+            actor = event.character.get_component(Actor)
             print(f"{actor.name} became a millionaire. Here comes the IRS")
-            character.get_component(Money).amount -= 750_000
+            event.character.get_component(Money).amount -= 750_000
 
 
 def main():

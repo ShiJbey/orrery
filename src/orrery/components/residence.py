@@ -17,19 +17,13 @@ class Residence(Component):
     ----------
     owners: OrderedSet[int]
         Characters that currently own the residence
-    former_owners: OrderedSet[int]
-        Characters who owned the residence in the past
     residents: OrderedSet[int]
         All the characters who live at the residence (including non-owners)
-    former_residents: OrderedSet[int]
-        Characters who lived at this residence in the past
     """
 
     __slots__ = (
         "owners",
-        "former_owners",
         "residents",
-        "former_residents",
         "config",
     )
 
@@ -37,16 +31,12 @@ class Residence(Component):
         super().__init__()
         self.config: ResidenceConfig = config
         self.owners: OrderedSet[int] = OrderedSet([])
-        self.former_owners: OrderedSet[int] = OrderedSet([])
         self.residents: OrderedSet[int] = OrderedSet([])
-        self.former_residents: OrderedSet[int] = OrderedSet([])
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "owners": list(self.owners),
-            "former_owners": list(self.former_owners),
             "residents": list(self.residents),
-            "former_residents": list(self.former_residents),
         }
 
     def add_owner(self, owner: int) -> None:
@@ -68,7 +58,6 @@ class Residence(Component):
     def remove_resident(self, resident: int) -> None:
         """Remove a tenant rom this residence"""
         self.residents.remove(resident)
-        self.former_residents.add(resident)
 
     def is_resident(self, character: int) -> bool:
         """Return True if the given entity is a resident"""
@@ -87,8 +76,8 @@ class Resident(StatusComponent):
 
     __slots__ = "residence"
 
-    def __init__(self, created: str, residence: int) -> None:
-        super().__init__(created)
+    def __init__(self, residence: int) -> None:
+        super().__init__()
         self.residence: int = residence
 
     def to_dict(self) -> Dict[str, Any]:

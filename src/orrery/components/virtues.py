@@ -1,7 +1,8 @@
 """
 virtues.py
 
-Virtues are the most basic way that character personalities are represented.
+Virtues are a built-in personality representation.
+
 They are used in the simulation to determine how compatible characters are,
 thus affecting how their relationship will evolve over time. Virtues may also
 be used to determine how likely a character is to engage in a given event/action.
@@ -9,15 +10,12 @@ be used to determine how likely a character is to engage in a given event/action
 from __future__ import annotations
 
 import enum
-import logging
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 import numpy.typing as npt
 
 from orrery.core.ecs import Component
-
-logger = logging.getLogger(__name__)
 
 
 class VirtueType(enum.IntEnum):

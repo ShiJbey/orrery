@@ -210,7 +210,7 @@ class GameCharacter(Component):
         }
 
     def __repr__(self) -> str:
-        return "{}({}, age={}, life_stage={}, gender={})".format(
+        return "{}(name={}, age={}, life_stage={}, gender={})".format(
             self.__class__.__name__,
             self.full_name,
             int(self.age),
@@ -236,8 +236,8 @@ class Pregnant(StatusComponent):
 
     __slots__ = "partner_id", "due_date"
 
-    def __init__(self, created: str, partner_id: int, due_date: SimDateTime) -> None:
-        super().__init__(created)
+    def __init__(self, partner_id: int, due_date: SimDateTime) -> None:
+        super().__init__()
         self.partner_id: int = partner_id
         self.due_date: SimDateTime = due_date
 
@@ -266,8 +266,8 @@ class Married(StatusComponent):
 
     __slots__ = "years"
 
-    def __init__(self, created: str, years: float = 0.0) -> None:
-        super().__init__(created)
+    def __init__(self, years: float = 0.0) -> None:
+        super().__init__()
         self.years: float = years
 
     def to_dict(self) -> Dict[str, Any]:
@@ -279,8 +279,8 @@ class Dating(StatusComponent):
 
     __slots__ = "years"
 
-    def __init__(self, created: str, years: float = 0.0) -> None:
-        super().__init__(created)
+    def __init__(self, years: float = 0.0) -> None:
+        super().__init__()
         self.years: float = years
 
     def to_dict(self) -> Dict[str, Any]:

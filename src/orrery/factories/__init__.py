@@ -5,16 +5,20 @@ This package contains component definitions of factories that construct built-in
 components.
 """
 
-from .activity import *
-from .business import *
-from .character import *
-from .shared import *
-from .virtues import *
+from .activity import ActivitiesFactory
+from .ai import AIComponentFactory
+from .business import BusinessFactory, ServicesFactory
+from .character import GameCharacterFactory
+from .shared import FrequentedLocationsFactory, LocationFactory
+from .virtues import VirtuesFactory
 
 __all__ = [
-    "activity",
-    "business",
-    "character",
-    "shared",
-    "virtues",
+    "ActivitiesFactory",
+    "AIComponentFactory",
+    "BusinessFactory",
+    "ServicesFactory",
+    "GameCharacterFactory",
+    "FrequentedLocationsFactory",
+    "LocationFactory",
+    "VirtuesFactory",
 ]

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from orrery import Component, GameObject, ISystem, Orrery, OrreryConfig, SimDateTime
-from orrery.core.event import Event, EventHandler, RoleInstance
+from orrery.core.event import Event, EventBuffer, RoleInstance
 from orrery.core.status import StatusComponent, StatusManager
 from orrery.utils.statuses import add_status, has_status
 
@@ -74,7 +74,7 @@ class BecomeMillionaireEventSystem(ISystem):
         for guid, money in self.world.get_component(Money):
             character = self.world.get_gameobject(guid)
             if money.amount > 1_000_000:
-                self.world.get_resource(EventHandler).emit(
+                self.world.get_resource(EventBuffer).append(
                     BecomeMillionaireEvent(
                         self.world.get_resource(SimDateTime), character
                     )
@@ -97,7 +97,7 @@ class OnBecomeMillionaireSystem(ISystem):
 
     def process(self, *args: Any, **kwargs: Any) -> None:
         date = self.world.get_resource(SimDateTime)
-        for event in self.world.get_resource(EventHandler).iter_events_of_type(
+        for event in self.world.get_resource(EventBuffer).iter_events_of_type(
             BecomeMillionaireEvent
         ):
             character = self.world.get_gameobject(event["Character"])

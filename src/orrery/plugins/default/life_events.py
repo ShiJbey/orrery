@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import random
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
-from orrery.components.business import Business, Occupation, OpenForBusiness
+from orrery import OrreryConfig
+from orrery.components.business import (
+    Business,
+    InTheWorkforce,
+    Occupation,
+    OpenForBusiness,
+)
 from orrery.components.character import (
     CanGetPregnant,
     ChildOf,
@@ -20,14 +26,19 @@ from orrery.components.character import (
 from orrery.components.relationship import Relationship
 from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.shared import Active
-from orrery.content_management import LifeEventLibrary
+from orrery.content_management import (
+    BusinessLibrary,
+    LifeEventLibrary,
+    OccupationTypeLibrary,
+)
 from orrery.core.ecs import GameObject, World
 from orrery.core.ecs.query import QB
-from orrery.core.event import EventHandler
-from orrery.core.life_event import LifeEvent, LifeEventConfig, LifeEventInstance
+from orrery.core.event import EventBuffer
+from orrery.core.life_event import LifeEvent
 from orrery.core.time import SimDateTime
 from orrery.events import DeathEvent
 from orrery.orrery import Orrery, PluginInfo
+from orrery.prefabs import BusinessPrefab
 from orrery.utils.common import depart_town, end_job, set_residence, shutdown_business
 from orrery.utils.query import (
     are_related,
@@ -47,236 +58,271 @@ from orrery.utils.statuses import add_status, remove_status
 
 
 class StartDatingLifeEvent(LifeEvent):
-    def __init__(self) -> None:
-        super().__init__(
-            name="StartDating",
-            initiator_role="Initiator",
-            role_query=QB.query(
-                ("Initiator", "Other"),
-                QB.with_((GameCharacter, Active), "Initiator"),
-                QB.filter_(is_single, "Initiator"),
-                with_relationship("Initiator", "Other", "?relationship_a"),
-                QB.with_(Active, "Other"),
-                QB.filter_(is_single, "Other"),
+
+    optional = True
+    initiator = "Initiator"
+
+    def get_priority(self) -> float:
+        return 1
+
+    def execute(self) -> None:
+        initiator = self["Initiator"]
+        other = self["Other"]
+
+        add_relationship_status(initiator, other, Dating())
+        add_relationship_status(other, initiator, Dating())
+
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+        query = QB.query(
+            ("Initiator", "Other"),
+            QB.with_((GameCharacter, Active), "Initiator"),
+            QB.filter_(is_single, "Initiator"),
+            with_relationship("Initiator", "Other", "?relationship_a"),
+            QB.with_(Active, "Other"),
+            QB.filter_(is_single, "Other"),
+            QB.filter_(
+                lambda g: g.get_component(Relationship)["Romance"].get_value()
+                >= g.world.get_resource(OrreryConfig).settings.get(
+                    "dating_romance_threshold", 25
+                ),
+                "?relationship_a",
+            ),
+            with_relationship("Other", "Initiator", "?relationship_b"),
+            QB.filter_(
+                lambda g: g.get_component(Relationship)["Romance"].get_value()
+                >= g.world.get_resource(OrreryConfig).settings.get(
+                    "dating_romance_threshold", 25
+                ),
+                "?relationship_b",
+            ),
+            QB.not_(
                 QB.filter_(
-                    lambda g: g.get_component(Relationship)["Romance"]
-                    >= g.world.get_resource(LifeEventConfig).get(
-                        "dating_romance_threshold", 0.7
-                    ),
-                    "?relationship_a",
-                ),
-                with_relationship("Other", "Initiator", "?relationship_b"),
+                    lambda a, b: a == b,
+                    ("Initiator", "Other"),
+                )
+            ),
+            QB.not_(
                 QB.filter_(
-                    lambda g: g.get_component(Relationship)["Romance"]
-                    >= g.world.get_resource(LifeEventConfig).get(
-                        "dating_romance_threshold", 0.7
-                    ),
-                    "?relationship_b",
-                ),
-                QB.not_(
-                    QB.filter_(
-                        lambda a, b: a == b,
-                        ("Initiator", "Other"),
-                    )
-                ),
-                QB.not_(
-                    QB.filter_(
-                        are_related,
-                        ("Initiator", "Other"),
-                    )
-                ),
-                QB.not_(
-                    QB.or_(
-                        QB.with_(Dating, "?relationship_a"),
-                        QB.with_(Married, "?relationship_a"),
-                        QB.with_(ChildOf, "?relationship_a"),
-                        QB.with_(ParentOf, "?relationship_a"),
-                        QB.with_(SiblingOf, "?relationship_a"),
-                    )
-                ),
-                QB.not_(
-                    QB.or_(
-                        QB.with_(Dating, "?relationship_b"),
-                        QB.with_(Married, "?relationship_b"),
-                        QB.with_(ChildOf, "?relationship_b"),
-                        QB.with_(ParentOf, "?relationship_b"),
-                        QB.with_(SiblingOf, "?relationship_b"),
-                    )
-                ),
+                    are_related,
+                    ("Initiator", "Other"),
+                )
+            ),
+            QB.not_(
+                QB.or_(
+                    QB.with_(Dating, "?relationship_a"),
+                    QB.with_(Married, "?relationship_a"),
+                    QB.with_(ChildOf, "?relationship_a"),
+                    QB.with_(ParentOf, "?relationship_a"),
+                    QB.with_(SiblingOf, "?relationship_a"),
+                )
+            ),
+            QB.not_(
+                QB.or_(
+                    QB.with_(Dating, "?relationship_b"),
+                    QB.with_(Married, "?relationship_b"),
+                    QB.with_(ChildOf, "?relationship_b"),
+                    QB.with_(ParentOf, "?relationship_b"),
+                    QB.with_(SiblingOf, "?relationship_b"),
+                )
             ),
         )
 
-    def get_priority(self, event: LifeEventInstance) -> float:
-        return 1
+        if bindings:
+            results = query.execute(world, {key: g.uid for key, g in bindings.items()})
+        else:
+            results = query.execute(world)
 
-    def execute(self, event: LifeEventInstance) -> None:
-        initiator = event["Initiator"]
-        other = event["Other"]
-
-        current_date = event.world.get_resource(SimDateTime)
-        add_relationship_status(initiator, other, Dating(str(current_date)))
-        add_relationship_status(other, initiator, Dating(str(current_date)))
+        if results:
+            chosen_result = world.get_resource(random.Random).choice(results)
+            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
+            roles = dict(zip(query.get_symbols(), chosen_objects))
+            return cls(world.get_resource(SimDateTime), roles)
 
 
 class DatingBreakUp(LifeEvent):
-    def __init__(self) -> None:
-        super().__init__(
-            name="DatingBreakup",
-            initiator_role="Initiator",
-            role_query=QB.query(
-                ("Initiator", "Other"),
-                with_components("Initiator", (GameCharacter, Active)),
-                with_relationship("Initiator", "Other", "?relationship"),
-                with_statuses("?relationship", Dating),
-                with_components("Other", (GameCharacter, Active)),
-                QB.filter_(
-                    lambda rel: rel.get_component(Relationship)[
-                        "Romance"
-                    ].normalized_value()
-                    <= rel.world.get_resource(LifeEventConfig).get(
-                        "dating_breakup_thresh", 0.4
-                    ),
-                    "?relationship",
-                ),
-            ),
-        )
 
-    def get_priority(self, event: LifeEventInstance) -> float:
+    initiator = "Initiator"
+
+    def get_priority(self) -> float:
         return 1
 
-    def execute(self, event: LifeEventInstance) -> None:
-        initiator = event["Initiator"]
-        other = event["Other"]
+    def execute(self) -> None:
+        initiator = self["Initiator"]
+        other = self["Other"]
 
         remove_relationship_status(initiator, other, Dating)
         remove_relationship_status(other, initiator, Dating)
 
-
-class DivorceLifeEvent(LifeEvent):
-    def __init__(self):
-        super().__init__(
-            name="Divorce",
-            initiator_role="Initiator",
-            role_query=QB.query(
-                ("Initiator", "Other"),
-                QB.with_((GameCharacter, Active), "Initiator"),
-                with_relationship("Initiator", "Other", "?relationship"),
-                QB.with_(Married, "?relationship"),
-                QB.filter_(
-                    lambda rel: rel.get_component(Relationship)["Romance"]
-                    <= rel.world.get_resource(LifeEventConfig).get(
-                        "divorce_romance_thresh", 0.4
-                    ),
-                    "?relationship",
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+        query = QB.query(
+            ("Initiator", "Other"),
+            with_components("Initiator", (GameCharacter, Active)),
+            with_relationship("Initiator", "Other", "?relationship"),
+            with_statuses("?relationship", Dating),
+            with_components("Other", (GameCharacter, Active)),
+            QB.filter_(
+                lambda rel: rel.get_component(Relationship)[
+                    "Romance"
+                ].normalized_value()
+                <= rel.world.get_resource(OrreryConfig).settings.get(
+                    "dating_breakup_thresh", 0.4
                 ),
+                "?relationship",
             ),
         )
 
-    def get_priority(self, event: LifeEventInstance) -> float:
+        if results := query.execute(world, bindings):
+            chosen_result = world.get_resource(random.Random).choice(results)
+            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
+            roles = dict(zip(query.get_symbols(), chosen_objects))
+            return cls(world.get_resource(SimDateTime), roles)
+
+
+class DivorceLifeEvent(LifeEvent):
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+        query = QB.query(
+            ("Initiator", "Other"),
+            QB.with_((GameCharacter, Active), "Initiator"),
+            with_relationship("Initiator", "Other", "?relationship"),
+            QB.with_(Married, "?relationship"),
+            QB.filter_(
+                lambda rel: rel.get_component(Relationship)["Romance"]
+                <= rel.world.get_resource(OrreryConfig).settings.get(
+                    "divorce_romance_thresh", 0.4
+                ),
+                "?relationship",
+            ),
+        )
+
+        if results := query.execute(world, bindings):
+            chosen_result = world.get_resource(random.Random).choice(results)
+            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
+            roles = dict(zip(query.get_symbols(), chosen_objects))
+            return cls(world.get_resource(SimDateTime), roles)
+
+    def get_priority(self) -> float:
         return 0.8
 
-    def execute(self, event: LifeEventInstance):
-        initiator = event["Initiator"]
-        ex_spouse = event["Other"]
+    def execute(self):
+        initiator = self["Initiator"]
+        ex_spouse = self["Other"]
 
         remove_relationship_status(initiator, ex_spouse, Married)
         remove_relationship_status(ex_spouse, initiator, Married)
 
 
 class MarriageLifeEvent(LifeEvent):
-    def __init__(self) -> None:
-        super().__init__(
-            name="GetMarried",
-            initiator_role="Initiator",
-            role_query=QB.query(
-                ("Initiator", "Other"),
-                QB.with_((GameCharacter, Active), "Initiator"),
-                with_relationship("Initiator", "Other", "?relationship_a", Dating),
-                with_relationship("Initiator", "Other", "?relationship_b", Dating),
-                QB.not_(
-                    QB.filter_(
-                        lambda initiator, other: initiator == other,
-                        ("Initiator", "Other"),
-                    )
-                ),
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+        query = QB.query(
+            ("Initiator", "Other"),
+            QB.with_((GameCharacter, Active), "Initiator"),
+            with_relationship("Initiator", "Other", "?relationship_a", Dating),
+            with_relationship("Initiator", "Other", "?relationship_b", Dating),
+            QB.not_(
                 QB.filter_(
-                    lambda initiator, other: get_relationship_status(
-                        initiator, other, Dating
-                    ).years
-                    > 36,
+                    lambda initiator, other: initiator == other,
                     ("Initiator", "Other"),
+                )
+            ),
+            QB.filter_(
+                lambda initiator, other: get_relationship_status(
+                    initiator, other, Dating
+                ).years
+                > 36,
+                ("Initiator", "Other"),
+            ),
+            QB.filter_(
+                lambda rel: rel.get_component(Relationship)[
+                    "Romance"
+                ].normalized_value()
+                >= rel.world.get_resource(OrreryConfig).settings.get(
+                    "marriage_romance_thresh", 0.4
                 ),
-                QB.filter_(
-                    lambda rel: rel.get_component(Relationship)[
-                        "Romance"
-                    ].normalized_value()
-                    >= rel.world.get_resource(LifeEventConfig).get(
-                        "marriage_romance_thresh", 0.4
-                    ),
-                    "?relationship_a",
+                "?relationship_a",
+            ),
+            QB.filter_(
+                lambda rel: rel.get_component(Relationship)[
+                    "Romance"
+                ].normalized_value()
+                >= rel.world.get_resource(OrreryConfig).settings.get(
+                    "marriage_romance_thresh", 0.4
                 ),
-                QB.filter_(
-                    lambda rel: rel.get_component(Relationship)[
-                        "Romance"
-                    ].normalized_value()
-                    >= rel.world.get_resource(LifeEventConfig).get(
-                        "marriage_romance_thresh", 0.4
-                    ),
-                    "?relationship_b",
-                ),
+                "?relationship_b",
             ),
         )
 
-    def get_priority(self, event: LifeEventInstance) -> float:
+        if results := query.execute(world, bindings):
+            chosen_result = world.get_resource(random.Random).choice(results)
+            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
+            roles = dict(zip(query.get_symbols(), chosen_objects))
+            return cls(world.get_resource(SimDateTime), roles)
+
+    def get_priority(self) -> float:
         return 0.8
 
-    def execute(self, event: LifeEventInstance) -> None:
-        current_date = str(event.world.get_resource(SimDateTime))
-        initiator = event["Initiator"]
-        other = event["Other"]
+    def execute(self) -> None:
+        initiator = self["Initiator"]
+        other = self["Other"]
 
         remove_relationship_status(initiator, other, Dating)
         remove_relationship_status(other, initiator, Dating)
-        add_relationship_status(initiator, other, Married(current_date))
-        add_relationship_status(other, initiator, Married(current_date))
+        add_relationship_status(initiator, other, Married())
+        add_relationship_status(other, initiator, Married())
 
 
 class GetPregnantLifeEvent(LifeEvent):
     """Defines an event where two characters stop dating"""
 
-    def __init__(self) -> None:
-        super().__init__(
-            name="GotPregnant",
-            initiator_role="PregnantOne",
-            role_query=QB.query(
-                ("PregnantOne", "Other"),
-                QB.with_((GameCharacter, Active, CanGetPregnant), "PregnantOne"),
-                QB.not_(QB.with_(Pregnant, "PregnantOne")),
-                with_relationship("PregnantOne", "Other", "?relationship"),
-                QB.with_((GameCharacter, Active), "Other"),
-                QB.or_(
-                    QB.with_(Dating, "?relationship"),
-                    QB.with_(Married, "?relationship"),
-                ),
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+
+        query = QB.query(
+            ("PregnantOne", "Other"),
+            QB.with_((GameCharacter, Active, CanGetPregnant), "PregnantOne"),
+            QB.not_(QB.with_(Pregnant, "PregnantOne")),
+            with_relationship("PregnantOne", "Other", "?relationship"),
+            QB.with_((GameCharacter, Active), "Other"),
+            QB.or_(
+                QB.with_(Dating, "?relationship"),
+                QB.with_(Married, "?relationship"),
             ),
         )
 
-    def execute(self, event: LifeEventInstance):
-        current_date = event.world.get_resource(SimDateTime)
+        if results := query.execute(world, bindings):
+            chosen_result = world.get_resource(random.Random).choice(results)
+            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
+            roles = dict(zip(query.get_symbols(), chosen_objects))
+            return cls(world.get_resource(SimDateTime), roles)
+
+    def execute(self):
+        current_date = self["PregnantOne"].world.get_resource(SimDateTime)
         due_date = current_date.copy()
         due_date.increment(months=9)
 
         add_status(
-            event["PregnantOne"],
+            self["PregnantOne"],
             Pregnant(
-                created=str(current_date),
-                partner_id=event["Other"].uid,
+                partner_id=self["Other"].uid,
                 due_date=due_date,
             ),
         )
 
-    def get_priority(self, event: LifeEventInstance):
-        gameobject = event.roles["PregnantOne"]
+    def get_priority(self):
+        gameobject = self["PregnantOne"]
         children = get_relationships_with_statuses(gameobject, ParentOf)
         if len(children) >= 5:
             return 0.0
@@ -285,39 +331,55 @@ class GetPregnantLifeEvent(LifeEvent):
 
 
 class RetireLifeEvent(LifeEvent):
-    def __init__(self) -> None:
-        super().__init__(
-            name="Retire",
-            initiator_role="Retiree",
-            role_query=QB.query(
-                "Retiree",
-                QB.with_((GameCharacter, Active, Occupation), "Retiree"),
-                QB.filter_(life_stage_ge(LifeStage.Senior), "Retiree"),
-                QB.not_(QB.with_(Retired, "Retiree")),
-            ),
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+        query = QB.query(
+            "Retiree",
+            QB.with_((GameCharacter, Active, Occupation), "Retiree"),
+            QB.filter_(life_stage_ge(LifeStage.Senior), "Retiree"),
+            QB.not_(QB.with_(Retired, "Retiree")),
         )
 
-    def get_priority(self, event: LifeEventInstance) -> float:
-        return event.world.get_resource(LifeEventConfig).get("retirement_prb", 0.4)
+        if results := query.execute(world, bindings):
+            chosen_result = world.get_resource(random.Random).choice(results)
+            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
+            roles = dict(zip(query.get_symbols(), chosen_objects))
+            return cls(world.get_resource(SimDateTime), roles)
 
-    def execute(self, event: LifeEventInstance) -> None:
-        date = event.world.get_resource(SimDateTime)
-        retiree = event["Retiree"]
-        add_status(retiree, Retired(date.to_iso_str()))
-        end_job(retiree, event.get_name())
+    def get_priority(self) -> float:
+        return (
+            self["Retiree"]
+            .world.get_resource(OrreryConfig)
+            .settings.get("retirement_prb", 0.4)
+        )
+
+    def execute(self) -> None:
+        retiree = self["Retiree"]
+        add_status(retiree, Retired())
+        end_job(retiree, self.get_type())
 
 
 class FindOwnPlaceLifeEvent(LifeEvent):
-    def __init__(self) -> None:
-        super().__init__(
-            name="FindOwnPlace",
-            initiator_role="Character",
-            role_query=QB.query(
-                "Character", QB.from_(self.bind_potential_mover, "Character")
-            ),
+    initiator = "Character"
+
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+        query = QB.query(
+            "Character",
+            QB.from_(FindOwnPlaceLifeEvent.bind_potential_mover, "Character"),
         )
 
-    def get_priority(self, event: LifeEventInstance) -> float:
+        if results := query.execute(world, bindings):
+            chosen_result = world.get_resource(random.Random).choice(results)
+            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
+            roles = dict(zip(query.get_symbols(), chosen_objects))
+            return cls(world.get_resource(SimDateTime), roles)
+
+    def get_priority(self) -> float:
         return 0.7
 
     @staticmethod
@@ -357,71 +419,150 @@ class FindOwnPlaceLifeEvent(LifeEvent):
             return world.get_resource(random.Random).choice(vacancies)
         return None
 
-    def execute(self, event: LifeEventInstance):
+    def execute(self):
         # Try to find somewhere to live
-        character = event["Character"]
+        character = self["Character"]
         vacant_residence = FindOwnPlaceLifeEvent.choose_random_vacant_residence(
-            event.world
+            character.world
         )
         if vacant_residence:
             # Move into house with any dependent children
-            set_residence(event.world, character, vacant_residence)
+            set_residence(character.world, character, vacant_residence)
 
         # Depart if no housing could be found
         else:
-            depart_town(event.world, character, event.get_name())
+            depart_town(character.world, character, self.get_type())
 
 
 class DieOfOldAgeLifeEvent(LifeEvent):
-    def __init__(self) -> None:
-        super().__init__(
-            name="DieOfOldAge",
-            initiator_role="Deceased",
-            role_query=QB.query(
+    initiator = "Deceased"
+
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+        query = QB.query(
+            "Deceased",
+            QB.with_((GameCharacter, Active), "Deceased"),
+            QB.filter_(
+                lambda gameobject: gameobject.get_component(GameCharacter).age
+                >= gameobject.get_component(GameCharacter).config.aging.lifespan,
                 "Deceased",
-                QB.with_((GameCharacter, Active), "Deceased"),
-                QB.filter_(
-                    lambda gameobject: gameobject.get_component(GameCharacter).age
-                    >= gameobject.get_component(GameCharacter).config.aging.lifespan,
-                    "Deceased",
-                ),
             ),
         )
 
-    def get_priority(self, event: LifeEventInstance) -> float:
+        if results := query.execute(world, bindings):
+            chosen_result = world.get_resource(random.Random).choice(results)
+            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
+            roles = dict(zip(query.get_symbols(), chosen_objects))
+            return cls(world.get_resource(SimDateTime), roles)
+
+    def get_priority(self) -> float:
         return 0.8
 
-    def execute(self, event: LifeEventInstance) -> None:
-        current_date = event.world.get_resource(SimDateTime)
-        deceased = event["Deceased"]
-        add_status(deceased, Deceased(current_date.to_iso_str()))
+    def execute(self) -> None:
+        deceased = self["Deceased"]
+        add_status(deceased, Deceased())
         remove_status(deceased, Active)
-        event.world.get_resource(EventHandler).emit(
-            DeathEvent(event.world.get_resource(SimDateTime), deceased)
+        deceased.world.get_resource(EventBuffer).append(
+            DeathEvent(deceased.world.get_resource(SimDateTime), deceased)
         )
 
 
-class GoOutOfBusinessLifeEvent(LifeEvent):
-    def __init__(self) -> None:
-        super().__init__(
-            name="GoOutOfBusiness",
-            initiator_role="Business",
-            role_query=QB.query(
-                "Business", QB.with_((Business, OpenForBusiness, Active), "Business")
-            ),
-        )
+class GoOutOfBusiness(LifeEvent):
 
-    def execute(self, event: LifeEventInstance):
-        shutdown_business(event["Business"])
+    initiator = "Business"
+    optional = False
 
-    def get_priority(self, event: LifeEventInstance) -> float:
-        business = event.roles["Business"].get_component(Business)
+    def execute(self):
+        shutdown_business(self["Business"])
+
+    def get_priority(self) -> float:
+        business = self["Business"].get_component(Business)
         if business.years_in_business < 5:
             return 0.0
         elif business.years_in_business < business.config.spawning.lifespan:
             return business.years_in_business / business.config.spawning.lifespan
         else:
             return 0.7
+
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+        query = QB.query(
+            "Business", QB.with_((Business, OpenForBusiness, Active), "Business")
+        )
+
+        if results := query.execute(world, bindings):
+            chosen_result = world.get_resource(random.Random).choice(results)
+            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
+            roles = dict(zip(query.get_symbols(), chosen_objects))
+            return cls(world.get_resource(SimDateTime), roles)
+
+
+class StartBusiness(LifeEvent):
+    """Character is given the option to start a new business"""
+
+    def execute(self) -> None:
+        pass
+
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+        pass
+
+    # The tuple of the characters that need to approve the life event before
+    # it can take place
+    needs_approval = ("BusinessOwner",)
+
+    def is_optional(self, role_name: str) -> bool:
+        """Returns True if object with the given role needs to approve the event"""
+        return role_name in self.needs_approval
+
+    def check_event_preconditions(self, world: World) -> bool:
+        """Return True if the preconditions for this event pass"""
+        ...
+
+    @staticmethod
+    def _cast_business_owner(world: World) -> Generator[GameObject, None, None]:
+        candidates = [
+            world.get_gameobject(g)
+            for g, _ in world.get_components((GameCharacter, InTheWorkforce))
+        ]
+
+        candidates = filter(
+            lambda g: g.get_component(GameCharacter).life_stage >= LifeStage.YoungAdult,
+            candidates,
+        )
+
+        for c in candidates:
+            yield c
+
+    @staticmethod
+    def _cast_business_type(
+        self, world: World, roles: Dict[str, GameObject]
+    ) -> Generator[BusinessPrefab, None, None]:
+        candidates = world.get_resource(BusinessLibrary).get_all()
+        occupation_types = self.world.get_resource(OccupationTypeLibrary)
+
+        # Filter for business prefabs that specify owners
+        candidates = filter(
+            lambda prefab: prefab.config.owner_type is not None, candidates
+        )
+
+        # Filter for all the business types that the potential owner is eligible
+        # to own
+        candidates = filter(
+            lambda prefab: occupation_types.get(prefab.config.owner_type).precondition(
+                roles["BusinessOwner"]
+            ),
+            candidates,
+        )
+
+        for c in candidates:
+            yield c
 
 
 plugin_info: PluginInfo = {
@@ -434,12 +575,13 @@ plugin_info: PluginInfo = {
 def setup(sim: Orrery):
     life_event_library = sim.world.get_resource(LifeEventLibrary)
 
-    life_event_library.add(MarriageLifeEvent())
-    life_event_library.add(StartDatingLifeEvent())
-    life_event_library.add(DatingBreakUp())
-    life_event_library.add(DivorceLifeEvent())
-    life_event_library.add(GetPregnantLifeEvent())
-    life_event_library.add(RetireLifeEvent())
-    life_event_library.add(FindOwnPlaceLifeEvent())
-    life_event_library.add(DieOfOldAgeLifeEvent())
-    life_event_library.add(GoOutOfBusinessLifeEvent())
+    life_event_library.add(MarriageLifeEvent)
+    life_event_library.add(StartDatingLifeEvent)
+    life_event_library.add(DatingBreakUp)
+    life_event_library.add(DivorceLifeEvent)
+    life_event_library.add(GetPregnantLifeEvent)
+    life_event_library.add(RetireLifeEvent)
+    life_event_library.add(FindOwnPlaceLifeEvent)
+    life_event_library.add(DieOfOldAgeLifeEvent)
+    life_event_library.add(GoOutOfBusiness)
+    life_event_library.add(StartBusiness)

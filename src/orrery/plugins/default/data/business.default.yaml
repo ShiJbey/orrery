@@ -6,3 +6,4 @@ components:
   StatusManager: {}
   Services: {}
   Location: {}
+  Activities: {}

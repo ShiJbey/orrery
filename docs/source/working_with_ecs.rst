@@ -60,6 +60,14 @@ the simulation or on a specified interval. Systems can access GameObjects and
 their components by querying the world instance for GameObjects containing
 particular components.
 
+System Groups
+^^^^^^^^^^^^^
+
+System groups are a subtype of system that group together Systems and other
+SystemGroups. This library's ECS implementation has one root system group that
+all systems are assigned to be default. Users are free to create new groups and
+assign systems as they see fit.
+
 Resources
 ^^^^^^^^^
 

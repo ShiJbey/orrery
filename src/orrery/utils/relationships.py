@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import List, Type, TypeVar
 
+from orrery import SimDateTime
 from orrery.components.relationship import (
     Relationship,
     RelationshipManager,
@@ -34,7 +35,12 @@ def add_relationship(subject: GameObject, target: GameObject) -> GameObject:
     Relationship
         The new relationship instance
     """
+    relationship_manager = subject.get_component(RelationshipManager)
     world = subject.world
+
+    if target.uid in relationship_manager.relationships:
+        return world.get_gameobject(relationship_manager.relationships[target.uid])
+
     schema = world.get_resource(OrreryConfig).relationship_schema
 
     relationship = world.spawn_gameobject(
@@ -52,7 +58,8 @@ def add_relationship(subject: GameObject, target: GameObject) -> GameObject:
                 },
             ),
             StatusManager(),
-        ]
+        ],
+        name=f"Relationship {subject} -> {target}",
     )
 
     subject.get_component(RelationshipManager).relationships[
@@ -175,6 +182,7 @@ def add_relationship_status(
         The core component of the status
     """
     relationship = get_relationship_entity(subject, target)
+    status.set_created(str(subject.world.get_resource(SimDateTime)))
     add_status(relationship, status)
 
 
@@ -280,16 +288,11 @@ def get_relationships_with_statuses(
 def reevaluate_social_rules(
     relationship: GameObject, subject: GameObject, target: GameObject
 ) -> None:
-    social_rules = subject.world.get_resource(SocialRuleLibrary).get_active_rules()
+    social_rules = subject.world.get_resource(SocialRuleLibrary)
 
-    for rule in social_rules:
-        if rule.check_initiator(subject) is False:
-            continue
-        if rule.check_target(target) is False:
-            continue
-
-        relationship.get_component(Relationship).add_modifier(
-            RelationshipModifier(
-                name=rule.get_rule_name(), values=rule.evaluate(subject, target)
+    for rule_info in social_rules:
+        modifier = rule_info.rule(subject, target)
+        if modifier:
+            relationship.get_component(Relationship).add_modifier(
+                RelationshipModifier(name=rule_info.description, values=modifier)
             )
-        )
