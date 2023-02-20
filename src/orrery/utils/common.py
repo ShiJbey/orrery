@@ -19,6 +19,7 @@ from orrery.components.business import (
     WorkHistory,
 )
 from orrery.components.character import (
+    Departed,
     GameCharacter,
     Gender,
     LifeStage,
@@ -54,7 +55,7 @@ from orrery.utils.relationships import (
     has_relationship_status,
     remove_relationship_status,
 )
-from orrery.utils.statuses import add_status, has_status, remove_status
+from orrery.utils.statuses import add_status, clear_statuses, has_status, remove_status
 
 
 def spawn_settlement(
@@ -273,6 +274,7 @@ def add_residence(
         Building(building_type="residential", lot=lot, settlement=settlement.uid)
     )
 
+    residence.add_component(CurrentSettlement(settlement.uid))
     add_status(residence, Vacant())
     add_status(residence, Active())
 
@@ -280,8 +282,9 @@ def add_residence(
 
 
 def generate_child_prefab(
-    world: World, parent_a: GameObject, parent_b: GameObject
+    parent_a: GameObject, parent_b: GameObject
 ) -> CharacterPrefab:
+    world = parent_a.world
     rng = world.get_resource(random.Random)
     library = world.get_resource(CharacterLibrary)
 
@@ -312,7 +315,6 @@ def generate_child_prefab(
 
 
 def set_residence(
-    world: World,
     character: GameObject,
     new_residence: Optional[GameObject],
     is_owner: bool = False,
@@ -321,6 +323,7 @@ def set_residence(
     Moves a character into a new permanent residence
     """
 
+    world = character.world
     if resident := character.try_component(Resident):
         # This character is currently a resident at another location
         former_residence = world.get_gameobject(resident.residence)
@@ -380,7 +383,7 @@ def check_share_residence(gameobject: GameObject, other: GameObject) -> bool:
     )
 
 
-def depart_town(world: World, character: GameObject, reason: str = "") -> None:
+def depart_settlement(world: World, character: GameObject, reason: str = "") -> None:
     """
     Helper function that handles all the core logistics of moving someone
     out of the town
@@ -390,7 +393,7 @@ def depart_town(world: World, character: GameObject, reason: str = "") -> None:
         character.get_component(Resident).residence
     ).get_component(Residence)
 
-    set_residence(world, character, None)
+    set_residence(character, None)
     departing_characters: List[GameObject] = [character]
 
     # Get people that this character lives with and have them depart with their
@@ -404,12 +407,22 @@ def depart_town(world: World, character: GameObject, reason: str = "") -> None:
             continue
 
         if has_relationship_status(character, resident, Married):
-            set_residence(world, resident, None)
+            set_residence(resident, None)
             departing_characters.append(resident)
 
         elif has_relationship_status(character, resident, ParentOf):
-            set_residence(world, resident, None)
+            set_residence(resident, None)
             departing_characters.append(resident)
+
+    for character in departing_characters:
+        remove_status(character, Active)
+        add_status(character, Departed())
+        clear_frequented_locations(character)
+        clear_statuses(character)
+        set_residence(character, None)
+
+        if character.has_component(Occupation):
+            end_job(character, reason=reason)
 
     world.get_resource(EventBuffer).append(
         orrery.events.DepartEvent(
@@ -512,6 +525,9 @@ def add_business_to_settlement(
     add_status(business, Active())
     add_status(business, OpenForBusiness())
 
+    # Set the current settlement
+    business.add_component(CurrentSettlement(settlement.uid))
+
     # Add the business as a location within the town if it has a location component
     if business.has_component(Location):
         add_location_to_settlement(business, settlement)
@@ -570,6 +586,7 @@ def shutdown_business(business: GameObject) -> None:
     settlement.land_map.free_lot(building.lot)
     business.remove_component(Building)
     business.remove_component(Position2D)
+    business.remove_component(CurrentSettlement)
 
     # Un-mark the business as active so it doesn't appear in queries
     business.remove_component(Location)
@@ -595,6 +612,9 @@ def end_job(
     occupation = character.get_component(Occupation)
     business = world.get_gameobject(occupation.business)
     business_comp = business.get_component(Business)
+
+    character.get_component(FrequentedLocations).locations.remove(business.uid)
+    business.get_component(FrequentedBy).remove(character.uid)
 
     if character.has_component(BusinessOwner):
         remove_status(character, BusinessOwner)
@@ -694,6 +714,9 @@ def start_job(
         raise RuntimeError("Cannot start a new job with existing Occupation component.")
 
     character.add_component(occupation)
+
+    character.get_component(FrequentedLocations).locations.add(business.uid)
+    business.get_component(FrequentedBy).add(character.uid)
 
     if has_status(character, Unemployed):
         remove_status(character, Unemployed)
@@ -882,7 +905,7 @@ def location_has_activities(location: GameObject, *activities: str) -> bool:
     return all([activity_library.get(a) in activities_comp for a in activities])
 
 
-def score_location(character: GameObject, location: GameObject) -> int:
+def _score_location(character: GameObject, location: GameObject) -> int:
     world = character.world
     rules = world.get_resource(LocationBiasRuleLibrary)
 
@@ -905,7 +928,7 @@ def calculate_location_probabilities(
 
     # Score each location
     for loc in locations:
-        score = score_location(character, loc)
+        score = _score_location(character, loc)
         score_total += math.exp(score)
         scores.append((math.exp(score), loc))
 
@@ -939,13 +962,13 @@ def set_frequented_locations(
     # For all locations available in the settlement
     locations = [
         character.world.get_gameobject(guid)
-        for guid, (_, current_settlement) in character.world.get_components(
-            (Location, CurrentSettlement)
+        for guid, (_, current_settlement, _) in character.world.get_components(
+            (Location, CurrentSettlement, Activities)
         )
         if current_settlement.settlement == settlement.uid
     ]
 
-    scores = [score_location(character, location) for location in locations]
+    scores = [_score_location(character, location) for location in locations]
 
     pairs = list(zip(locations, scores))
 
@@ -953,9 +976,8 @@ def set_frequented_locations(
 
     selected_locations = [loc.uid for loc, _ in pairs[:max_locations]]
 
-    character.add_component(FrequentedLocations(set(selected_locations)))
-
     for loc_id in selected_locations:
+        character.get_component(FrequentedLocations).locations.add(loc_id)
         character.world.get_gameobject(loc_id).get_component(FrequentedBy).add(
             character.uid
         )

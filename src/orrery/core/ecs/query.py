@@ -468,7 +468,11 @@ class QB:
 
     @staticmethod
     def query(variables: Union[str, Tuple[str, ...]], *clauses: QueryClause) -> Query:
-        return Query(tuple(variables), [*clauses])
+        if isinstance(variables, str):
+            query_vars = (variables,)
+        else:
+            query_vars = variables
+        return Query(query_vars, [*clauses])
 
     @staticmethod
     def with_(

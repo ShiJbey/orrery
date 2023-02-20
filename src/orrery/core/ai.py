@@ -7,6 +7,7 @@ processes
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
+from orrery.core.actions import Action
 from orrery.core.ecs import Component, GameObject, World
 
 
@@ -16,9 +17,8 @@ class IAIBrain(ABC):
     injected into a MovementAI component.
     """
 
-    @classmethod
     @abstractmethod
-    def get_type(cls) -> str:
+    def get_type(self) -> str:
         """Return this brain type"""
         raise NotImplementedError
 
@@ -54,8 +54,13 @@ class IAIBrain(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def append_action(self, action: Action) -> None:
+        """Add an action to the internal queue"""
+        raise NotImplementedError
 
-class AIComponent(Component):
+
+class AIComponent(Component, IAIBrain):
     """
     Component responsible for moving a character around the simulation. It
     uses an IMovementAIModule instance to determine where the character
@@ -76,6 +81,9 @@ class AIComponent(Component):
     def __init__(self, brain: IAIBrain) -> None:
         super().__init__()
         self.brain: IAIBrain = brain
+
+    def get_type(self) -> str:
+        return self.brain.get_type()
 
     def get_next_location(self, world: World, gameobject: GameObject) -> Optional[int]:
         """
@@ -106,6 +114,10 @@ class AIComponent(Component):
             The GameObject instance this module is associated with
         """
         self.brain.execute_action(world, gameobject)
+
+    def append_action(self, action: Action) -> None:
+        """Add an action to the internal queue"""
+        self.brain.append_action(action)
 
     def to_dict(self) -> Dict[str, Any]:
         return {"brain_type": self.brain.get_type()}

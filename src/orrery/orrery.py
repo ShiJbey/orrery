@@ -67,6 +67,7 @@ from orrery.content_management import (
 from orrery.core.ai import AIComponent
 from orrery.core.ecs import Component, IComponentFactory, ISystem, World
 from orrery.core.event import AllEvents, EventBuffer
+from orrery.core.life_event import LifeEventBuffer
 from orrery.core.location_bias import ILocationBiasRule
 from orrery.core.social_rule import ISocialRule
 from orrery.core.status import StatusManager
@@ -81,9 +82,8 @@ from orrery.factories.character import GameCharacterFactory
 from orrery.factories.shared import FrequentedLocationsFactory, LocationFactory
 from orrery.factories.virtues import VirtuesFactory
 from orrery.systems import (
+    AddYoungAdultToWorkforceSystem,
     AIActionSystem,
-    BuildBusinessSystem,
-    BuildHousingSystem,
     BusinessUpdateSystem,
     BusinessUpdateSystemGroup,
     CharacterAgingSystem,
@@ -93,28 +93,23 @@ from orrery.systems import (
     DataCollectionSystemGroup,
     DatingStatusSystem,
     EarlyCharacterUpdateSystemGroup,
+    EvaluateSocialRulesSystem,
     EventListenersSystemGroup,
     EventSystem,
     FindEmployeesSystem,
     InitializationSystemGroup,
     LateCharacterUpdateSystemGroup,
     LifeEventSystem,
-    MarkUnemployedNewCharactersSystem,
     MarriedStatusSystem,
     MeetNewPeopleSystem,
     OccupationUpdateSystem,
-    OnBecomeYoungAdultSystem,
-    OnDeathSystem,
-    OnDepartSystem,
     OnJoinSettlementSystem,
     PregnantStatusSystem,
     PrintEventBufferSystem,
-    ReevaluateSocialRulesSystem,
     RelationshipUpdateSystem,
     RelationshipUpdateSystemGroup,
-    RemoveFrequentedFromDepartedSystem,
-    RemoveRetiredFromOccupationSystem,
-    SpawnResidentSystem,
+    SpawnFamilySystem,
+    StartBusinessSystem,
     StatusUpdateSystemGroup,
     TimeSystem,
     UnemployedStatusSystem,
@@ -190,6 +185,7 @@ class Orrery:
         self.world.add_resource(ActivityLibrary())
         self.world.add_resource(SimDateTime(1, 1, 1))
         self.world.add_resource(EventBuffer())
+        self.world.add_resource(LifeEventBuffer())
         self.world.add_resource(AllEvents())
         self.world.add_resource(OccupationTypeLibrary())
         self.world.add_resource(LifeEventLibrary())
@@ -225,19 +221,13 @@ class Orrery:
         self.world.add_system(OccupationUpdateSystem())
         self.world.add_system(BusinessUpdateSystem())
         self.world.add_system(FindEmployeesSystem())
-        self.world.add_system(BuildHousingSystem())
-        self.world.add_system(SpawnResidentSystem())
-        self.world.add_system(BuildBusinessSystem())
-        self.world.add_system(ReevaluateSocialRulesSystem())
+        self.world.add_system(SpawnFamilySystem())
+        self.world.add_system(StartBusinessSystem())
+        self.world.add_system(EvaluateSocialRulesSystem())
         self.world.add_system(UpdateFrequentedLocationSystem())
-        self.world.add_system(MarkUnemployedNewCharactersSystem())
-        self.world.add_system(RemoveFrequentedFromDepartedSystem())
         self.world.add_system(AIActionSystem())
-        self.world.add_system(OnDepartSystem())
-        self.world.add_system(OnDeathSystem())
         self.world.add_system(OnJoinSettlementSystem())
-        self.world.add_system(RemoveRetiredFromOccupationSystem())
-        self.world.add_system(OnBecomeYoungAdultSystem())
+        self.world.add_system(AddYoungAdultToWorkforceSystem())
 
         # Register components
         self.world.register_component(Active)

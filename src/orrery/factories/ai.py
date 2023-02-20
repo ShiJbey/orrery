@@ -8,5 +8,6 @@ from orrery.core.ecs import IComponentFactory, World
 class AIComponentFactory(IComponentFactory):
     def create(self, world: World, **kwargs: Any) -> AIComponent:
         brain_library = world.get_resource(AIBrainLibrary)
-        brain = brain_library[kwargs["brain"]]
-        return AIComponent(brain)
+        brain_factory = brain_library[kwargs["brain"]]
+        brain_options = kwargs.get("brain_options", {})
+        return AIComponent(brain_factory(**brain_options))

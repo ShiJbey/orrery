@@ -87,8 +87,8 @@ class SimpleBrainSystem(ISystem):
         for guid, brain in brains:
             event = brain.select_life_event(self.world)
             if event:
-                event.execute()
                 self.world.get_resource(LifeEventBuffer).append(event)
+                event.execute()
 
 
 class FindJob(LifeEvent):

@@ -132,8 +132,8 @@ class InDebt(StatusComponent):
    
     __slots__ = "amount"
    
-    def __init__(self, created: str, amount: int) -> None:
-        super().__init__(created)
+    def __init__(self, amount: int) -> None:
+        super().__init__()
         self.amount: int = amount
 
 character = sim.world.spawn_gameobject(
@@ -147,7 +147,7 @@ other = sim.world.spawn_gameobject(
     ]
 )
         
-add_relationship_status(character, other, InDebt("2023-02-11", 1000))
+add_relationship_status(character, other, InDebt(1000))
 ```
 
 ### How do relationships change over time?
@@ -177,3 +177,12 @@ the faster the relationship grows.
 2. Starting a new job, moving into a residence, leaving a job, dying, or leaving
    the simulation entirely, are all events that may increase or decrease
    characters' interaction scores.
+
+## Troubleshooting
+
+### Difficulties installing with `pip install -e "."`
+
+This is probably due to your Pip installation being out of date. Please try upgrading
+your pip to the latest version with `python -m pip install -U pip`. This project uses a
+`pyproject.toml` file for project configuration, which is not supported on older pip
+versions.

@@ -25,3 +25,5 @@ components:
   StatusManager: {}
   TraitManager: {}
   FrequentedLocations: {}
+  AIComponent:
+    brain: "default"

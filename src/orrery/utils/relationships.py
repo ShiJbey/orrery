@@ -68,7 +68,7 @@ def add_relationship(subject: GameObject, target: GameObject) -> GameObject:
 
     subject.add_child(relationship)
 
-    reevaluate_social_rules(relationship, subject, target)
+    evaluate_social_rules(relationship, subject, target)
 
     return relationship
 
@@ -110,7 +110,7 @@ def get_relationship_entity(
 def get_relationship(
     subject: GameObject,
     target: GameObject,
-    create_new: bool = False,
+    create_new: bool = True,
 ) -> Relationship:
     """
     Get a relationship toward another entity
@@ -285,10 +285,12 @@ def get_relationships_with_statuses(
     return matches
 
 
-def reevaluate_social_rules(
+def evaluate_social_rules(
     relationship: GameObject, subject: GameObject, target: GameObject
 ) -> None:
     social_rules = subject.world.get_resource(SocialRuleLibrary)
+
+    relationship.get_component(Relationship).clear_modifiers()
 
     for rule_info in social_rules:
         modifier = rule_info.rule(subject, target)

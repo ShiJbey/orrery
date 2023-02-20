@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Tuple
 
 from orrery.core.ecs import GameObject
 from orrery.core.event import Event
-from orrery.core.roles import RoleInstance
 from orrery.core.time import SimDateTime
 
 
@@ -63,25 +62,6 @@ class LeaveSettlementEvent(Event):
         )
 
 
-class ChildBirthEvent(Event):
-    def __init__(
-        self,
-        date: SimDateTime,
-        birthing_parent: GameObject,
-        other_parent: GameObject,
-        child: GameObject,
-    ) -> None:
-        super().__init__(
-            name="ChildBirth",
-            timestamp=date,
-            roles=[
-                RoleInstance("BirthingParent", birthing_parent.uid),
-                RoleInstance("OtherParent", other_parent.uid),
-                RoleInstance("Child", child.uid),
-            ],
-        )
-
-
 class DeathEvent(Event):
     def __init__(self, date: SimDateTime, character: GameObject) -> None:
         super().__init__(date)
@@ -111,6 +91,13 @@ class MoveIntoTownEvent(Event):
         self.characters: Tuple[GameObject, ...] = characters
         self.residence: GameObject = residence
 
+    def __str__(self):
+        return "{}, residence: {}, characters: {}".format(
+            super().__str__(),
+            self.residence,
+            ", ".join([g.name for g in self.characters]),
+        )
+
 
 class MoveResidenceEvent(Event):
     def __init__(self, date: SimDateTime, *characters: GameObject) -> None:
@@ -138,15 +125,10 @@ class GiveBirthEvent(Event):
         other_parent: GameObject,
         baby: GameObject,
     ) -> None:
-        super().__init__(
-            name="GiveBirth",
-            timestamp=date,
-            roles=[
-                RoleInstance("BirthingParent", birthing_parent.uid),
-                RoleInstance("OtherParent", other_parent.uid),
-                RoleInstance("Baby", baby.uid),
-            ],
-        )
+        super().__init__(timestamp=date)
+        self.birthing_parent: GameObject = birthing_parent
+        self.other_parent: GameObject = other_parent
+        self.baby: GameObject = baby
 
 
 class PregnantEvent(Event):
@@ -156,18 +138,13 @@ class PregnantEvent(Event):
         pregnant_one: GameObject,
         partner: GameObject,
     ) -> None:
-        super().__init__(
-            name="Pregnant",
-            timestamp=date,
-            roles=[
-                RoleInstance("PregnantOne", pregnant_one.uid),
-                RoleInstance("Partner", partner.uid),
-            ],
-        )
+        super().__init__(timestamp=date)
+        self.pregnant_character: GameObject = pregnant_one
+        self.partner: GameObject = partner
 
 
 class StartJobEvent(Event):
-    __slots__ = "occupation"
+    __slots__ = "occupation", "character", "business"
 
     def __init__(
         self,
@@ -177,13 +154,10 @@ class StartJobEvent(Event):
         occupation: str,
     ) -> None:
         super().__init__(
-            name="StartJob",
             timestamp=date,
-            roles=[
-                RoleInstance("Business", business.uid),
-                RoleInstance("Character", character.uid),
-            ],
         )
+        self.character: GameObject = character
+        self.business: GameObject = business
         self.occupation: str = occupation
 
     def to_dict(self) -> Dict[str, Any]:
@@ -193,11 +167,16 @@ class StartJobEvent(Event):
         }
 
     def __str__(self) -> str:
-        return f"{super().__str__()}, occupation={self.occupation}"
+        return "{}, character={}, business={}, occupation={}".format(
+            super().__str__(),
+            str(self.character),
+            str(self.business),
+            str(self.occupation),
+        )
 
 
 class EndJobEvent(Event):
-    __slots__ = "occupation", "reason"
+    __slots__ = "occupation", "reason", "character", "business"
 
     def __init__(
         self,
@@ -207,14 +186,9 @@ class EndJobEvent(Event):
         occupation: str,
         reason: str,
     ) -> None:
-        super().__init__(
-            name="LeaveJob",
-            timestamp=date,
-            roles=[
-                RoleInstance("Business", business.uid),
-                RoleInstance("Character", character.uid),
-            ],
-        )
+        super().__init__(timestamp=date)
+        self.character: GameObject = character
+        self.business: GameObject = business
         self.occupation: str = occupation
         self.reason: str = reason
 
@@ -237,11 +211,8 @@ class MarriageEvent(Event):
         date: SimDateTime,
         *characters: GameObject,
     ) -> None:
-        super().__init__(
-            name="Marriage",
-            timestamp=date,
-            roles=[RoleInstance("Character", c.uid) for c in characters],
-        )
+        super().__init__(timestamp=date)
+        self.characters: Tuple[GameObject, ...] = characters
 
 
 class DivorceEvent(Event):
@@ -250,15 +221,12 @@ class DivorceEvent(Event):
         date: SimDateTime,
         *characters: GameObject,
     ) -> None:
-        super().__init__(
-            name="Divorce",
-            timestamp=date,
-            roles=[RoleInstance("Character", c.uid) for c in characters],
-        )
+        super().__init__(timestamp=date)
+        self.characters: Tuple[GameObject, ...] = characters
 
 
 class StartBusinessEvent(Event):
-    __slots__ = "occupation", "business_name"
+    __slots__ = "occupation", "business_name", "character", "business"
 
     def __init__(
         self,
@@ -268,14 +236,9 @@ class StartBusinessEvent(Event):
         occupation: str,
         business_name: str,
     ) -> None:
-        super().__init__(
-            name="StartBusiness",
-            timestamp=date,
-            roles=[
-                RoleInstance("Business", business.uid),
-                RoleInstance("Character", character.uid),
-            ],
-        )
+        super().__init__(timestamp=date)
+        self.character: GameObject = character
+        self.business: GameObject = business
         self.occupation: str = occupation
         self.business_name: str = business_name
 
@@ -287,7 +250,9 @@ class StartBusinessEvent(Event):
         }
 
     def __str__(self) -> str:
-        return f"{super().__str__()}, business_name={self.business_name}, occupation={self.occupation}"
+        return "{}, business={}, owner={}".format(
+            super().__str__(), str(self.business), str(self.character)
+        )
 
 
 class BusinessOpenEvent(Event):

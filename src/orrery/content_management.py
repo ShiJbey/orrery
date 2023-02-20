@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 import random
 import re
-from typing import Dict, Iterator, List, Optional, Type
+from typing import Any, Dict, Iterator, List, Optional, Protocol, Type
 
 from orrery.components.activity import Activity
 from orrery.components.business import OccupationType, Service
@@ -169,6 +169,10 @@ class BusinessLibrary:
     def __init__(self) -> None:
         self._prefabs: Dict[str, BusinessPrefab] = {}
 
+    def iter_prefabs(self) -> Iterator[BusinessPrefab]:
+        """Iterate the prefabs in the library"""
+        return self._prefabs.values().__iter__()
+
     def add(self, prefab: BusinessPrefab) -> None:
         """Add a new prefab
 
@@ -194,6 +198,30 @@ class BusinessLibrary:
 
         for name, prefab in self._prefabs.items():
             if any([re.match(pattern, name) for pattern in name_patterns]):
+                matches.append(prefab)
+
+        return matches
+
+    def get_eligible(self, settlement: GameObject) -> List[BusinessPrefab]:
+        """Get all business prefabs that can be built in the given settlement"""
+        world = settlement.world
+        settlement_comp = settlement.get_component(Settlement)
+        date = world.get_resource(SimDateTime)
+
+        matches: List[BusinessPrefab] = []
+
+        for _, prefab in self._prefabs.items():
+            if (
+                settlement_comp.business_counts[prefab.name]
+                < prefab.config.spawning.max_instances
+                and settlement_comp.population >= prefab.config.spawning.min_population
+                and (
+                    prefab.config.spawning.year_available
+                    <= date.year
+                    < prefab.config.spawning.year_obsolete
+                )
+                and not prefab.is_template
+            ):
                 matches.append(prefab)
 
         return matches
@@ -284,6 +312,9 @@ class CharacterLibrary:
 
         return None
 
+    def __len__(self) -> int:
+        return len(self._prefabs)
+
 
 class ResidenceLibrary:
     """Collection factories that create residence entities"""
@@ -333,6 +364,12 @@ class ResidenceLibrary:
             return rng.choices(population=choices, weights=weights, k=1)[0]
 
         return None
+
+    def __len__(self) -> int:
+        return len(self._prefabs)
+
+    def __bool__(self) -> bool:
+        return bool(self._prefabs)
 
 
 class LifeEventLibrary:
@@ -397,28 +434,35 @@ class LocationBiasRuleLibrary:
         return self._rules.__iter__()
 
 
-class AIBrainLibrary:
-    """A repository of AI brain instances used when constructing AI components"""
+class AIBrainFactory(Protocol):
+    def __call__(self, **kwargs: Any) -> IAIBrain:
+        """Create IAIBrain instance"""
+        raise NotImplementedError
 
-    __slots__ = "brains"
+
+class AIBrainLibrary:
+    """Collection of factory callables that produce IAIBrain instances
+
+    This library maps string names to callable instances that instantiate IAIBrains that
+    will be encapsulated inside AIComponents
+    """
+
+    __slots__ = "_brains"
 
     def __init__(self) -> None:
-        self.brains: Dict[str, IAIBrain] = {}
+        self._brains: Dict[str, AIBrainFactory] = {}
 
-    def add(self, name: str, brain: IAIBrain) -> None:
+    def add(self, name: str, factory: AIBrainFactory) -> None:
         """Add a brain instance to the library
 
         Parameters
         ----------
         name: str
             The name to map the brain to
-        brain: IAIBrain
-            A brain instance
+        factory: AIBrainFactory
+            Factory callable that creates brain instances
         """
-        self.brains[name] = brain
+        self._brains[name] = factory
 
-    def __getitem__(self, item: str) -> IAIBrain:
-        return self.brains[item]
-
-    def __iter__(self) -> Iterator[IAIBrain]:
-        return self.brains.values().__iter__()
+    def __getitem__(self, item: str) -> AIBrainFactory:
+        return self._brains[item]

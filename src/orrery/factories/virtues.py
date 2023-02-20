@@ -16,7 +16,7 @@ class VirtuesFactory(IComponentFactory):
         world: World,
         n_likes: int = 3,
         n_dislikes: int = 3,
-        initialization: str = "zeros",
+        initialization: str = "random",
         overrides: Optional[Dict[str, int]] = None,
         **kwargs: Any,
     ) -> Virtues:

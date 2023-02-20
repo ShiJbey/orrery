@@ -9,7 +9,7 @@ components:
     name: "Cafe"
     employees:
       Barista: 2
-  Location:
+  Activities:
     activities:
       - reading
       - socializing

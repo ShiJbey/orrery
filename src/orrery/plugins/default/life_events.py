@@ -26,20 +26,19 @@ from orrery.components.character import (
 from orrery.components.relationship import Relationship
 from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.shared import Active
-from orrery.content_management import (
-    BusinessLibrary,
-    LifeEventLibrary,
-    OccupationTypeLibrary,
-)
+from orrery.content_management import BusinessLibrary, OccupationTypeLibrary
 from orrery.core.ecs import GameObject, World
 from orrery.core.ecs.query import QB
-from orrery.core.event import EventBuffer
-from orrery.core.life_event import LifeEvent
+from orrery.core.life_event import LifeEvent, LifeEventBuffer
 from orrery.core.time import SimDateTime
-from orrery.events import DeathEvent
 from orrery.orrery import Orrery, PluginInfo
 from orrery.prefabs import BusinessPrefab
-from orrery.utils.common import depart_town, end_job, set_residence, shutdown_business
+from orrery.utils.common import (
+    depart_settlement,
+    end_job,
+    set_residence,
+    shutdown_business,
+)
 from orrery.utils.query import (
     are_related,
     is_single,
@@ -54,7 +53,7 @@ from orrery.utils.relationships import (
     get_relationships_with_statuses,
     remove_relationship_status,
 )
-from orrery.utils.statuses import add_status, remove_status
+from orrery.utils.statuses import add_status, clear_statuses, remove_status
 
 
 class StartDatingLifeEvent(LifeEvent):
@@ -195,9 +194,9 @@ class DivorceLifeEvent(LifeEvent):
             with_relationship("Initiator", "Other", "?relationship"),
             QB.with_(Married, "?relationship"),
             QB.filter_(
-                lambda rel: rel.get_component(Relationship)["Romance"]
+                lambda rel: rel.get_component(Relationship)["Romance"].get_value()
                 <= rel.world.get_resource(OrreryConfig).settings.get(
-                    "divorce_romance_thresh", 0.4
+                    "divorce_romance_thresh", -25
                 ),
                 "?relationship",
             ),
@@ -427,14 +426,14 @@ class FindOwnPlaceLifeEvent(LifeEvent):
         )
         if vacant_residence:
             # Move into house with any dependent children
-            set_residence(character.world, character, vacant_residence)
+            set_residence(character, vacant_residence)
 
         # Depart if no housing could be found
         else:
-            depart_town(character.world, character, self.get_type())
+            depart_settlement(character.world, character, self.get_type())
 
 
-class DieOfOldAgeLifeEvent(LifeEvent):
+class DieOfOldAge(LifeEvent):
     initiator = "Deceased"
 
     @classmethod
@@ -462,10 +461,38 @@ class DieOfOldAgeLifeEvent(LifeEvent):
 
     def execute(self) -> None:
         deceased = self["Deceased"]
-        add_status(deceased, Deceased())
-        remove_status(deceased, Active)
-        deceased.world.get_resource(EventBuffer).append(
-            DeathEvent(deceased.world.get_resource(SimDateTime), deceased)
+        death_event = Die(self.get_timestamp(), deceased)
+        deceased.world.get_resource(LifeEventBuffer).append(death_event)
+        death_event.execute()
+
+
+class Die(LifeEvent):
+
+    initiator = "Character"
+
+    def __init__(self, date: SimDateTime, character: GameObject) -> None:
+        super().__init__(timestamp=date, roles={"Character": character})
+
+    def execute(self) -> None:
+        character = self["Character"]
+        add_status(character, Deceased())
+        remove_status(character, Active)
+        set_residence(character, None)
+        clear_statuses(character)
+
+    @classmethod
+    def instantiate(
+        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+    ) -> Optional[LifeEvent]:
+        if bindings is None:
+            return None
+
+        if "Character" not in bindings:
+            return None
+
+        return cls(
+            world.get_resource(SimDateTime),
+            bindings["Character"],
         )
 
 
@@ -494,7 +521,9 @@ class GoOutOfBusiness(LifeEvent):
             "Business", QB.with_((Business, OpenForBusiness, Active), "Business")
         )
 
-        if results := query.execute(world, bindings):
+        processed_bindings = {r: g.uid for r, g in bindings.items()} if bindings else {}
+
+        if results := query.execute(world, processed_bindings):
             chosen_result = world.get_resource(random.Random).choice(results)
             chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
             roles = dict(zip(query.get_symbols(), chosen_objects))
@@ -573,15 +602,16 @@ plugin_info: PluginInfo = {
 
 
 def setup(sim: Orrery):
-    life_event_library = sim.world.get_resource(LifeEventLibrary)
+    # life_event_library = sim.world.get_resource(LifeEventLibrary)
 
-    life_event_library.add(MarriageLifeEvent)
-    life_event_library.add(StartDatingLifeEvent)
-    life_event_library.add(DatingBreakUp)
-    life_event_library.add(DivorceLifeEvent)
-    life_event_library.add(GetPregnantLifeEvent)
-    life_event_library.add(RetireLifeEvent)
-    life_event_library.add(FindOwnPlaceLifeEvent)
-    life_event_library.add(DieOfOldAgeLifeEvent)
-    life_event_library.add(GoOutOfBusiness)
-    life_event_library.add(StartBusiness)
+    # life_event_library.add(MarriageLifeEvent)
+    # life_event_library.add(StartDatingLifeEvent)
+    # life_event_library.add(DatingBreakUp)
+    # life_event_library.add(DivorceLifeEvent)
+    # life_event_library.add(GetPregnantLifeEvent)
+    # life_event_library.add(RetireLifeEvent)
+    # life_event_library.add(FindOwnPlaceLifeEvent)
+    # life_event_library.add(DieOfOldAgeLifeEvent)
+    # life_event_library.add(GoOutOfBusiness)
+    # life_event_library.add(StartBusiness)
+    pass

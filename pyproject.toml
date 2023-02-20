@@ -46,6 +46,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+samples = [
+    "notebook"
+]
 testing = [
     "pytest",
     "pytest-cov"

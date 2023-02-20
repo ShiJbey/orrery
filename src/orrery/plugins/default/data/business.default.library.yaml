@@ -9,6 +9,6 @@ components:
     name: "Library"
     employees:
       Librarian: 2
-  Location:
+  Activities:
     activities:
       - reading
