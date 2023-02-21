@@ -62,12 +62,6 @@ class LeaveSettlementEvent(Event):
         )
 
 
-class DeathEvent(Event):
-    def __init__(self, date: SimDateTime, character: GameObject) -> None:
-        super().__init__(date)
-        self.character: GameObject = character
-
-
 class DepartEvent(Event):
     def __init__(
         self, date: SimDateTime, characters: List[GameObject], reason: str

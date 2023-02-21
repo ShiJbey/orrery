@@ -27,3 +27,4 @@ components:
   FrequentedLocations: {}
   AIComponent:
     brain: "default"
+  EventHistory: {}

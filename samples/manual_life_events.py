@@ -15,8 +15,9 @@ from orrery import (
     World,
 )
 from orrery.components import Active, InTheWorkforce, Unemployed
-from orrery.core.event import EventBuffer, EventHistory
+from orrery.core.event import EventHistory
 from orrery.core.life_event import LifeEvent, LifeEventBuffer
+from orrery.core.relationship import Romance
 from orrery.plugins.default.life_events import StartDatingLifeEvent
 from orrery.utils.common import (
     add_character_to_settlement,
@@ -142,20 +143,6 @@ class FindAJobSystem(ISystem):
             )
 
 
-@sim.system()
-class LifeEventBufferSystem(ISystem):
-    sys_group = "clean-up"
-
-    def process(self, *args: Any, **kwargs: Any) -> None:
-        life_event_buffer = self.world.get_resource(LifeEventBuffer)
-        event_buffer = self.world.get_resource(EventBuffer)
-        for event in life_event_buffer.iter_events():
-            for _, gameobject in event.iter_roles():
-                gameobject.get_component(EventHistory).append(event)
-            event_buffer.append(event)
-        life_event_buffer.clear()
-
-
 def main():
     sim.world.add_resource(LifeEventBuffer())
     republic_city = spawn_settlement(sim.world, "Republic City")
@@ -191,8 +178,8 @@ def main():
     add_relationship(korra, asami)
     add_relationship(asami, korra)
 
-    get_relationship(korra, asami)["Romance"] += 5
-    get_relationship(asami, korra)["Romance"] += 5
+    get_relationship(korra, asami).get_component(Romance).increment(5)
+    get_relationship(asami, korra).get_component(Romance).increment(5)
 
     event = StartDatingLifeEvent.instantiate(
         sim.world, {"Initiator": korra, "Other": asami}
@@ -202,8 +189,8 @@ def main():
 
     sim.step()
 
-    get_relationship(korra, asami)["Romance"] += 25
-    get_relationship(asami, korra)["Romance"] += 25
+    get_relationship(korra, asami).get_component(Romance).increment(25)
+    get_relationship(asami, korra).get_component(Romance).increment(25)
 
     event = StartDatingLifeEvent.instantiate(
         sim.world, {"Initiator": korra, "Other": asami}

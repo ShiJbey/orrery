@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Literal, Tuple, Type, Union
+from typing import Tuple, Type, Union
 
 from orrery import Component
 from orrery.components.business import Occupation, WorkHistory
@@ -14,17 +14,11 @@ from orrery.components.character import (
     ParentOf,
     SiblingOf,
 )
-from orrery.components.relationship import Relationship, RelationshipManager
-from orrery.core.ecs import GameObject, World
-from orrery.core.ecs.query import (
-    QueryClause,
-    QueryContext,
-    QueryGetFn,
-    Relation,
-    WithClause,
-)
+from orrery.core.ecs import GameObject
+from orrery.core.ecs.query import QueryClause, QueryContext, Relation, WithClause
+from orrery.core.relationship import Relationship, RelationshipManager
 from orrery.core.status import StatusComponent
-from orrery.utils.relationships import get_relationship_entity
+from orrery.utils.relationships import get_relationship
 
 ###############################
 # Entire Clauses
@@ -61,148 +55,6 @@ def with_relationship(
 
             results.append((relationship.owner, relationship.target, rel_id))
         return Relation((owner_var, target_var, relationship_var), results)
-
-    return clause
-
-
-def filter_relationship_stat_gte(
-    stat_name: str,
-    threshold: float,
-    value_type: Literal["raw", "scaled", "norm"] = "raw",
-):
-    """
-    Filter function for an ECS query that returns True if the friendship
-    value from one character to another is greater than or equal to a given threshold
-    """
-
-    def precondition(gameobject: GameObject) -> bool:
-        relationship = gameobject.get_component(Relationship)
-        if value_type == "raw":
-            return relationship[stat_name].get_raw_value() >= threshold
-        elif value_type == "scaled":
-            return relationship[stat_name].get_value() >= threshold
-        elif value_type == "norm":
-            return relationship[stat_name].get_normalized_value() >= threshold
-        else:
-            raise RuntimeError(f"Unknown relationship stat value type, {value_type}")
-
-    return precondition
-
-
-def filter_relationship_stat_lte(
-    stat_name: str,
-    threshold: float,
-    value_type: Literal["raw", "scaled", "norm"] = "raw",
-):
-    """
-    Filter function for an ECS query that returns True if the friendship
-    value from one character to another is greater than or equal to a given threshold
-    """
-
-    def precondition(gameobject: GameObject) -> bool:
-        relationship = gameobject.get_component(Relationship)
-        if value_type == "raw":
-            return relationship[stat_name].get_raw_value() <= threshold
-        elif value_type == "scaled":
-            return relationship[stat_name].get_value() <= threshold
-        elif value_type == "norm":
-            return relationship[stat_name].get_normalized_value() <= threshold
-        else:
-            raise RuntimeError(f"Unknown relationship stat value type, {value_type}")
-
-    return precondition
-
-
-def find_with_relationship_stat_gte(
-    stat_name: str,
-    threshold: float,
-    value_type: Literal["raw", "scaled", "norm"] = "raw",
-) -> QueryGetFn:
-    """
-    Returns QueryGetFn that finds all the relationships of the first variable that have
-    friendship scores greater than or equal to the threshold and binds them to the
-    second variable
-    """
-
-    def clause(
-        ctx: QueryContext, world: World, *variables: str
-    ) -> List[Tuple[int, ...]]:
-
-        if ctx.relation is None:
-            raise TypeError("Relation is None inside query")
-
-        # loop through each row in the ctx at the given column
-        results: List[Tuple[int, ...]] = []
-
-        subject_id: int
-        for (subject_id,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):
-            subject = world.get_gameobject(subject_id)
-            relationship_manager = subject.get_component(RelationshipManager)
-            for target_id, rel_id in relationship_manager.relationships.items():
-                relationship = world.get_gameobject(rel_id).get_component(Relationship)
-
-                if value_type == "raw":
-                    value = relationship[stat_name].get_raw_value()
-                elif value_type == "scaled":
-                    value = relationship[stat_name].get_value()
-                elif value_type == "norm":
-                    value = relationship[stat_name].get_normalized_value()
-                else:
-                    raise RuntimeError(
-                        f"Unknown relationship stat value type, {value_type}"
-                    )
-
-                if value >= threshold:
-                    results.append((subject_id, target_id))
-
-        return results
-
-    return clause
-
-
-def find_with_relationship_stat_lte(
-    stat_name: str,
-    threshold: float,
-    value_type: Literal["raw", "scaled", "norm"] = "raw",
-) -> QueryGetFn:
-    """
-    Returns QueryGetFn that finds all the relationships of the first variable that have
-    friendship scores greater than or equal to the threshold and binds them to the
-    second variable
-    """
-
-    def clause(
-        ctx: QueryContext, world: World, *variables: str
-    ) -> List[Tuple[int, ...]]:
-
-        if ctx.relation is None:
-            raise TypeError("Relation is None inside query")
-
-        # loop through each row in the ctx at the given column
-        results: List[Tuple[int, ...]] = []
-
-        subject_id: int
-        for (subject_id,) in ctx.relation.get_as_tuple(slice(0, -1), variables[0]):
-            subject = world.get_gameobject(subject_id)
-            relationship_manager = subject.get_component(RelationshipManager)
-            for target_id, rel_id in relationship_manager.relationships.items():
-                relationship = world.get_gameobject(rel_id).get_component(Relationship)
-
-                if value_type == "raw":
-                    value = relationship[stat_name].get_raw_value()
-                elif value_type == "scaled":
-                    value = relationship[stat_name].get_value()
-                elif value_type == "norm":
-                    value = relationship[stat_name].get_normalized_value()
-                else:
-                    raise RuntimeError(
-                        f"Unknown relationship stat value type, {value_type}"
-                    )
-
-                if value <= threshold:
-                    results.append((subject_id, target_id))
-
-        return results
 
     return clause
 
@@ -305,6 +157,6 @@ def is_single(gameobject: GameObject) -> bool:
 
 
 def are_related(a: GameObject, b: GameObject) -> bool:
-    relationship = get_relationship_entity(a, b)
+    relationship = get_relationship(a, b)
     family_status_types = [ChildOf, ParentOf, SiblingOf]
     return any([relationship.has_component(st) for st in family_status_types])

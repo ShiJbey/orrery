@@ -5,11 +5,12 @@ from typing import Any, Dict, List, Optional, Union
 
 import pydantic
 
+from .core.ecs.prefab import EntityPrefab
+
 
 class RelationshipStatConfig(pydantic.BaseModel):
     min_value: int = -100
     max_value: int = 100
-    changes_with_time: bool = False
 
 
 class RelationshipSchema(pydantic.BaseModel):
@@ -165,8 +166,8 @@ class OrreryConfig(pydantic.BaseModel):
     seed: Union[str, int] = pydantic.Field(
         default_factory=lambda: random.randint(0, 9999999)
     )
-    relationship_schema: RelationshipSchema = pydantic.Field(
-        default_factory=RelationshipSchema
+    relationship_schema: EntityPrefab = pydantic.Field(
+        default=EntityPrefab(components={"Romance": {}, "Friendship": {}})
     )
     plugins: List[Union[str, PluginConfig]] = pydantic.Field(default_factory=list)
     # Months to increment time by each simulation step

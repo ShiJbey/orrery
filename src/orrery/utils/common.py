@@ -46,6 +46,7 @@ from orrery.content_management import (
 )
 from orrery.core.ecs import GameObject, World
 from orrery.core.event import EventBuffer
+from orrery.core.relationship import InteractionScore
 from orrery.core.time import SimDateTime
 from orrery.core.tracery import Tracery
 from orrery.prefabs import BusinessPrefab, CharacterPrefab, ResidencePrefab
@@ -627,8 +628,12 @@ def end_job(
             remove_relationship_status(character, employee, BossOf)
             remove_relationship_status(employee, character, EmployeeOf)
 
-            get_relationship(character, employee).interaction_score += -1
-            get_relationship(employee, character).interaction_score += -1
+            get_relationship(character, employee).get_component(
+                InteractionScore
+            ).increment(-1)
+            get_relationship(employee, character).get_component(
+                InteractionScore
+            ).increment(-1)
 
     else:
         business_comp.remove_employee(character.uid)
@@ -639,8 +644,12 @@ def end_job(
             remove_relationship_status(owner, character, BossOf)
             remove_relationship_status(character, owner, EmployeeOf)
 
-            get_relationship(character, owner).interaction_score += -1
-            get_relationship(owner, character).interaction_score += -1
+            get_relationship(character, owner).get_component(
+                InteractionScore
+            ).increment(-1)
+            get_relationship(owner, character).get_component(
+                InteractionScore
+            ).increment(-1)
 
         # Update coworker relationships
         for employee_id in business.get_component(Business).get_employees():
@@ -649,8 +658,12 @@ def end_job(
             remove_relationship_status(character, employee, CoworkerOf)
             remove_relationship_status(employee, character, CoworkerOf)
 
-            get_relationship(character, employee).interaction_score += -1
-            get_relationship(employee, character).interaction_score += -1
+            get_relationship(character, employee).get_component(
+                InteractionScore
+            ).increment(-1)
+            get_relationship(employee, character).get_component(
+                InteractionScore
+            ).increment(-1)
 
     character.remove_component(Occupation)
 
@@ -740,8 +753,13 @@ def start_job(
             employee = world.get_gameobject(employee_id)
             add_relationship_status(character, employee, BossOf())
             add_relationship_status(employee, character, EmployeeOf())
-            get_relationship(character, employee).interaction_score += 1
-            get_relationship(employee, character).interaction_score += 1
+
+            get_relationship(character, employee).get_component(
+                InteractionScore
+            ).increment(1)
+            get_relationship(employee, character).get_component(
+                InteractionScore
+            ).increment(1)
 
     else:
         # Update boss/employee relationships if needed
@@ -750,16 +768,25 @@ def start_job(
             add_relationship_status(owner, character, BossOf())
             add_relationship_status(character, owner, EmployeeOf())
 
-            get_relationship(character, owner).interaction_score += 1
-            get_relationship(owner, character).interaction_score += 1
+            get_relationship(character, owner).get_component(
+                InteractionScore
+            ).increment(1)
+            get_relationship(owner, character).get_component(
+                InteractionScore
+            ).increment(1)
 
         # Update employee/employee relationships
         for employee_id in business.get_component(Business).get_employees():
             employee = world.get_gameobject(employee_id)
             add_relationship_status(character, employee, CoworkerOf())
             add_relationship_status(employee, character, CoworkerOf())
-            get_relationship(character, employee).interaction_score += 1
-            get_relationship(employee, character).interaction_score += 1
+
+            get_relationship(character, employee).get_component(
+                InteractionScore
+            ).increment(1)
+            get_relationship(employee, character).get_component(
+                InteractionScore
+            ).increment(1)
 
         business_comp.add_employee(character.uid, occupation.occupation_type)
 

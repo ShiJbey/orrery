@@ -601,7 +601,7 @@ class IComponentFactory(ABC):
         raise NotImplementedError
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass()
 class ComponentInfo:
     """Information about component classes registered with a World instance
 

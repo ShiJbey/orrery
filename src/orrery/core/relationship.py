@@ -1,31 +1,15 @@
 from __future__ import annotations
 
 import math
+from abc import ABC
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Type
 
 from orrery.core.ecs import Component
 
 
 def lerp(a: float, b: float, f: float) -> float:
     return (a * (1.0 - f)) + (b * f)
-
-
-class RelationshipStatNotfound(Exception):
-    """Exception raised when trying to access a relationship stat that does not exist"""
-
-    __slots__ = "name", "message"
-
-    def __init__(self, name: str) -> None:
-        super(Exception, self).__init__(name)
-        self.name: str = name
-        self.message: str = f"Could not find relationship with name ({self.name}). Check your schema config"
-
-    def __str__(self) -> str:
-        return self.message
-
-    def __repr__(self) -> str:
-        return "{}(name={})".format(self.__class__.__name__, self.name)
 
 
 class RelationshipNotFound(Exception):
@@ -84,29 +68,12 @@ class IncrementCounter:
         return self.__repr__()
 
     def __repr__(self) -> str:
-        return "{}(increments={}, decrements={})".format(
-            self.__class__.__name__, self.increments, self.decrements
-        )
+        return "({}, {})".format(self.increments, self.decrements * -1)
 
 
-class RelationshipStat:
+class RelationshipStat(Component, ABC):
     """
-    A scalar value quantifying a relationship from one entity to another
-
-    Attributes
-    ----------
-    _min_value: int
-        The minimum scaled value this stat can hold
-    _max_value: int
-        The maximum scaled value this stat can hold
-    _raw_value: int
-        The current raw score for this stat
-    _clamped_value: int
-        Scales the normalized score between the minimum and maximum
-    _normalized_value: float
-        The  normalized stat value on the interval [0.0, 1.0]
-    _is_dirty: bool
-        Have the various values been recalculated since the last change
+    A scalar value quantifying a relationship facet from one entity to another
     """
 
     __slots__ = (
@@ -118,10 +85,10 @@ class RelationshipStat:
         "_base",
         "_from_modifiers",
         "_is_dirty",
-        "changes_with_time",
     )
 
-    def __init__(self, min_value: int, max_value: int, changes_with_time: bool) -> None:
+    def __init__(self, min_value: int = -100, max_value: int = 100) -> None:
+        super().__init__()
         self._min_value: int = min_value
         self._max_value: int = max_value
         self._raw_value: int = 0
@@ -130,7 +97,6 @@ class RelationshipStat:
         self._base: IncrementCounter = IncrementCounter()
         self._from_modifiers: IncrementCounter = IncrementCounter()
         self._is_dirty: bool = False
-        self.changes_with_time: bool = changes_with_time
 
     def get_base(self) -> IncrementCounter:
         """Return the base value for increments on this relationship stat"""
@@ -140,12 +106,11 @@ class RelationshipStat:
         """Set the base value for decrements on this relationship stat"""
         self._base = IncrementCounter(value)
 
-    def add_modifier(self, value: int) -> None:
-        self._from_modifiers += value
-        self._is_dirty = True
-
-    def remove_modifier(self, value: int) -> None:
-        self._from_modifiers += -value
+    def set_modifier(self, modifier: Optional[IncrementCounter]) -> None:
+        if modifier is None:
+            self._from_modifiers = IncrementCounter()
+        else:
+            self._from_modifiers = modifier
         self._is_dirty = True
 
     def get_raw_value(self) -> int:
@@ -196,11 +161,9 @@ class RelationshipStat:
 
         self._is_dirty = False
 
-    def __iadd__(self, value: int) -> RelationshipStat:
-        """Overrides += operator for relationship stats"""
+    def increment(self, value: int) -> None:
         self._base += value
         self._is_dirty = True
-        return self
 
     def __str__(self) -> str:
         return self.__repr__()
@@ -216,87 +179,80 @@ class RelationshipStat:
         )
 
 
+class Friendship(RelationshipStat):
+    pass
+
+
+class Romance(RelationshipStat):
+    pass
+
+
+class InteractionScore(RelationshipStat):
+    pass
+
+
 @dataclass
 class RelationshipModifier:
 
-    name: str
-    values: Dict[str, int]
+    description: str
+    values: Dict[Type[RelationshipStat], int]
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"name": self.name, "values": {**self.values}}
+        return {
+            "description": self.description,
+            "values": {rs_type.__name__: val for rs_type, val in self.values.items()},
+        }
 
 
 class Relationship(Component):
 
     __slots__ = (
-        "_stats",
-        "interaction_score",
-        "modifiers",
+        "_modifiers",
         "_is_dirty",
-        "target",
-        "owner",
+        "_target",
+        "_owner",
     )
 
-    def __init__(
-        self, owner: int, target: int, stats: Dict[str, RelationshipStat]
-    ) -> None:
+    def __init__(self, owner: int, target: int) -> None:
         super().__init__()
-        self.owner: int = owner
-        self.target: int = target
-        self.interaction_score: RelationshipStat = RelationshipStat(-5, 5, False)
-        self._stats: Dict[str, RelationshipStat] = {
-            **stats,
-            "Interaction": self.interaction_score,
-        }
-        self.modifiers: List[RelationshipModifier] = []
+        self._owner: int = owner
+        self._target: int = target
+        self._modifiers: List[RelationshipModifier] = []
         self._is_dirty = False
 
-    def add_modifier(self, modifier: RelationshipModifier) -> None:
-        self.modifiers.append(modifier)
+    @property
+    def owner(self) -> int:
+        return self._owner
 
-        for stat_name, value in modifier.values.items():
-            self[stat_name].add_modifier(value)
+    @property
+    def target(self) -> int:
+        return self._target
+
+    def add_modifier(self, modifier: RelationshipModifier) -> None:
+        self._modifiers.append(modifier)
+
+    def iter_modifiers(self) -> Iterator[RelationshipModifier]:
+        return self._modifiers.__iter__()
 
     def clear_modifiers(self) -> None:
-        for modifier in self.modifiers:
-            for stat_name, value in modifier.values.items():
-                self[stat_name].remove_modifier(value)
-        self.modifiers.clear()
-
-    def __getitem__(self, item: str) -> RelationshipStat:
-        try:
-            return self._stats[item]
-        except KeyError:
-            raise RelationshipStatNotfound(item)
-
-    def __setitem__(self, item: str, value: RelationshipStat) -> RelationshipStat:
-        # This function is here to allow user to do (+=) in combination with [] syntax
-        # for example: relationship["Friendship"] += 3
-        # It's a slight abuse of syntax, but it works
-        self._is_dirty = True
-        return self._stats[item]
-
-    def __iter__(self) -> Iterator[tuple[str, RelationshipStat]]:
-        return self._stats.items().__iter__()
+        self._modifiers.clear()
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "owner": self.owner,
             "target": self.target,
-            **{k: stat.to_dict() for k, stat in self._stats.items()},
-            "modifiers": [m.to_dict() for m in self.modifiers],
+            "modifiers": [m.to_dict() for m in self._modifiers],
         }
 
     def __str__(self) -> str:
         return self.__repr__()
 
     def __repr__(self) -> str:
-        return "{}(owner={}, target={}, stats={}, modifiers={})".format(
+        return "{}(owner={}, target={}, modifiers={})".format(
             self.__class__.__name__,
             self.owner,
             self.target,
-            self._stats,
-            self.modifiers,
+            self._modifiers,
         )
 
 

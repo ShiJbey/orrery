@@ -91,4 +91,5 @@ def clear_statuses(gameobject: GameObject) -> None:
     statuses_to_remove = status_tracker.get_all()
 
     for status_type in statuses_to_remove:
-        remove_status(gameobject, status_type)
+        if not status_type.is_persistent:
+            remove_status(gameobject, status_type)

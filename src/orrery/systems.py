@@ -1,8 +1,8 @@
 import dataclasses
 import random
 from abc import ABC, abstractmethod
-from collections import Counter
-from typing import Any, List, Optional, Type
+from collections import defaultdict
+from typing import Any, DefaultDict, List, Optional, Type
 
 import orrery.events
 from orrery.actions import StartBusinessAction
@@ -25,7 +25,6 @@ from orrery.components.character import (
     Pregnant,
     SiblingOf,
 )
-from orrery.components.relationship import Relationship, lerp
 from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.settlement import Settlement
 from orrery.components.shared import (
@@ -44,8 +43,17 @@ from orrery.content_management import (
 from orrery.core.ai import AIComponent
 from orrery.core.ecs import GameObject, ISystem
 from orrery.core.ecs.ecs import SystemGroup
-from orrery.core.event import AllEvents, EventBuffer
+from orrery.core.event import AllEvents, EventBuffer, EventHistory
 from orrery.core.life_event import LifeEvent, LifeEventBuffer
+from orrery.core.relationship import (
+    Friendship,
+    IncrementCounter,
+    InteractionScore,
+    Relationship,
+    RelationshipStat,
+    Romance,
+    lerp,
+)
 from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
 from orrery.prefabs import CharacterPrefab
 from orrery.utils.common import (
@@ -224,8 +232,9 @@ class LifeEventSystem(System):
             return
 
         event_type: Type[LifeEvent]
-        for event_type in random.sample(all_event_types, k=total_population // 10):
-            if event := event_type.instantiate(self.world):
+        for _ in range(total_population // 10):
+            event_type = random.choice(all_event_types)
+            if event := event_type.instantiate(self.world, {}):
                 life_event_buffer.append(event)
                 event.execute()
 
@@ -241,7 +250,7 @@ class MeetNewPeopleSystem(ISystem):
         ):
             character = self.world.get_gameobject(gid)
 
-            candidates: List[int] = []
+            candidate_scores: DefaultDict[GameObject, int] = defaultdict(int)
 
             for loc_id in frequented_locations.locations:
                 for other_id in self.world.get_gameobject(loc_id).get_component(
@@ -251,37 +260,28 @@ class MeetNewPeopleSystem(ISystem):
                     if other_id != character.uid and not has_relationship(
                         character, other
                     ):
-                        candidates.append(other_id)
+                        candidate_scores[other] += 1
 
-            if candidates:
-                candidate_weights = Counter(candidates)
-
-                # Select one randomly
-                options: List[int]
-                weights: List[int]
-                options, weights = tuple(zip(*candidate_weights.items()))  # type: ignore
-
+            if candidate_scores:
                 rng = self.world.get_resource(random.Random)
 
-                acquaintance_id = rng.choices(options, weights=weights, k=1)[0]
+                acquaintance = rng.choices(
+                    list(candidate_scores.keys()),
+                    weights=list(candidate_scores.values()),
+                    k=1,
+                )[0]
 
-                acquaintance = self.world.get_gameobject(acquaintance_id)
+                add_relationship(character, acquaintance)
+                add_relationship(acquaintance, character)
 
-                if not has_relationship(character, acquaintance):
+                # Calculate interaction scores
+                get_relationship(character, acquaintance).get_component(
+                    InteractionScore
+                ).increment(candidate_scores[acquaintance])
 
-                    add_relationship(character, acquaintance)
-                    add_relationship(acquaintance, character)
-
-                    # Calculate interaction scores
-                    index = options.index(acquaintance_id)
-
-                    get_relationship(
-                        character, acquaintance
-                    ).interaction_score += weights[index]
-
-                    get_relationship(
-                        acquaintance, character
-                    ).interaction_score += weights[index]
+                get_relationship(acquaintance, character).get_component(
+                    InteractionScore
+                ).increment(candidate_scores[acquaintance])
 
 
 class FindEmployeesSystem(ISystem):
@@ -449,14 +449,20 @@ class SpawnFamilySystem(System):
             add_relationship(character, spouse)
             add_relationship_status(character, spouse, Married())
             add_relationship_status(character, spouse, Married())
-            get_relationship(character, spouse)["Romance"] += 45
-            get_relationship(character, spouse)["Friendship"] += 30
+            get_relationship(character, spouse).get_component(Romance).increment(45)
+            get_relationship(character, spouse).get_component(Friendship).increment(30)
+            get_relationship(character, spouse).get_component(
+                InteractionScore
+            ).increment(1)
 
             # Configure relationship from spouse to character
             add_relationship(spouse, character)
             add_relationship_status(spouse, character, Married())
-            get_relationship(spouse, character)["Romance"] += 45
-            get_relationship(spouse, character)["Friendship"] += 30
+            get_relationship(spouse, character).get_component(Romance).increment(45)
+            get_relationship(spouse, character).get_component(Friendship).increment(30)
+            get_relationship(spouse, character).get_component(
+                InteractionScore
+            ).increment(1)
 
         num_kids = rng.randint(0, character_config.spawning.max_children_at_spawn)
         children: List[GameObject] = []
@@ -481,34 +487,64 @@ class SpawnFamilySystem(System):
                 # Relationship of child to character
                 add_relationship(child, character)
                 add_relationship_status(child, character, ChildOf())
-                get_relationship(child, character)["Friendship"] += 20
+                get_relationship(child, character).get_component(Friendship).increment(
+                    20
+                )
+                get_relationship(child, character).get_component(
+                    InteractionScore
+                ).increment(1)
 
                 # Relationship of character to child
                 add_relationship(character, child)
                 add_relationship_status(character, child, ParentOf())
-                get_relationship(character, child)["Friendship"] += 20
+                get_relationship(character, child).get_component(Friendship).increment(
+                    20
+                )
+                get_relationship(character, child).get_component(
+                    InteractionScore
+                ).increment(1)
 
                 if spouse:
                     # Relationship of child to spouse
                     add_relationship(child, spouse)
                     add_relationship_status(child, spouse, ChildOf())
-                    get_relationship(child, spouse)["Friendship"] += 20
+                    get_relationship(child, spouse).get_component(Friendship).increment(
+                        20
+                    )
+                    get_relationship(child, spouse).get_component(
+                        InteractionScore
+                    ).increment(1)
 
                     # Relationship of spouse to child
                     add_relationship(spouse, child)
                     add_relationship_status(spouse, child, ParentOf())
-                    get_relationship(spouse, child)["Friendship"] += 20
+                    get_relationship(spouse, child).get_component(Friendship).increment(
+                        20
+                    )
+                    get_relationship(spouse, child).get_component(
+                        InteractionScore
+                    ).increment(1)
 
                 for sibling in children:
                     # Relationship of child to sibling
                     add_relationship(child, sibling)
                     add_relationship_status(child, sibling, SiblingOf())
-                    get_relationship(child, sibling)["Friendship"] += 20
+                    get_relationship(child, sibling).get_component(
+                        Friendship
+                    ).increment(20)
+                    get_relationship(child, sibling).get_component(
+                        InteractionScore
+                    ).increment(1)
 
                     # Relationship of sibling to child
                     add_relationship(sibling, child)
                     add_relationship_status(sibling, child, SiblingOf())
-                    get_relationship(sibling, child)["Friendship"] += 20
+                    get_relationship(sibling, child).get_component(
+                        Friendship
+                    ).increment(20)
+                    get_relationship(sibling, child).get_component(
+                        InteractionScore
+                    ).increment(1)
 
         return generated_characters
 
@@ -639,6 +675,20 @@ class CharacterAgingSystem(System):
                 event_log.append(
                     orrery.events.BecomeSeniorEvent(current_date, character)
                 )
+
+
+class LifeEventBufferSystem(ISystem):
+    sys_group = "clean-up"
+    priority = -9998
+
+    def process(self, *args: Any, **kwargs: Any) -> None:
+        life_event_buffer = self.world.get_resource(LifeEventBuffer)
+        event_buffer = self.world.get_resource(EventBuffer)
+        for event in life_event_buffer.iter_events():
+            for _, gameobject in event.iter_roles():
+                gameobject.get_component(EventHistory).append(event)
+            event_buffer.append(event)
+        life_event_buffer.clear()
 
 
 class EventSystem(ISystem):
@@ -815,14 +865,51 @@ class RelationshipUpdateSystem(System):
     sys_group = "relationship-update"
 
     def run(self, *args: Any, **kwargs: Any):
-        for _, relationship in self.world.get_component(Relationship):
-            # Update stats
-            for _, stat in relationship:
-                if stat.changes_with_time:
-                    stat += round(
-                        max(0, relationship.interaction_score.get_raw_value())
-                        * lerp(-3, 3, stat.get_normalized_value())
-                    )
+        for rel_id, relationship in self.world.get_component(Relationship):
+            rel_entity = self.world.get_gameobject(rel_id)
+
+            # Accumulate modifiers
+            modifier_acc: DefaultDict[
+                Type[RelationshipStat], IncrementCounter
+            ] = defaultdict(IncrementCounter)
+            for modifier in relationship.iter_modifiers():
+                for stat_type, value in modifier.values.items():
+                    modifier_acc[stat_type] += value
+
+            # Apply modifiers
+            for comp in rel_entity.get_components():
+                if isinstance(comp, RelationshipStat):
+                    comp.set_modifier(modifier_acc[type(comp)])
+
+
+class FriendshipStatSystem(System):
+    sys_group = "relationship-update"
+
+    def run(self, *args: Any, **kwargs: Any) -> None:
+        for rel_id, (friendship, interaction_score) in self.world.get_components(
+            (Friendship, InteractionScore)
+        ):
+            friendship.increment(
+                round(
+                    max(0, interaction_score.get_value())
+                    * lerp(-3, 3, friendship.get_normalized_value())
+                )
+            )
+
+
+class RomanceStatSystem(System):
+    sys_group = "relationship-update"
+
+    def run(self, *args: Any, **kwargs: Any) -> None:
+        for rel_id, (romance, interaction_score) in self.world.get_components(
+            (Romance, InteractionScore)
+        ):
+            romance.increment(
+                round(
+                    max(0, interaction_score.get_value())
+                    * lerp(-3, 3, romance.get_normalized_value())
+                )
+            )
 
 
 class OnJoinSettlementSystem(ISystem):

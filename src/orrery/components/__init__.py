@@ -36,7 +36,6 @@ from .character import (
     Retired,
     SiblingOf,
 )
-from .relationship import Relationship, RelationshipManager
 from .residence import Residence, Resident, Vacant
 from .settlement import Settlement
 from .shared import (
@@ -60,8 +59,6 @@ __all__ = [
     "FrequentedLocations",
     "Location",
     "Position2D",
-    "Relationship",
-    "RelationshipManager",
     "Residence",
     "Resident",
     "Vacant",

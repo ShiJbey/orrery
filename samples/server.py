@@ -1,5 +1,4 @@
 from orrery import OrreryConfig
-from orrery.config import RelationshipSchema, RelationshipStatConfig
 from orrery.content_management import CharacterLibrary
 from orrery.data_collection import DataCollector
 from orrery.server import OrreryServer
@@ -10,24 +9,32 @@ from orrery.utils.common import (
 )
 
 app = OrreryServer(
-    OrreryConfig(
-        seed=3,
-        relationship_schema=RelationshipSchema(
-            stats={
-                "Friendship": RelationshipStatConfig(changes_with_time=True),
-                "Romance": RelationshipStatConfig(changes_with_time=True),
-                "Power": RelationshipStatConfig(
-                    min_value=-50, max_value=50, changes_with_time=False
-                ),
-            }
-        ),
-        plugins=[
-            "orrery.plugins.default.names",
-            "orrery.plugins.default.characters",
-            # "orrery.plugins.default.businesses",
-            # "orrery.plugins.default.residences",
-            # "orrery.plugins.default.life_events",
-        ],
+    OrreryConfig.parse_obj(
+        {
+            "relationship_schema": {
+                "Friendship": {
+                    "min_value": -100,
+                    "max_value": 100,
+                },
+                "Romance": {
+                    "min_value": -100,
+                    "max_value": 100,
+                },
+                "InteractionScore": {
+                    "min_value": -5,
+                    "max_value": 5,
+                },
+            },
+            "plugins": [
+                "orrery.plugins.default.names",
+                "orrery.plugins.default.characters",
+                "orrery.plugins.default.businesses",
+                "orrery.plugins.default.residences",
+                "orrery.plugins.default.life_events",
+                "orrery.plugins.default.ai",
+            ],
+            "settings": {"new_families_per_year": 10},
+        }
     )
 )
 

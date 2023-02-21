@@ -23,6 +23,8 @@ class StatusComponent(Component, ABC):
         A timestamp of when this status was created
     """
 
+    is_persistent = False
+
     __slots__ = "created"
 
     def __init__(self) -> None:
@@ -101,6 +103,9 @@ class StatusManager(Component):
     def __iter__(self) -> Iterator[Type[StatusComponent]]:
         """Return iterator to active status types"""
         return self._statuses.__iter__()
+
+    def __str__(self) -> str:
+        return "; ".join([s.__name__ for s in self._statuses])
 
     def __repr__(self) -> str:
         return "{}({})".format(self.__class__.__name__, self._statuses)

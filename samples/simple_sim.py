@@ -14,18 +14,20 @@ sim = Orrery(
         {
             "seed": 8080,
             "relationship_schema": {
-                "stats": {
+                "components": {
                     "Friendship": {
                         "min_value": -100,
                         "max_value": 100,
-                        "changes_with_time": True,
                     },
                     "Romance": {
                         "min_value": -100,
                         "max_value": 100,
-                        "changes_with_time": True,
                     },
-                },
+                    "InteractionScore": {
+                        "min_value": -5,
+                        "max_value": 5,
+                    },
+                }
             },
             "plugins": [
                 "orrery.plugins.default.names",

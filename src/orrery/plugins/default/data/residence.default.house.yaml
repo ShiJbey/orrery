@@ -4,3 +4,4 @@ components:
   Location: {}
   Position2D: {}
   StatusManager: {}
+  EventHistory: {}

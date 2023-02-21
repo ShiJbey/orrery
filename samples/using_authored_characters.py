@@ -10,8 +10,14 @@ import time
 from typing import Any, Dict
 
 from orrery import Component, GameObject, ISystem, Orrery, OrreryConfig, SimDateTime
-from orrery.components import GameCharacter, Relationship, RelationshipManager, Virtues
-from orrery.core.status import StatusComponent
+from orrery.components import GameCharacter, Virtues
+from orrery.core.relationship import (
+    Friendship,
+    InteractionScore,
+    RelationshipManager,
+    Romance,
+)
+from orrery.core.status import StatusComponent, StatusManager
 from orrery.data_collection import DataCollector
 from orrery.exporter import export_to_json
 from orrery.utils.common import (
@@ -25,18 +31,20 @@ sim = Orrery(
         {
             "seed": 3,
             "relationship_schema": {
-                "stats": {
+                "components": {
                     "Friendship": {
                         "min_value": -100,
                         "max_value": 100,
-                        "changes_with_time": True,
                     },
                     "Romance": {
                         "min_value": -100,
                         "max_value": 100,
-                        "changes_with_time": True,
                     },
-                },
+                    "InteractionScore": {
+                        "min_value": -5,
+                        "max_value": 5,
+                    },
+                }
             },
             "plugins": [
                 "orrery.plugins.default.names",
@@ -113,19 +121,26 @@ class RelationshipReporter(ISystem):
         for guid, (game_character, relationship_manager) in self.world.get_components(
             (GameCharacter, RelationshipManager)
         ):
-            if game_character.first_name == "Delores":
+            if (
+                game_character.first_name == "Hercules"
+                and game_character.last_name == "Cookson"
+            ):
                 for target_id, rel_id in relationship_manager.relationships.items():
-                    relationship = self.world.get_gameobject(rel_id).get_component(
-                        Relationship
-                    )
+                    relationship = self.world.get_gameobject(rel_id)
                     data_collector.add_table_row(
                         "relationships",
                         {
                             "timestamp": timestamp,
                             "owner": guid,
                             "target": target_id,
-                            "friendship": relationship["Friendship"].get_value(),
-                            "romance": relationship["Romance"].get_value(),
+                            "friendship": relationship.get_component(
+                                Friendship
+                            ).get_value(),
+                            "romance": relationship.get_component(Romance).get_value(),
+                            "interaction_score": relationship.get_component(
+                                InteractionScore
+                            ).get_value(),
+                            "statuses": str(relationship.get_component(StatusManager)),
                         },
                     )
 
@@ -136,7 +151,16 @@ EXPORT_SIM = False
 def main():
     """Main entry point for this module"""
     sim.world.get_resource(DataCollector).create_new_table(
-        "relationships", ("timestamp", "owner", "target", "friendship", "romance")
+        "relationships",
+        (
+            "timestamp",
+            "owner",
+            "target",
+            "friendship",
+            "romance",
+            "interaction_score",
+            "statuses",
+        ),
     )
 
     west_world = spawn_settlement(sim.world, "West World")
@@ -173,22 +197,8 @@ def main():
 
     add_character_to_settlement(william, west_world)
 
-    # add_relationship(delores, charlotte)
-    # get_relationship(delores, charlotte)["Friendship"] += -1
-    # get_relationship(delores, charlotte)["Friendship"] += 1
-    #
-    # add_relationship_status(delores, charlotte, OwesDebt(500))
-    #
-    # add_relationship(delores, william)
-    # get_relationship(delores, william)["Romance"] += 4
-    # get_relationship(delores, william)["Romance"] += -7
-    # get_relationship(delores, william)["Interaction"] += 1
-    #
-    # add_relationship(william, delores)
-    # get_relationship(william, delores)["Interaction"] += 1
-
     st = time.time()
-    sim.run_for(50)
+    sim.run_for(25)
     elapsed_time = time.time() - st
 
     print(f"World Date: {str(sim.world.get_resource(SimDateTime))}")
@@ -197,7 +207,8 @@ def main():
     rel_data = sim.world.get_resource(DataCollector).get_table_dataframe(
         "relationships"
     )
-    print(rel_data)
+
+    rel_data.to_csv("rel_data.csv")
 
     if EXPORT_SIM:
         with open(f"orrery_{sim.config.seed}.json", "w") as f:

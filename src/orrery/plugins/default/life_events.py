@@ -23,13 +23,13 @@ from orrery.components.character import (
     Retired,
     SiblingOf,
 )
-from orrery.components.relationship import Relationship
 from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.shared import Active
 from orrery.content_management import BusinessLibrary, OccupationTypeLibrary
 from orrery.core.ecs import GameObject, World
 from orrery.core.ecs.query import QB
 from orrery.core.life_event import LifeEvent, LifeEventBuffer
+from orrery.core.relationship import Romance
 from orrery.core.time import SimDateTime
 from orrery.orrery import Orrery, PluginInfo
 from orrery.prefabs import BusinessPrefab
@@ -83,7 +83,7 @@ class StartDatingLifeEvent(LifeEvent):
             QB.with_(Active, "Other"),
             QB.filter_(is_single, "Other"),
             QB.filter_(
-                lambda g: g.get_component(Relationship)["Romance"].get_value()
+                lambda g: g.get_component(Romance).get_value()
                 >= g.world.get_resource(OrreryConfig).settings.get(
                     "dating_romance_threshold", 25
                 ),
@@ -91,7 +91,7 @@ class StartDatingLifeEvent(LifeEvent):
             ),
             with_relationship("Other", "Initiator", "?relationship_b"),
             QB.filter_(
-                lambda g: g.get_component(Relationship)["Romance"].get_value()
+                lambda g: g.get_component(Romance).get_value()
                 >= g.world.get_resource(OrreryConfig).settings.get(
                     "dating_romance_threshold", 25
                 ),
@@ -166,11 +166,9 @@ class DatingBreakUp(LifeEvent):
             with_statuses("?relationship", Dating),
             with_components("Other", (GameCharacter, Active)),
             QB.filter_(
-                lambda rel: rel.get_component(Relationship)[
-                    "Romance"
-                ].normalized_value()
+                lambda rel: rel.get_component(Romance).get_value()
                 <= rel.world.get_resource(OrreryConfig).settings.get(
-                    "dating_breakup_thresh", 0.4
+                    "dating_breakup_thresh", 20
                 ),
                 "?relationship",
             ),
@@ -194,7 +192,7 @@ class DivorceLifeEvent(LifeEvent):
             with_relationship("Initiator", "Other", "?relationship"),
             QB.with_(Married, "?relationship"),
             QB.filter_(
-                lambda rel: rel.get_component(Relationship)["Romance"].get_value()
+                lambda rel: rel.get_component(Romance).get_value()
                 <= rel.world.get_resource(OrreryConfig).settings.get(
                     "divorce_romance_thresh", -25
                 ),
@@ -243,20 +241,16 @@ class MarriageLifeEvent(LifeEvent):
                 ("Initiator", "Other"),
             ),
             QB.filter_(
-                lambda rel: rel.get_component(Relationship)[
-                    "Romance"
-                ].normalized_value()
+                lambda rel: rel.get_component(Romance).get_value()
                 >= rel.world.get_resource(OrreryConfig).settings.get(
-                    "marriage_romance_thresh", 0.4
+                    "marriage_romance_thresh", 25
                 ),
                 "?relationship_a",
             ),
             QB.filter_(
-                lambda rel: rel.get_component(Relationship)[
-                    "Romance"
-                ].normalized_value()
+                lambda rel: rel.get_component(Romance).get_value()
                 >= rel.world.get_resource(OrreryConfig).settings.get(
-                    "marriage_romance_thresh", 0.4
+                    "marriage_romance_thresh", 25
                 ),
                 "?relationship_b",
             ),

@@ -8,3 +8,4 @@ components:
   Location: {}
   Activities: {}
   FrequentedBy: {}
+  EventHistory: {}

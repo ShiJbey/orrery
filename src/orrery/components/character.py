@@ -12,7 +12,7 @@ from orrery.core.time import SimDateTime
 class Departed(StatusComponent):
     """Tags a character as departed from the simulation"""
 
-    pass
+    is_persistent = True
 
 
 class CanAge(Component):
@@ -39,19 +39,19 @@ class CanGetPregnant(Component):
 class Deceased(StatusComponent):
     """Tags a character as deceased"""
 
-    pass
+    is_persistent = True
 
 
 class Retired(StatusComponent):
     """Tags a character as retired"""
 
-    pass
+    is_persistent = True
 
 
 class CollegeGraduate(StatusComponent):
     """Tags a character as having graduated from college"""
 
-    pass
+    is_persistent = True
 
 
 class Gender(Enum):

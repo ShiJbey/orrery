@@ -38,7 +38,6 @@ from orrery.components.character import (
     GameCharacter,
     Retired,
 )
-from orrery.components.relationship import RelationshipManager
 from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.settlement import Settlement
 from orrery.components.shared import (
@@ -66,9 +65,16 @@ from orrery.content_management import (
 )
 from orrery.core.ai import AIComponent
 from orrery.core.ecs import Component, IComponentFactory, ISystem, World
-from orrery.core.event import AllEvents, EventBuffer
+from orrery.core.event import AllEvents, EventBuffer, EventHistory
 from orrery.core.life_event import LifeEventBuffer
 from orrery.core.location_bias import ILocationBiasRule
+from orrery.core.relationship import (
+    Friendship,
+    InteractionScore,
+    Relationship,
+    RelationshipManager,
+    Romance,
+)
 from orrery.core.social_rule import ISocialRule
 from orrery.core.status import StatusManager
 from orrery.core.time import SimDateTime, TimeDelta
@@ -97,8 +103,10 @@ from orrery.systems import (
     EventListenersSystemGroup,
     EventSystem,
     FindEmployeesSystem,
+    FriendshipStatSystem,
     InitializationSystemGroup,
     LateCharacterUpdateSystemGroup,
+    LifeEventBufferSystem,
     LifeEventSystem,
     MarriedStatusSystem,
     MeetNewPeopleSystem,
@@ -108,6 +116,7 @@ from orrery.systems import (
     PrintEventBufferSystem,
     RelationshipUpdateSystem,
     RelationshipUpdateSystemGroup,
+    RomanceStatSystem,
     SpawnFamilySystem,
     StartBusinessSystem,
     StatusUpdateSystemGroup,
@@ -208,9 +217,13 @@ class Orrery:
         self.world.add_system(CleanUpSystemGroup())
 
         # Add default systems
+        self.world.add_system(EvaluateSocialRulesSystem())
         self.world.add_system(RelationshipUpdateSystem())
+        self.world.add_system(FriendshipStatSystem())
+        self.world.add_system(RomanceStatSystem())
         self.world.add_system(MeetNewPeopleSystem())
         self.world.add_system(LifeEventSystem())
+        self.world.add_system(LifeEventBufferSystem())
         self.world.add_system(EventSystem())
         self.world.add_system(TimeSystem())
         self.world.add_system(CharacterAgingSystem())
@@ -223,7 +236,6 @@ class Orrery:
         self.world.add_system(FindEmployeesSystem())
         self.world.add_system(SpawnFamilySystem())
         self.world.add_system(StartBusinessSystem())
-        self.world.add_system(EvaluateSocialRulesSystem())
         self.world.add_system(UpdateFrequentedLocationSystem())
         self.world.add_system(AIActionSystem())
         self.world.add_system(OnJoinSettlementSystem())
@@ -234,6 +246,10 @@ class Orrery:
         self.world.register_component(AIComponent, factory=AIComponentFactory())
         self.world.register_component(GameCharacter, factory=GameCharacterFactory())
         self.world.register_component(RelationshipManager)
+        self.world.register_component(Relationship)
+        self.world.register_component(Friendship)
+        self.world.register_component(Romance)
+        self.world.register_component(InteractionScore)
         self.world.register_component(TraitManager)
         self.world.register_component(Location, factory=LocationFactory())
         self.world.register_component(FrequentedBy)
@@ -264,6 +280,7 @@ class Orrery:
             FrequentedLocations, factory=FrequentedLocationsFactory()
         )
         self.world.register_component(Settlement)
+        self.world.register_component(EventHistory)
 
         # Configure printing every event to the console
         if self.config.verbose:

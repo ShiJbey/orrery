@@ -3,29 +3,27 @@ from __future__ import annotations
 from typing import List, Type, TypeVar
 
 from orrery import SimDateTime
-from orrery.components.relationship import (
-    Relationship,
-    RelationshipManager,
-    RelationshipModifier,
-    RelationshipNotFound,
-    RelationshipStat,
-)
 from orrery.config import OrreryConfig
 from orrery.content_management import SocialRuleLibrary
 from orrery.core.ecs import GameObject
+from orrery.core.relationship import (
+    Relationship,
+    RelationshipManager,
+    RelationshipModifier,
+)
 from orrery.core.status import StatusComponent, StatusManager
 from orrery.utils.statuses import add_status, has_status, remove_status
 
 _RST = TypeVar("_RST", bound=StatusComponent)
 
 
-def add_relationship(subject: GameObject, target: GameObject) -> GameObject:
+def add_relationship(owner: GameObject, target: GameObject) -> GameObject:
     """
     Creates a new relationship from the subject to the target
 
     Parameters
     ----------
-    subject: GameObject
+    owner: GameObject
         The GameObject that owns the relationship
     target: GameObject
         The GameObject that the Relationship is directed toward
@@ -35,74 +33,26 @@ def add_relationship(subject: GameObject, target: GameObject) -> GameObject:
     Relationship
         The new relationship instance
     """
-    relationship_manager = subject.get_component(RelationshipManager)
-    world = subject.world
+    relationship_manager = owner.get_component(RelationshipManager)
+    world = owner.world
 
     if target.uid in relationship_manager.relationships:
         return world.get_gameobject(relationship_manager.relationships[target.uid])
 
     schema = world.get_resource(OrreryConfig).relationship_schema
 
-    relationship = world.spawn_gameobject(
-        [
-            Relationship(
-                owner=subject.uid,
-                target=target.uid,
-                stats={
-                    name: RelationshipStat(
-                        min_value=config.min_value,
-                        max_value=config.max_value,
-                        changes_with_time=config.changes_with_time,
-                    )
-                    for name, config in schema.stats.items()
-                },
-            ),
-            StatusManager(),
-        ],
-        name=f"Relationship {subject} -> {target}",
-    )
+    relationship = schema.spawn(world)
+    relationship.add_component(Relationship(owner.uid, target.uid))
+    relationship.add_component(StatusManager())
+    relationship.name = f"Rel({owner} -> {target})"
 
-    subject.get_component(RelationshipManager).relationships[
+    owner.get_component(RelationshipManager).relationships[
         target.uid
     ] = relationship.uid
 
-    subject.add_child(relationship)
+    owner.add_child(relationship)
 
-    evaluate_social_rules(relationship, subject, target)
-
-    return relationship
-
-
-def get_relationship_entity(
-    subject: GameObject,
-    target: GameObject,
-) -> GameObject:
-    """Return the entity containing the relationship from the subject to the target
-
-    Parameters
-    ----------
-    subject: GameObject
-        The owner of the relationship
-    target: GameObject
-        The character the relationship is directed toward
-
-    Returns
-    -------
-    Relationship
-        The relationship instance toward the other entity
-
-    Throws
-    ------
-    KeyError
-        If no relationship is found for the given target and create_new is False
-    """
-    if not has_relationship(subject, target):
-        relationship = add_relationship(subject, target)
-
-    else:
-        relationship = subject.world.get_gameobject(
-            subject.get_component(RelationshipManager).relationships[target.uid]
-        )
+    evaluate_social_rules(relationship, owner, target)
 
     return relationship
 
@@ -110,8 +60,7 @@ def get_relationship_entity(
 def get_relationship(
     subject: GameObject,
     target: GameObject,
-    create_new: bool = True,
-) -> Relationship:
+) -> GameObject:
     """
     Get a relationship toward another entity
 
@@ -121,8 +70,6 @@ def get_relationship(
         The owner of the relationship
     target: GameObject
         The character the relationship is directed toward
-    create_new: bool (default: False)
-        Create a new relationship if one does not already exist
 
     Returns
     -------
@@ -134,17 +81,14 @@ def get_relationship(
     KeyError
         If no relationship is found for the given target and create_new is False
     """
-    try:
-        world = subject.world
-        relationship_id = subject.get_component(RelationshipManager).relationships[
-            target.uid
-        ]
-        return world.get_gameobject(relationship_id).get_component(Relationship)
-    except KeyError:
-        if create_new:
-            return add_relationship(subject, target).get_component(Relationship)
-        else:
-            raise RelationshipNotFound(subject.name, target.name)
+    if target.uid not in subject.get_component(RelationshipManager).relationships:
+        return add_relationship(subject, target)
+
+    relationship_id = subject.get_component(RelationshipManager).relationships[
+        target.uid
+    ]
+
+    return subject.world.get_gameobject(relationship_id)
 
 
 def has_relationship(subject: GameObject, target: GameObject) -> bool:
@@ -181,7 +125,7 @@ def add_relationship_status(
     status: Status
         The core component of the status
     """
-    relationship = get_relationship_entity(subject, target)
+    relationship = get_relationship(subject, target)
     status.set_created(str(subject.world.get_resource(SimDateTime)))
     add_status(relationship, status)
 
@@ -205,7 +149,7 @@ def get_relationship_status(
         The type of the status
     """
 
-    relationship = get_relationship_entity(subject, target)
+    relationship = get_relationship(subject, target)
     return relationship.get_component(status_type)
 
 
@@ -227,7 +171,7 @@ def remove_relationship_status(
         The type of the relationship status to remove
     """
 
-    relationship = get_relationship_entity(subject, target)
+    relationship = get_relationship(subject, target)
     remove_status(relationship, status_type)
 
 
@@ -253,7 +197,7 @@ def has_relationship_status(
         Returns True if relationship has a given status
     """
 
-    relationship = get_relationship_entity(subject, target)
+    relationship = get_relationship(subject, target)
     return all([has_status(relationship, s) for s in status_type])
 
 
@@ -296,5 +240,5 @@ def evaluate_social_rules(
         modifier = rule_info.rule(subject, target)
         if modifier:
             relationship.get_component(Relationship).add_modifier(
-                RelationshipModifier(name=rule_info.description, values=modifier)
+                RelationshipModifier(description=rule_info.description, values=modifier)
             )
