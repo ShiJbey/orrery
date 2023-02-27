@@ -9,8 +9,8 @@ relationship values.
 import time
 from typing import Any, Dict
 
-from orrery import Component, GameObject, ISystem, Orrery, OrreryConfig, SimDateTime
-from orrery.components import GameCharacter, Virtues
+from orrery import ISystem, Orrery, OrreryConfig, SimDateTime, TagComponent
+from orrery.components import GameCharacter
 from orrery.core.relationship import (
     Friendship,
     InteractionScore,
@@ -19,6 +19,7 @@ from orrery.core.relationship import (
 )
 from orrery.core.status import StatusComponent, StatusManager
 from orrery.data_collection import DataCollector
+from orrery.decorators import component, system
 from orrery.exporter import export_to_json
 from orrery.utils.common import (
     add_character_to_settlement,
@@ -53,21 +54,22 @@ sim = Orrery(
                 "orrery.plugins.default.residences",
                 "orrery.plugins.default.life_events",
                 "orrery.plugins.default.ai",
+                "orrery.plugins.default.social_rules",
+                "orrery.plugins.default.location_bias_rules",
             ],
         }
     )
 )
 
 
-@sim.component()
-class Robot(Component):
+@component(sim)
+class Robot(TagComponent):
     """Tags a character as a Robot"""
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {}
+    pass
 
 
-@sim.component()
+@component(sim)
 class OwesDebt(StatusComponent):
     """Marks a character as owing money to another character"""
 
@@ -76,42 +78,10 @@ class OwesDebt(StatusComponent):
         self.amount: int = amount
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"amount": self.amount}
+        return {**super().to_dict(), "amount": self.amount}
 
 
-@sim.social_rule("virtue compatibility")
-def rule(subject: GameObject, target: GameObject) -> Dict[str, int]:
-    if not subject.has_component(Virtues):
-        return {}
-
-    if not target.has_component(Virtues):
-        return {}
-
-    character_virtues = subject.get_component(Virtues)
-    acquaintance_virtues = target.get_component(Virtues)
-
-    compatibility = character_virtues.compatibility(acquaintance_virtues)
-
-    romance_buff: int = 0
-    friendship_buff: int = 0
-
-    if compatibility < -0.5:
-        romance_buff = -2
-        friendship_buff = -3
-    elif compatibility < 0:
-        romance_buff = -1
-        friendship_buff = -2
-    elif compatibility > 0:
-        romance_buff = 1
-        friendship_buff = 2
-    elif compatibility > 0.5:
-        romance_buff = 2
-        friendship_buff = 3
-
-    return {"Friendship": friendship_buff, "Romance": romance_buff}
-
-
-@sim.system()
+@system(sim)
 class RelationshipReporter(ISystem):
     sys_group = "data-collection"
 
@@ -122,8 +92,8 @@ class RelationshipReporter(ISystem):
             (GameCharacter, RelationshipManager)
         ):
             if (
-                game_character.first_name == "Hercules"
-                and game_character.last_name == "Cookson"
+                game_character.first_name == "Delores"
+                and game_character.last_name == "Abernathy"
             ):
                 for target_id, rel_id in relationship_manager.relationships.items():
                     relationship = self.world.get_gameobject(rel_id)
@@ -208,7 +178,7 @@ def main():
         "relationships"
     )
 
-    rel_data.to_csv("rel_data.csv")
+    rel_data[:800].to_csv("rel_data.csv")
 
     if EXPORT_SIM:
         with open(f"orrery_{sim.config.seed}.json", "w") as f:

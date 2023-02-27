@@ -10,11 +10,12 @@ from typing import Any, Dict
 
 from orrery import Component, ISystem, Orrery
 from orrery.core.status import StatusManager
+from orrery.decorators import component, system
 
 sim = Orrery()
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Actor(Component):
     name: str
@@ -23,7 +24,7 @@ class Actor(Component):
         return {"name": self.name}
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class AdventurerStats(Component):
     attack: int
@@ -33,7 +34,7 @@ class AdventurerStats(Component):
         return {"attack": self.attack, "defense": self.defense}
 
 
-@sim.component()
+@component(sim)
 @dataclass()
 class AttackBuff(Component):
     amount: int
@@ -42,7 +43,7 @@ class AttackBuff(Component):
         return {"amount": self.amount}
 
 
-@sim.system()
+@system(sim)
 class OnAddAttackBuff(ISystem):
     sys_group = "late-character-update"
 
@@ -53,7 +54,7 @@ class OnAddAttackBuff(ISystem):
             stats.attack += character.get_component(AttackBuff).amount
 
 
-@sim.system()
+@system(sim)
 class OnRemoveAttackBuff(ISystem):
     sys_group = "late-character-update"
 

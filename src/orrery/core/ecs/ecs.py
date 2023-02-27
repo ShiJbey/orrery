@@ -213,8 +213,8 @@ class GameObject:
 
     @property
     def is_active(self) -> bool:
-        """Return if this GameObject is active"""
-        return self._is_active
+        """Return if this GameObject is active and exists in the ECS"""
+        return self._is_active and self.exists
 
     def set_active(self, is_active: bool) -> None:
         """Set the active status of the GameObject
@@ -379,88 +379,6 @@ class GameObject:
         )
 
 
-# class IECSCommand(Protocol):
-#     """A Command object that makes a change to the ECS World instance"""
-#
-#     def get_type(self) -> str:
-#         """Return the type of this command"""
-#         raise NotImplementedError
-#
-#     def apply(self, world: World) -> None:
-#         """Apply the affects of this command to the world state"""
-#         raise NotImplementedError
-#
-#
-# @dataclasses.dataclass(frozen=True)
-# class AddComponentCommand:
-#     """This command adds a component to a gameobject
-#
-#     Attributes
-#     ----------
-#     gameobject_uid: int
-#         The unique identifier of a GameObject
-#     component: Component
-#         The component to add to the GameObject
-#     """
-#
-#     gameobject_uid: int
-#     component: Component
-#
-#     def get_type(self) -> str:
-#         return self.__class__.__name__
-#
-#     def apply(self, world: World) -> None:
-#         world.add_component(self.gameobject_uid, self.component)
-#
-#
-# @dataclasses.dataclass(frozen=True)
-# class RemoveComponentCommand:
-#     """
-#     This command removes a component from a gameobject
-#
-#     Attributes
-#     ----------
-#     gameobject_uid: int
-#         The unique identifier of a GameObject
-#     component_type: Type[Component]
-#         The component type to remove from the GameObject
-#     """
-#
-#     gameobject_uid: int
-#     component_type: Type[Component]
-#
-#     def get_type(self) -> str:
-#         return self.__class__.__name__
-#
-#     def apply(self, world: World) -> None:
-#         try:
-#             gameobject = world.get_gameobject(self.gameobject_uid)
-#             if not gameobject.has_component(self.component_type):
-#                 return
-#             world.remove_component(gameobject.uid, self.component_type)
-#         except GameObjectNotFoundError:
-#             return
-#
-#
-# @dataclasses.dataclass(frozen=True)
-# class DeleteGameObjectCommand:
-#     """This command removes a gameobject from the world
-#
-#     Attributes
-#     ----------
-#     gameobject_uid: int
-#         The unique identifier of a GameObject
-#     """
-#
-#     gameobject_uid: int
-#
-#     def get_type(self) -> str:
-#         return self.__class__.__name__
-#
-#     def apply(self, world: World) -> None:
-#         world.delete_gameobject(self.gameobject_uid)
-
-
 @dataclass(frozen=True)
 class RemovedComponentPair(Generic[_CT]):
     guid: int
@@ -501,6 +419,22 @@ class Component(ABC):
     def to_dict(self) -> Dict[str, Any]:
         """Serialize the component to a dict"""
         raise NotImplementedError
+
+
+class TagComponent(Component):
+    """Tag components hold no data and are used for filtering"""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def __str__(self) -> str:
+        return f"Tag::{self.__class__.__name__}"
+
+    def __repr__(self) -> str:
+        return f"Tag::{self.__class__.__name__}"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {}
 
 
 class ISystem(ABC, esper.Processor):
@@ -698,11 +632,11 @@ class World:
         self._component_types: Dict[str, ComponentInfo] = {}
         self._component_factories: Dict[Type[Component], IComponentFactory] = {}
         self._removed_components: DefaultDict[
-            Type[Component], OrderedSet[RemovedComponentPair]
-        ] = defaultdict(lambda: OrderedSet())
+            Type[Component], OrderedSet[RemovedComponentPair[Any]]
+        ] = defaultdict(lambda: OrderedSet([]))
         self._added_components: DefaultDict[
             Type[Component], OrderedSet[int]
-        ] = defaultdict(lambda: OrderedSet())
+        ] = defaultdict(lambda: OrderedSet([]))
         self._systems: SystemGroup = RootSystemGroup()
         # The RootSystemGroup should be the only system that is directly added
         # to esper
@@ -1026,9 +960,9 @@ class World:
         ]
 
         while stack:
-            group, current_sys = stack.pop()
+            _, current_sys = stack.pop()
 
-            if type(current_sys) == system_type:
+            if isinstance(current_sys, system_type):
                 return current_sys
 
             else:
@@ -1072,7 +1006,7 @@ class World:
     def step(self, **kwargs: Any) -> None:
         """Call the process method on all systems"""
         self._clear_dead_gameobjects()
-        self._ecs.process(**kwargs)
+        self._ecs.process(**kwargs) # type: ignore
         self._removed_components.clear()
         self._added_components.clear()
 

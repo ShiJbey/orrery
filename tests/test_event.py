@@ -22,7 +22,7 @@ class PriceDisputeEvent(Event):
         }
 
 
-class DeclareRivalyEvent(Event):
+class DeclareRivalryEvent(Event):
     def __init__(self, date: SimDateTime, *characters: GameObject) -> None:
         super().__init__(date)
         self.characters: Tuple[GameObject, ...] = characters
@@ -43,7 +43,7 @@ def shared_role_event():
     character_a = world.spawn_gameobject(name="A")
     character_b = world.spawn_gameobject(name="B")
 
-    return DeclareRivalyEvent(SimDateTime(1, 1, 1), character_a, character_b)
+    return DeclareRivalryEvent(SimDateTime(1, 1, 1), character_a, character_b)
 
 
 def test_life_event_get_type(sample_event: Event):
@@ -53,6 +53,6 @@ def test_life_event_get_type(sample_event: Event):
 def test_life_event_to_dict(sample_event: Event):
     serialized_event = sample_event.to_dict()
     assert serialized_event["type"] == "PriceDisputeEvent"
-    assert serialized_event["timestamp"] == "2022-01-01T00:00:00.000000"
+    assert serialized_event["timestamp"] == "0001-01-01T00:00:00"
     assert serialized_event["merchant"] == 1
     assert serialized_event["customer"] == 2

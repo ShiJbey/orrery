@@ -16,8 +16,10 @@ from orrery import (
 )
 from orrery.components import Active, InTheWorkforce, Unemployed
 from orrery.core.event import EventHistory
-from orrery.core.life_event import LifeEvent, LifeEventBuffer
+from orrery.core.life_event import ActionableLifeEvent, LifeEventBuffer
 from orrery.core.relationship import Romance
+from orrery.core.roles import Role, RoleList
+from orrery.decorators import component, system
 from orrery.plugins.default.life_events import StartDatingLifeEvent
 from orrery.utils.common import (
     add_character_to_settlement,
@@ -54,16 +56,16 @@ sim = Orrery(
 )
 
 
-@sim.component()
+@component(sim)
 class SimpleBrain(Component):
     def __init__(self) -> None:
         super().__init__()
-        self.optional_events: List[LifeEvent] = []
+        self.optional_events: List[ActionableLifeEvent] = []
 
-    def append_life_event(self, event: LifeEvent) -> None:
+    def append_life_event(self, event: ActionableLifeEvent) -> None:
         self.optional_events.append(event)
 
-    def select_life_event(self, world: World) -> Optional[LifeEvent]:
+    def select_life_event(self, world: World) -> Optional[ActionableLifeEvent]:
         rng = world.get_resource(Random)
         if self.optional_events:
             chosen = rng.choice(self.optional_events)
@@ -76,7 +78,7 @@ class SimpleBrain(Component):
         return {}
 
 
-@sim.system()
+@system(sim)
 class SimpleBrainSystem(ISystem):
 
     sys_group = "character-update"
@@ -85,14 +87,14 @@ class SimpleBrainSystem(ISystem):
     def process(self, *args: Any, **kwargs: Any) -> None:
         brains = self.world.get_component(SimpleBrain)
         random.shuffle(brains)
-        for guid, brain in brains:
+        for _, brain in brains:
             event = brain.select_life_event(self.world)
             if event:
                 self.world.get_resource(LifeEventBuffer).append(event)
                 event.execute()
 
 
-class FindJob(LifeEvent):
+class FindJob(ActionableLifeEvent):
     def __init__(
         self,
         date: SimDateTime,
@@ -100,7 +102,7 @@ class FindJob(LifeEvent):
         business: GameObject,
         occupation: str,
     ):
-        super().__init__(date, {"Character": character, "Business": business})
+        super().__init__(date, [Role("Character", character), Role("Business",  business)])
         self.occupation: str = occupation
 
     def execute(self) -> None:
@@ -109,16 +111,17 @@ class FindJob(LifeEvent):
 
     @classmethod
     def instantiate(
-        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
-    ) -> Optional[LifeEvent]:
+        cls,
+        world: World,
+        bindings: Optional[RoleList] = None,
+    ) -> Optional[ActionableLifeEvent]:
+        bindings = bindings if bindings else RoleList()
         character = bindings["Character"]
-        business = bindings.get(
-            "Business", world.get_gameobject(world.get_component(MockBiz)[0][0])
-        )
+        business = world.get_gameobject(world.get_component(MockBiz)[0][0])
         return cls(world.get_resource(SimDateTime), character, business, "worker")
 
 
-@sim.component()
+@component(sim)
 class MockBiz(Component):
     def __init__(self, name: str) -> None:
         super().__init__()
@@ -128,7 +131,7 @@ class MockBiz(Component):
         return {"name": self.name}
 
 
-@sim.system()
+@system(sim)
 class FindAJobSystem(ISystem):
     sys_group = "character-update"
 
@@ -182,7 +185,7 @@ def main():
     get_relationship(asami, korra).get_component(Romance).increment(5)
 
     event = StartDatingLifeEvent.instantiate(
-        sim.world, {"Initiator": korra, "Other": asami}
+        sim.world, RoleList([Role("Initiator", korra), Role("Other", asami)])
     )
 
     print(event)
@@ -193,7 +196,7 @@ def main():
     get_relationship(asami, korra).get_component(Romance).increment(25)
 
     event = StartDatingLifeEvent.instantiate(
-        sim.world, {"Initiator": korra, "Other": asami}
+        sim.world, RoleList([Role("Initiator", korra), Role("Other", asami)])
     )
 
     assert event

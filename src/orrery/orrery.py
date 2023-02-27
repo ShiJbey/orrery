@@ -9,13 +9,11 @@ from typing import (
     Any,
     Callable,
     Dict,
-    List,
     Optional,
-    Protocol,
-    Tuple,
     Type,
     TypedDict,
     TypeVar,
+    Union,
 )
 
 from orrery.components.activity import Activities
@@ -29,6 +27,7 @@ from orrery.components.business import (
     WorkHistory,
 )
 from orrery.components.character import (
+    AgingConfig,
     CanAge,
     CanDie,
     CanGetPregnant,
@@ -36,6 +35,8 @@ from orrery.components.character import (
     Deceased,
     Departed,
     GameCharacter,
+    MarriageConfig,
+    ReproductionConfig,
     Retired,
 )
 from orrery.components.residence import Residence, Resident, Vacant
@@ -281,6 +282,9 @@ class Orrery:
         )
         self.world.register_component(Settlement)
         self.world.register_component(EventHistory)
+        self.world.register_component(MarriageConfig)
+        self.world.register_component(AgingConfig)
+        self.world.register_component(ReproductionConfig)
 
         # Configure printing every event to the console
         if self.config.verbose:
@@ -292,6 +296,10 @@ class Orrery:
                 self.load_plugin(plugin_entry)
             else:
                 self.load_plugin(plugin_entry.name, plugin_entry.path)
+
+    @property
+    def date(self) -> SimDateTime:
+        return self.world.get_resource(SimDateTime)
 
     def load_plugin(self, module_name: str, path: Optional[str] = None) -> None:
         """Load a plugin
@@ -309,7 +317,7 @@ class Orrery:
             sys.path.insert(0, plugin_abs_path)
 
         plugin_module = importlib.import_module(module_name)
-        plugin_info: PluginInfo = getattr(plugin_module, "plugin_info", None)
+        plugin_info: Optional[PluginInfo] = getattr(plugin_module, "plugin_info", None)
         plugin_setup_fn: Optional[Callable[[Orrery], None]] = getattr(
             plugin_module, "setup", None
         )
@@ -338,16 +346,22 @@ class Orrery:
         if path is not None:
             sys.path.pop(0)
 
-    def run_for(self, years: int) -> None:
+    def run_for(self, time_delta: Union[int, TimeDelta]) -> None:
         """
         Run the simulation for a given number of simulated years
 
         Parameters
         ----------
-        years: int
+        time_delta: Union[int, TimeDelta]
             Simulated years to run the simulation for
         """
-        stop_date = self.world.get_resource(SimDateTime).copy() + TimeDelta(years=years)
+        if isinstance(time_delta, int):
+            stop_date = self.world.get_resource(SimDateTime).copy() + TimeDelta(
+                years=time_delta
+            )
+        else:
+            stop_date = self.world.get_resource(SimDateTime).copy() + time_delta
+
         self.run_until(stop_date)
 
     def run_until(self, stop_date: SimDateTime) -> None:
@@ -417,90 +431,8 @@ class Orrery:
 
         self.world.add_system(system)
 
-    def component(
-        self,
-        name: Optional[str] = None,
-        factory: Optional[IComponentFactory] = None,
-    ):
-        """Register a component type with the  simulation
-
-        Registers a component class type with the simulation's World instance.
-        This allows content authors to use the Component in YAML files and
-        EntityPrefabs.
-
-        Parameters
-        ----------
-        name: str, optional
-            A name to register the component type under (defaults to name of class)
-        factory: IComponentFactory, optional
-            A factory instance used to construct this component type
-            (defaults to DefaultComponentFactory())
-        """
-
-        def decorator(cls: Type[_CT]) -> Type[_CT]:
-            self.world.register_component(cls, name, factory)
-            return cls
-
-        return decorator
-
-    def resource(self, **kwargs: Any):
-        """Add a class as a shared resource
-
-        This decorator adds an instance of the decorated class as a shared resource.
-
-        Parameters
-        ----------
-        **kwargs: Any
-            Keyword arguments to pass to the constructor of the decorated class
-        """
-
-        def decorator(cls: Type[_RT]) -> Type[_RT]:
-            self.world.add_resource(cls(**kwargs))
-            return cls
-
-        return decorator
-
-    def system(self, **kwargs: Any):
-        """Add a class as a simulation system
-
-        This decorator adds an instance of the decorated class as a shared resource.
-
-        Parameters
-        ----------
-        **kwargs: Any
-            Keyword arguments to pass to the constructor of the decorated class
-        """
-
-        def decorator(cls: Type[_ST]) -> Type[_ST]:
-            self.world.add_system(cls(**kwargs))
-            return cls
-
-        return decorator
-
     def add_location_bias_rule(self, rule: ILocationBiasRule, description: str = ""):
         self.world.get_resource(LocationBiasRuleLibrary).add(rule, description)
 
-    def location_bias_rule(self, description: str = ""):
-        def decorator(rule: ILocationBiasRule):
-            self.world.get_resource(LocationBiasRuleLibrary).add(rule, description)
-
-        return decorator
-
     def add_social_rule(self, rule: ISocialRule, description: str = ""):
         self.world.get_resource(SocialRuleLibrary).add(rule, description)
-
-    def social_rule(self, description: str = ""):
-        def decorator(rule: ISocialRule):
-            self.world.get_resource(SocialRuleLibrary).add(rule, description)
-
-        return decorator
-
-
-class LocationBiasRuleFactory(Protocol):
-    def __call__(self, **kwargs: Any) -> ILocationBiasRule:
-        raise NotImplementedError
-
-
-class SocialRuleFactory(Protocol):
-    def __call__(self, **kwargs: Any) -> ILocationBiasRule:
-        raise NotImplementedError

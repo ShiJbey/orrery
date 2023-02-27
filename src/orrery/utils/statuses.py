@@ -1,7 +1,7 @@
 from typing import Type, TypeVar
 
-from orrery import SimDateTime
 from orrery.core.ecs import GameObject
+from orrery.core.time import SimDateTime
 from orrery.core.status import StatusComponent, StatusManager
 
 _ST = TypeVar("_ST", bound=StatusComponent)

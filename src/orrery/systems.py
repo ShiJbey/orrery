@@ -14,16 +14,22 @@ from orrery.components.business import (
     Unemployed,
 )
 from orrery.components.character import (
+    Adolescent,
+    Adult,
     CanAge,
+    Child,
     ChildOf,
     Dating,
     Departed,
     GameCharacter,
-    LifeStage,
+    MarriageConfig,
     Married,
     ParentOf,
     Pregnant,
+    ReproductionConfig,
+    Senior,
     SiblingOf,
+    YoungAdult,
 )
 from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.settlement import Settlement
@@ -33,7 +39,7 @@ from orrery.components.shared import (
     FrequentedBy,
     FrequentedLocations,
 )
-from orrery.config import CharacterConfig, OrreryConfig
+from orrery.config import OrreryConfig
 from orrery.content_management import (
     CharacterLibrary,
     LifeEventLibrary,
@@ -44,7 +50,7 @@ from orrery.core.ai import AIComponent
 from orrery.core.ecs import GameObject, ISystem
 from orrery.core.ecs.ecs import SystemGroup
 from orrery.core.event import AllEvents, EventBuffer, EventHistory
-from orrery.core.life_event import LifeEvent, LifeEventBuffer
+from orrery.core.life_event import ActionableLifeEvent, LifeEventBuffer
 from orrery.core.relationship import (
     Friendship,
     IncrementCounter,
@@ -58,13 +64,15 @@ from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
 from orrery.prefabs import CharacterPrefab
 from orrery.utils.common import (
     add_character_to_settlement,
-    add_residence,
+    add_residence_to_settlement,
     check_share_residence,
-    create_residence,
-    generate_child_prefab,
+    get_child_prefab,
+    get_life_stage,
+    set_character_age,
     set_frequented_locations,
     set_residence,
     spawn_character,
+    spawn_residence,
     start_job,
 )
 from orrery.utils.relationships import (
@@ -231,10 +239,10 @@ class LifeEventSystem(System):
         if len(all_event_types) == 0:
             return
 
-        event_type: Type[LifeEvent]
+        event_type: Type[ActionableLifeEvent]
         for _ in range(total_population // 10):
             event_type = random.choice(all_event_types)
-            if event := event_type.instantiate(self.world, {}):
+            if event := event_type.instantiate(self.world):
                 life_event_buffer.append(event)
                 event.execute()
 
@@ -308,8 +316,7 @@ class FindEmployeesSystem(ISystem):
                     )
                 ]
 
-                if occupation_type.precondition:
-                    candidates = filter(occupation_type.precondition, candidates)
+                candidates = [c for c in candidates if occupation_type.precondition(c)]
 
                 if not candidates:
                     continue
@@ -386,12 +393,12 @@ class SpawnFamilySystem(System):
         if prefab is None:
             return None
 
-        residence = create_residence(self.world, prefab)
+        residence = spawn_residence(self.world, prefab)
 
-        add_residence(
+        add_residence_to_settlement(
             residence,
             settlement=self.world.get_gameobject(settlement.gameobject.uid),
-            lot=lot,
+            lot_id=lot,
         )
 
         return residence
@@ -399,13 +406,13 @@ class SpawnFamilySystem(System):
     @staticmethod
     def _try_get_spouse_prefab(
         rng: random.Random,
-        character_config: CharacterConfig,
+        marriage_config: MarriageConfig,
         character_library: CharacterLibrary,
     ) -> Optional[CharacterPrefab]:
-        if rng.random() < character_config.spawning.chance_spawn_with_spouse:
+        if rng.random() < marriage_config.chance_spawn_with_spouse:
             # Create another character to be their spouse
             potential_spouse_prefabs = character_library.get_matching_prefabs(
-                *character_config.spawning.spouse_archetypes
+                *marriage_config.spouse_prefabs
             )
 
             if potential_spouse_prefabs:
@@ -421,26 +428,28 @@ class SpawnFamilySystem(System):
         # Track all the characters generated
         generated_characters = GeneratedFamily()
 
-        # Create a new entity using the archetype
+        if prefab is None:
+            raise RuntimeError("Missing character prefabs to generate")
 
-        character = spawn_character(self.world, prefab, life_stage=LifeStage.YoungAdult)
+        # Create a new entity using the archetype
+        character = spawn_character(self.world, prefab, life_stage=YoungAdult)
 
         generated_characters.adults.append(character)
 
-        character_config = character.get_component(GameCharacter).config
-
+        spouse_prefab: Optional[CharacterPrefab] = None
         spouse: Optional[GameObject] = None
 
-        spouse_prefab = self._try_get_spouse_prefab(
-            rng, character_config, character_library
-        )
+        if marriage_config := character.try_component(MarriageConfig):
+            spouse_prefab = self._try_get_spouse_prefab(
+                rng, marriage_config, character_library
+            )
 
         if spouse_prefab:
             spouse = spawn_character(
                 self.world,
                 spouse_prefab,
                 last_name=character.get_component(GameCharacter).last_name,
-                life_stage=LifeStage.Adult,
+                life_stage=Adult,
             )
 
             generated_characters.adults.append(spouse)
@@ -464,12 +473,16 @@ class SpawnFamilySystem(System):
                 InteractionScore
             ).increment(1)
 
-        num_kids = rng.randint(0, character_config.spawning.max_children_at_spawn)
+        num_kids: int = 0
         children: List[GameObject] = []
+        potential_child_prefabs: List[CharacterPrefab] = []
 
-        potential_child_prefabs = character_library.get_matching_prefabs(
-            *character_config.spawning.child_archetypes
-        )
+        if reproduction_config := character.get_component(ReproductionConfig):
+            num_kids = rng.randint(0, reproduction_config.max_children_at_spawn)
+
+            potential_child_prefabs = character_library.get_matching_prefabs(
+                *reproduction_config.child_prefabs
+            )
 
         if potential_child_prefabs:
             chosen_child_prefabs = rng.sample(potential_child_prefabs, num_kids)
@@ -479,7 +492,7 @@ class SpawnFamilySystem(System):
                     self.world,
                     child_prefab,
                     last_name=character.get_component(GameCharacter).last_name,
-                    life_stage=LifeStage.Child,
+                    life_stage=Child,
                 )
                 generated_characters.children.append(child)
                 children.append(child)
@@ -557,7 +570,7 @@ class SpawnFamilySystem(System):
         rng = self.world.get_resource(random.Random)
         residence_library = self.world.get_resource(ResidenceLibrary)
         character_library = self.world.get_resource(CharacterLibrary)
-        event_buffer = self.world.get_resource(EventBuffer)
+        event_buffer = self.world.get_resource(LifeEventBuffer)
         date = self.world.get_resource(SimDateTime)
 
         # Check that there are residence prefabs to use
@@ -594,7 +607,7 @@ class SpawnFamilySystem(System):
 
                 # Record a life event
                 event_buffer.append(
-                    orrery.events.MoveIntoTownEvent(
+                    orrery.events.MoveResidenceEvent(
                         date, residence, *[*family.adults, *family.children]
                     )
                 )
@@ -638,7 +651,7 @@ class CharacterAgingSystem(System):
 
     def run(self, *args: Any, **kwargs: Any) -> None:
         current_date = self.world.get_resource(SimDateTime)
-        event_log = self.world.get_resource(EventBuffer)
+        event_log = self.world.get_resource(LifeEventBuffer)
 
         age_increment = float(self.elapsed_time.total_days) / DAYS_PER_YEAR
 
@@ -647,46 +660,47 @@ class CharacterAgingSystem(System):
         ):
             character = self.world.get_gameobject(guid)
 
-            life_stage_before = character_comp.life_stage
-            character_comp.increment_age(age_increment)
-            life_stage_after = character_comp.life_stage
+            life_stage_value_before = get_life_stage(character).value()
+            set_character_age(character, character_comp.age + age_increment)
+            life_stage_after = get_life_stage(character)
 
-            life_stage_changed = life_stage_before != life_stage_after
+            life_stage_changed = life_stage_value_before != life_stage_after.value()
 
             if life_stage_changed is False:
                 continue
 
-            if character_comp.life_stage == LifeStage.Adolescent:
+            if life_stage_after == Adolescent:
                 event_log.append(
                     orrery.events.BecomeAdolescentEvent(current_date, character)
                 )
 
-            elif character_comp.life_stage == LifeStage.YoungAdult:
+            elif life_stage_after == YoungAdult:
                 event_log.append(
                     orrery.events.BecomeYoungAdultEvent(current_date, character)
                 )
 
-            elif character_comp.life_stage == LifeStage.Adult:
+            elif life_stage_after == Adult:
                 event_log.append(
                     orrery.events.BecomeAdultEvent(current_date, character)
                 )
 
-            elif character_comp.life_stage == LifeStage.Senior:
+            elif life_stage_after == Senior:
                 event_log.append(
                     orrery.events.BecomeSeniorEvent(current_date, character)
                 )
 
 
 class LifeEventBufferSystem(ISystem):
-    sys_group = "clean-up"
-    priority = -9998
+    sys_group = "event-listeners"
+    priority = 9999
 
     def process(self, *args: Any, **kwargs: Any) -> None:
         life_event_buffer = self.world.get_resource(LifeEventBuffer)
         event_buffer = self.world.get_resource(EventBuffer)
         for event in life_event_buffer.iter_events():
-            for _, gameobject in event.iter_roles():
-                gameobject.get_component(EventHistory).append(event)
+            for role in event.iter_roles():
+                if history := role.gameobject.try_component(EventHistory):
+                    history.append(event)
             event_buffer.append(event)
         life_event_buffer.clear()
 
@@ -755,7 +769,7 @@ class UnemployedStatusSystem(System):
                         "unemployment",
                     )
 
-                    self.world.get_resource(EventBuffer).append(event)
+                    self.world.get_resource(LifeEventBuffer).append(event)
 
 
 class PregnantStatusSystem(System):
@@ -772,12 +786,13 @@ class PregnantStatusSystem(System):
 
             other_parent = self.world.get_gameobject(pregnant.partner_id)
 
+            child_prefab = get_child_prefab(character, other_parent)
+
+            assert child_prefab
+
             baby = spawn_character(
                 self.world,
-                generate_child_prefab(
-                    character,
-                    other_parent,
-                ),
+                child_prefab,
                 last_name=character.get_component(GameCharacter).last_name,
             )
 
@@ -836,10 +851,14 @@ class PregnantStatusSystem(System):
 
             # Pregnancy event dates are retro-fit to be the actual date that the
             # child was due.
-            self.world.get_resource(EventBuffer).append(
+            self.world.get_resource(LifeEventBuffer).append(
                 orrery.events.GiveBirthEvent(
                     current_date, character, other_parent, baby
                 )
+            )
+
+            self.world.get_resource(LifeEventBuffer).append(
+                orrery.events.BirthEvent(current_date, baby)
             )
 
 
@@ -886,7 +905,7 @@ class FriendshipStatSystem(System):
     sys_group = "relationship-update"
 
     def run(self, *args: Any, **kwargs: Any) -> None:
-        for rel_id, (friendship, interaction_score) in self.world.get_components(
+        for _, (friendship, interaction_score) in self.world.get_components(
             (Friendship, InteractionScore)
         ):
             friendship.increment(
@@ -901,7 +920,7 @@ class RomanceStatSystem(System):
     sys_group = "relationship-update"
 
     def run(self, *args: Any, **kwargs: Any) -> None:
-        for rel_id, (romance, interaction_score) in self.world.get_components(
+        for _, (romance, interaction_score) in self.world.get_components(
             (Romance, InteractionScore)
         ):
             romance.increment(
@@ -922,10 +941,8 @@ class OnJoinSettlementSystem(ISystem):
         for event in self.world.get_resource(EventBuffer).iter_events_of_type(
             orrery.events.JoinSettlementEvent
         ):
-            game_character = event.character.get_component(GameCharacter)
-
             # Add young-adult or older characters to the workforce
-            if game_character.life_stage >= LifeStage.YoungAdult:
+            if get_life_stage(event.character) >= YoungAdult:
                 add_status(event.character, InTheWorkforce())
                 if not event.character.has_component(Occupation):
                     add_status(event.character, Unemployed())

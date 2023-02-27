@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 from orrery import Component, GameObject, Orrery
 from orrery.components import Activities, Location
 from orrery.content_management import ActivityLibrary
+from orrery.decorators import component, location_bias_rule
 from orrery.utils.common import (
     calculate_location_probabilities,
     location_has_activities,
@@ -19,7 +20,7 @@ from orrery.utils.common import (
 sim = Orrery()
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Actor(Component):
     name: str
@@ -28,69 +29,69 @@ class Actor(Component):
         return {"name": self.name}
 
 
-@sim.component()
+@component(sim)
 class SocialButterfly(Component):
     def to_dict(self) -> Dict[str, Any]:
         return {}
 
 
-@sim.component()
+@component(sim)
 class HealthNut(Component):
     def to_dict(self) -> Dict[str, Any]:
         return {}
 
 
-@sim.component()
+@component(sim)
 class BookWorm(Component):
     def to_dict(self) -> Dict[str, Any]:
         return {}
 
 
-@sim.component()
+@component(sim)
 class RecoveringAlcoholic(Component):
     def to_dict(self) -> Dict[str, Any]:
         return {}
 
 
-@sim.component()
+@component(sim)
 class Shopaholic(Component):
     def to_dict(self) -> Dict[str, Any]:
         return {}
 
 
-@sim.location_bias_rule("social-butterfly")
-def rule(character: GameObject, location: GameObject) -> Optional[int]:
+@location_bias_rule(sim, "social-butterfly")
+def social_butterfly_rule(character: GameObject, location: GameObject) -> Optional[int]:
     if character.has_component(SocialButterfly) and location_has_activities(
         location, "Socializing"
     ):
         return 2
 
 
-@sim.location_bias_rule("recovering-alcoholic")
-def rule(character: GameObject, location: GameObject) -> Optional[int]:
+@location_bias_rule(sim, "recovering-alcoholic")
+def recovering_alcoholic_rule(character: GameObject, location: GameObject) -> Optional[int]:
     if character.has_component(RecoveringAlcoholic) and location_has_activities(
         location, "Drinking"
     ):
         return -3
 
 
-@sim.location_bias_rule("shop-alcoholic")
-def rule(character: GameObject, location: GameObject) -> Optional[int]:
+@location_bias_rule(sim, "shop-alcoholic")
+def shopaholic_rule(character: GameObject, location: GameObject) -> Optional[int]:
     if character.has_component(Shopaholic) and location_has_activities(
         location, "Shopping"
     ):
         return 3
 
 
-@sim.location_bias_rule("book-worm")
-def rule(character: GameObject, location: GameObject) -> Optional[int]:
+@location_bias_rule(sim, "book-worm")
+def book_worm_rule(character: GameObject, location: GameObject) -> Optional[int]:
     if character.has_component(BookWorm) and location_has_activities(
         location, "Reading"
     ):
         return 2
 
 
-@sim.location_bias_rule("health-nut")
+@location_bias_rule(sim, "health-nut")
 def rule(character: GameObject, location: GameObject) -> Optional[int]:
     if character.has_component(HealthNut) and location_has_activities(
         location, "Recreation"

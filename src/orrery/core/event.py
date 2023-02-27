@@ -4,7 +4,8 @@ from abc import ABC
 from collections import defaultdict
 from typing import Any, ClassVar, DefaultDict, Dict, Iterator, List, Type, TypeVar
 
-from orrery import Component, SimDateTime
+from orrery.core.ecs import Component
+from orrery.core.time import SimDateTime
 from orrery.core.serializable import ISerializable
 
 
@@ -37,8 +38,10 @@ class Event(ABC):
         """Serialize this LifeEvent to a dictionary"""
         return {"type": self.get_type(), "timestamp": str(self._timestamp)}
 
-    def __eq__(self, other: Event) -> bool:
-        return self._uid == other._uid
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Event):
+            return self._uid == other._uid
+        raise TypeError(f"Expected type Event, but was {type(other)}")
 
     def __le__(self, other: Event) -> bool:
         return self._uid <= other._uid
@@ -125,6 +128,15 @@ class EventHistory(Component):
     def to_dict(self) -> Dict[str, Any]:
         return {"events": [e.get_id() for e in self._history]}
 
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    def __repr__(self) -> str:
+        return "{}({})".format(
+            self.__class__.__name__,
+            [f"{type(e).__name__}({e.get_id()})" for e in self._history],
+        )
+
 
 class AllEvents(ISerializable):
     """Stores a record of all past events"""
@@ -139,7 +151,7 @@ class AllEvents(ISerializable):
         self._history[event.get_id()] = event
 
     def to_dict(self) -> Dict[str, Any]:
-        return {key: entry.to_dict() for key, entry in self._history.items()}
+        return {str(key): entry.to_dict() for key, entry in self._history.items()}
 
     def __iter__(self) -> Iterator[Event]:
         return self._history.values().__iter__()

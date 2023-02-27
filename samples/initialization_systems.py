@@ -8,12 +8,13 @@ from typing import Any
 
 from orrery import ISystem, Orrery, OrreryConfig
 from orrery.components import Settlement
+from orrery.decorators import system
 from orrery.utils.common import spawn_settlement
 
 sim = Orrery(OrreryConfig(verbose=False))
 
 
-@sim.system()
+@system(sim)
 class InitializeMajorSettlements(ISystem):
     sys_group = "initialization"
 

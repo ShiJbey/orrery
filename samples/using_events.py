@@ -20,11 +20,12 @@ from typing import Any, Dict
 
 from orrery import Component, GameObject, ISystem, Orrery, OrreryConfig, SimDateTime
 from orrery.core.event import Event, EventBuffer
+from orrery.decorators import component, system
 
 sim = Orrery(OrreryConfig(verbose=False))
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Actor(Component):
     name: str
@@ -33,7 +34,7 @@ class Actor(Component):
         return {"name": self.name}
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Money(Component):
     amount: int
@@ -42,7 +43,7 @@ class Money(Component):
         return {"amount": self.amount}
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Job(Component):
     title: str
@@ -52,7 +53,7 @@ class Job(Component):
         return {"title": self.title, "salary": self.salary}
 
 
-@sim.system()
+@system(sim)
 class SalarySystem(ISystem):
     sys_group = "character-update"
 
@@ -62,7 +63,7 @@ class SalarySystem(ISystem):
             print(f"{actor.name} has ${money.amount}.")
 
 
-@sim.system()
+@system(sim)
 class BecomeMillionaireEventSystem(ISystem):
 
     sys_group = "character-update"
@@ -84,7 +85,7 @@ class BecomeMillionaireEvent(Event):
         self.character: GameObject = character
 
 
-@sim.system()
+@system(sim)
 class OnBecomeMillionaireSystem(ISystem):
 
     sys_group = "event-listeners"

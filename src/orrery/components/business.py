@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import dataclasses
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from orrery import GameObject
 from orrery.config import BusinessConfig
-from orrery.core.ecs import Component
+from orrery.core.ecs import Component, GameObject
 from orrery.core.status import StatusComponent
 
 
@@ -67,7 +67,7 @@ class Occupation(Component):
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class WorkHistoryEntry:
     """
     Record of a job held by a character
@@ -171,7 +171,7 @@ class WorkHistory(Component):
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Service:
     """A service offered by a business establishment
 
@@ -353,7 +353,7 @@ class Business(Component):
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclasses.dataclass(frozen=True)
 class OccupationType:
     """
     Shared information about all occupations with this type
@@ -371,7 +371,7 @@ class OccupationType:
 
     name: str
     level: int = 1
-    precondition: Optional[Callable[[GameObject], bool]] = None
+    precondition: Callable[[GameObject], bool] = dataclasses.field(default_factory=lambda: (lambda g: True))
 
 
 class BusinessOwner(StatusComponent):

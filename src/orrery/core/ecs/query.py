@@ -159,7 +159,7 @@ class Relation:
         for i, s in enumerate(self.get_tuples(*symbols)):
             binding = self.get_bindings()[i]
             matches = h[s]
-            if matches is not None:  # join
+            if matches:  # join
                 for match in matches:
                     if symbols_to_concat:
                         results.append(
@@ -245,7 +245,7 @@ class WithClause:
         component_types: Tuple[Type[Component], ...],
         variable: Optional[str] = None,
     ) -> None:
-        self.component_types: Type[Type[Component], ...] = component_types
+        self.component_types: Tuple[Type[Component], ...] = component_types
         self.variable: Optional[str] = variable
 
     def __call__(self, ctx: QueryContext) -> Relation:
@@ -298,38 +298,6 @@ class FromClause:
 class FilterClause:
 
     __slots__ = "filter_fn", "variables"
-
-    @overload
-    def __init__(
-        self,
-        filter_fn: Callable[[GameObject], bool],
-        variables: str,
-    ) -> None:
-        ...
-
-    @overload
-    def __init__(
-        self,
-        filter_fn: Callable[[GameObject, GameObject], bool],
-        variables: Tuple[str, str],
-    ) -> None:
-        ...
-
-    @overload
-    def __init__(
-        self,
-        filter_fn: Callable[[GameObject, GameObject, GameObject], bool],
-        variables: Tuple[str, str, str],
-    ) -> None:
-        ...
-
-    @overload
-    def __init__(
-        self,
-        filter_fn: Callable[[GameObject, GameObject, GameObject, GameObject], bool],
-        variables: Tuple[str, str, str, str],
-    ) -> None:
-        ...
 
     def __init__(
         self,

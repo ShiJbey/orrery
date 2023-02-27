@@ -2,11 +2,9 @@ from typing import Any, Dict
 
 import pytest
 
-from orrery.components.character import GameCharacter, Gender, Retired
-from orrery.config import CharacterAgingConfig, CharacterConfig, CharacterSpawnConfig
+from orrery.components.character import Female, GameCharacter, NonBinary, Retired
 from orrery.core.ecs import Component, World
 from orrery.core.ecs.query import QB, Relation
-from orrery.utils.query import is_gender
 
 
 def test_relation_create_empty():
@@ -112,39 +110,27 @@ class DemonKing(Component):
 def sample_world() -> World:
     world = World()
 
-    character_config = CharacterConfig(
-        name="human",
-        aging=CharacterAgingConfig(
-            adolescent_age=13,
-            young_adult_age=18,
-            adult_age=30,
-            senior_age=65,
-            lifespan=80,
-        ),
-        spawning=CharacterSpawnConfig(),
-    )
-
-    world.spawn_gameobject([Hero(), GameCharacter(character_config, "Shi", "", age=27)])
+    world.spawn_gameobject([Hero(), GameCharacter("Shi", "", age=27)])
     world.spawn_gameobject(
         [
             Hero(),
-            GameCharacter(character_config, "Astrid", "", gender=Gender.Female),
+            GameCharacter("Astrid", ""),
+            Female(),
             Retired(),
         ]
     )
     world.spawn_gameobject(
         [
             DemonKing(),
-            GameCharacter(character_config, "-Shi", ""),
+            GameCharacter("-Shi", ""),
             Retired(),
         ]
     )
     world.spawn_gameobject(
         [
             DemonKing(),
-            GameCharacter(
-                character_config, "Palpatine", "", age=160, gender=Gender.NonBinary
-            ),
+            GameCharacter("Palpatine", "", age=160),
+            NonBinary(),
         ]
     )
 
@@ -193,8 +179,7 @@ def test_query_bindings(sample_world: World):
 
     query = QB.query(
         ("_",),
-        QB.with_(GameCharacter, "_"),
-        QB.filter_(is_gender(Gender.NonBinary), "_"),
+        QB.with_((GameCharacter, NonBinary), "_"),
     )
     result = set(query.execute(sample_world, {"_": 4}))
     expected = {(4,)}
@@ -209,9 +194,7 @@ def test_query_bindings(sample_world: World):
     expected = {(2, 3)}
     assert result == expected
 
-    query = QB.query(
-        "_", QB.with_(GameCharacter, "_"), QB.filter_(is_gender(Gender.NonBinary), "_")
-    )
+    query = QB.query("_", QB.with_((GameCharacter, NonBinary), "_"))
     result = set(query.execute(sample_world, {"_": 4}))
     expected = {(4,)}
     assert result == expected
@@ -231,13 +214,14 @@ def test_filter(sample_world: World):
     assert result == expected
 
     query = QB.query(
-        "_", QB.with_(GameCharacter, "_"), QB.filter_(is_gender(Gender.NonBinary), "_")
+        "_",
+        QB.with_((GameCharacter, NonBinary), "_"),
     )
     result = set(query.execute(sample_world))
     expected = {(4,)}
     assert result == expected
 
-    with pytest.raises(TypeError):
+    with pytest.raises(RuntimeError):
         QB.query(
-            ("X", "Y"), QB.filter_(lambda world, x, y: x == y, ("X", "Y"))
+            ("X", "Y"), QB.filter_(lambda x, y: x == y, ("X", "Y"))
         ).execute(sample_world)

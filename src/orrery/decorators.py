@@ -4,14 +4,22 @@ Utility decorators that should assist with content authoring
 from typing import Any, Type, TypeVar
 
 from orrery import Component, IComponentFactory, ISystem, Orrery
-from orrery.content_management import AIBrainFactory, AIBrainLibrary, LifeEventLibrary
-from orrery.core.life_event import LifeEvent
+from orrery.content_management import (
+    AIBrainFactory,
+    AIBrainLibrary,
+    LifeEventLibrary,
+    LocationBiasRuleLibrary,
+    SocialRuleLibrary,
+)
+from orrery.core.life_event import ActionableLifeEvent
+from orrery.core.location_bias import ILocationBiasRule
+from orrery.core.social_rule import ISocialRule
 
 _CT = TypeVar("_CT", bound=Component)
 _CF = TypeVar("_CF", bound=IComponentFactory)
 _RT = TypeVar("_RT", bound=Any)
 _ST = TypeVar("_ST", bound=ISystem)
-_LT = TypeVar("_LT", bound=LifeEvent)
+_LT = TypeVar("_LT", bound=ActionableLifeEvent)
 
 
 def brain_factory(sim: Orrery, name: str):
@@ -118,5 +126,20 @@ def life_event(sim: Orrery):
     def decorator(cls: Type[_LT]) -> Type[_LT]:
         sim.world.get_resource(LifeEventLibrary).add(cls)
         return cls
+
+    return decorator
+
+
+def social_rule(sim: Orrery, description: str = ""):
+    def decorator(rule: ISocialRule):
+        sim.world.get_resource(SocialRuleLibrary).add(rule, description)
+        return rule
+
+    return decorator
+
+
+def location_bias_rule(sim: Orrery, description: str = ""):
+    def decorator(rule: ILocationBiasRule):
+        sim.world.get_resource(LocationBiasRuleLibrary).add(rule, description)
 
     return decorator

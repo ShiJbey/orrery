@@ -40,11 +40,18 @@ class EntityPrefab(pydantic.BaseModel):
         gameobject = world.spawn_gameobject()
 
         for component_name, options in self.components.items():
-            gameobject.add_component(
-                world.get_component_info(component_name).factory.create(
-                    world, **options
+            try:
+                gameobject.add_component(
+                    world.get_component_info(component_name).factory.create(
+                        world, **options
+                    )
                 )
-            )
+            except KeyError:
+                raise Exception(
+                    f"Cannot find component, {component_name}. "
+                    "Please ensure that this component has "
+                    "been registered with the simulation's world instance."
+                )
 
         for child in self.children:
             gameobject.add_child(child.spawn(world))

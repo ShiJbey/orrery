@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterator, Set
 from orrery.core.ecs import Component
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Activity:
     """An activity that characters do at a location
 

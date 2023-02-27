@@ -9,16 +9,30 @@ config:
     lifespan: 85
   spawning:
     spawn_frequency: 1
-    spouse_archetypes:
+    spouse_prefabs:
       - "character::default::.*"
     chance_spawn_with_spouse: 0.5
     max_children_at_spawn: 3
-    child_archetypes:
+    child_prefabs:
       - "character::default::.*"
 components:
   GameCharacter:
     first_name: "#character::default::first_name::gender-neutral#"
     last_name: "#character::default::last_name#"
+  AgingConfig:
+    adolescent_age: 13
+    young_adult_age: 18
+    adult_age: 30
+    senior_age: 65
+    lifespan: 85
+  MarriageConfig:
+    spouse_prefabs:
+      - "character::default::.*"
+    chance_spawn_with_spouse: 0.5
+  ReproductionConfig:
+    max_children_at_spawn: 3
+    child_prefabs:
+      - "character::default::.*"
   RelationshipManager: {}
   Virtues: {}
   CanAge: {}

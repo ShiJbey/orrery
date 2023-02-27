@@ -1,14 +1,67 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from orrery.core.ecs import GameObject, World
 from orrery.core.event import Event
+from orrery.core.roles import Role, RoleList
 from orrery.core.time import SimDateTime
 
 
 class LifeEvent(Event, ABC):
+    """
+    User-facing class for implementing behaviors around life events
+
+    This is adapted from:
+    https://github.com/ianhorswill/CitySimulator/blob/master/Assets/Codes/Action/Actions/ActionType.cs
+    """
+
+    __slots__ = "_roles"
+
+    def __init__(
+        self,
+        timestamp: SimDateTime,
+        roles: Iterable[Role],
+    ) -> None:
+        """
+        Parameters
+        ----------
+        timestamp: SimDateTime
+            Timestamp for when this event
+        roles: Dict[str, GameObject
+            The names of roles mapped to GameObjects
+        """
+        super().__init__(timestamp)
+        self._roles: RoleList = RoleList(roles)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize this LifeEvent to a dictionary"""
+        return {
+            **super().to_dict(),
+            "roles": {role.name: role.gameobject for role in self._roles},
+        }
+
+    def iter_roles(self) -> Iterator[Role]:
+        return self._roles.__iter__()
+
+    def __getitem__(self, role_name: str) -> GameObject:
+        return self._roles[role_name]
+
+    def __repr__(self) -> str:
+        return "{}(timestamp={}, roles=[{}])".format(
+            self.get_type(), str(self.get_timestamp()), self._roles
+        )
+
+    def __str__(self) -> str:
+        return "{} [@ {}] {}".format(
+            self.get_type(),
+            str(self.get_timestamp()),
+            ", ".join([str(role) for role in self._roles]),
+        )
+
+
+class ActionableLifeEvent(LifeEvent):
     """
     User-facing class for implementing behaviors around life events
 
@@ -26,7 +79,7 @@ class LifeEvent(Event, ABC):
     def __init__(
         self,
         timestamp: SimDateTime,
-        roles: Dict[str, GameObject],
+        roles: Iterable[Role],
     ) -> None:
         """
         Parameters
@@ -36,18 +89,7 @@ class LifeEvent(Event, ABC):
         roles: Dict[str, GameObject
             The names of roles mapped to GameObjects
         """
-        super().__init__(timestamp)
-        self._roles: Dict[str, GameObject] = roles
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize this LifeEvent to a dictionary"""
-        return {
-            **super().to_dict(),
-            "roles": {role: gameobject.uid for role, gameobject in self._roles.items()},
-        }
-
-    def iter_roles(self) -> Iterator[Tuple[str, GameObject]]:
-        return self._roles.items().__iter__()
+        super().__init__(timestamp, roles)
 
     def get_priority(self) -> float:
         """Get the probability of an instance of this event happening
@@ -67,36 +109,18 @@ class LifeEvent(Event, ABC):
 
     def is_valid(self, world: World) -> bool:
         """Check that all gameobjects still meet the preconditions for their roles"""
-        return self.instantiate(world, bindings={**self._roles}) is not None
+        return self.instantiate(world, bindings=self._roles) is not None
 
     def get_initiator(self) -> GameObject:
         return self._roles[self.initiator]
 
-    def __getitem__(self, role_name: str) -> GameObject:
-        return self._roles[role_name]
-
-    def __repr__(self) -> str:
-        return "{}(timestamp={}, roles=[{}])".format(
-            self.get_type(), str(self.get_timestamp()), self._roles
-        )
-
-    def __str__(self) -> str:
-        return "{} [at {}] : {}".format(
-            self.get_type(),
-            str(self.get_timestamp()),
-            ", ".join(
-                map(
-                    lambda pair: f"{pair[0]}:{pair[1]}",
-                    self._roles.items(),
-                )
-            ),
-        )
-
     @classmethod
     @abstractmethod
     def instantiate(
-        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
-    ) -> Optional[LifeEvent]:
+        cls,
+        world: World,
+        bindings: Optional[RoleList] = None,
+    ) -> Optional[ActionableLifeEvent]:
         """Attempts to create a new LifeEvent instance
 
         Parameters

@@ -14,6 +14,7 @@ from .ecs import (
     ISystem,
     ResourceNotFoundError,
     SystemGroup,
+    TagComponent,
     World,
 )
 from .prefab import EntityPrefab
@@ -34,4 +35,5 @@ __all__ = [
     "QB",
     "QueryFromFn",
     "QueryGetFn",
+    "TagComponent",
 ]

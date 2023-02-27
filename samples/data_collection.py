@@ -14,12 +14,13 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from orrery.data_collection import DataCollector
+from orrery.decorators import component, system
 from orrery.orrery import Component, ISystem, Orrery, OrreryConfig, SimDateTime
 
 sim = Orrery(OrreryConfig(seed=101))
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Actor(Component):
     name: str
@@ -28,7 +29,7 @@ class Actor(Component):
         return {"name": self.name}
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Money(Component):
     amount: int
@@ -37,7 +38,7 @@ class Money(Component):
         return {"amount": self.amount}
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Job(Component):
     title: str
@@ -47,7 +48,7 @@ class Job(Component):
         return {"title": self.title, "salary": self.salary}
 
 
-@sim.system()
+@system(sim)
 class SalarySystem(ISystem):
     sys_group = "character-update"
 
@@ -56,7 +57,7 @@ class SalarySystem(ISystem):
             money.amount += job.salary // 12
 
 
-@sim.system()
+@system(sim)
 class WealthReporter(ISystem):
     sys_group = "data-collection"
 

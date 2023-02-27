@@ -4,7 +4,7 @@ import logging
 import random
 from typing import Any, Dict, Optional
 
-from orrery.components.virtues import Virtues, VirtueType
+from orrery.components.virtues import Virtue, Virtues
 from orrery.core.ecs import IComponentFactory, World
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class VirtuesFactory(IComponentFactory):
             # Select virtues types
             total_virtues: int = n_likes + n_dislikes
             chosen_virtues = [
-                virtue.name for virtue in rng.sample(list(VirtueType), total_virtues)
+                virtue.name for virtue in rng.sample(list(Virtue), total_virtues)
             ]
 
             # select likes and dislikes

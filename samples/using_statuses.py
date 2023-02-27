@@ -17,12 +17,13 @@ from typing import Any, Dict
 from orrery import Component, GameObject, ISystem, Orrery, OrreryConfig, SimDateTime
 from orrery.core.event import Event, EventBuffer
 from orrery.core.status import StatusComponent, StatusManager
+from orrery.decorators import component, system
 from orrery.utils.statuses import add_status, has_status
 
 sim = Orrery(OrreryConfig(verbose=False))
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Actor(Component):
     name: str
@@ -31,7 +32,7 @@ class Actor(Component):
         return {"name": self.name}
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Money(Component):
     amount: int
@@ -40,7 +41,7 @@ class Money(Component):
         return {"amount": self.amount}
 
 
-@sim.component()
+@component(sim)
 @dataclass
 class Job(Component):
     title: str
@@ -50,12 +51,12 @@ class Job(Component):
         return {"title": self.title, "salary": self.salary}
 
 
-@sim.component()
+@component(sim)
 class PaysTaxes(StatusComponent):
     pass
 
 
-@sim.system()
+@system(sim)
 class SalarySystem(ISystem):
     sys_group = "character-update"
 
@@ -65,7 +66,7 @@ class SalarySystem(ISystem):
             print(f"{actor.name} has ${money.amount}.")
 
 
-@sim.system()
+@system(sim)
 class BecomeMillionaireEventSystem(ISystem):
 
     sys_group = "character-update"
@@ -87,13 +88,12 @@ class BecomeMillionaireEvent(Event):
         self.character = character
 
 
-@sim.system()
+@system(sim)
 class OnBecomeMillionaireSystem(ISystem):
 
     sys_group = "event-listeners"
 
     def process(self, *args: Any, **kwargs: Any) -> None:
-        date = self.world.get_resource(SimDateTime)
         for event in self.world.get_resource(EventBuffer).iter_events_of_type(
             BecomeMillionaireEvent
         ):
@@ -103,7 +103,7 @@ class OnBecomeMillionaireSystem(ISystem):
             if not has_status(character, PaysTaxes):
                 print(f"{actor.name} became a millionaire. Here comes the IRS")
                 character.get_component(Money).amount -= 750_000
-                add_status(character, PaysTaxes(str(date)))
+                add_status(character, PaysTaxes())
             else:
                 print(f"{actor.name} already paid their taxes.")
 

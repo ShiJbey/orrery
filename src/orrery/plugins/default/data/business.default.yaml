@@ -9,3 +9,6 @@ components:
   Activities: {}
   FrequentedBy: {}
   EventHistory: {}
+  Building: {
+    building_type: "commercial"
+  }

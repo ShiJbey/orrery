@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from enum import Enum, IntEnum, auto
-from typing import Any, Dict
+import dataclasses
+from abc import ABC
+from inspect import isclass
+from typing import Any, Dict, List, Type, Union
 
-from orrery.config import CharacterAgingConfig, CharacterConfig
-from orrery.core.ecs import Component
+from orrery.core.ecs import Component, TagComponent
 from orrery.core.status import StatusComponent
 from orrery.core.time import SimDateTime
 
@@ -15,25 +16,22 @@ class Departed(StatusComponent):
     is_persistent = True
 
 
-class CanAge(Component):
+class CanAge(TagComponent):
     """Tags a GameObject as being able to change life stages as time passes"""
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {}
+    pass
 
 
-class CanDie(Component):
+class CanDie(TagComponent):
     """Tags a GameObject as being able to die from natural causes"""
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {}
+    pass
 
 
-class CanGetPregnant(Component):
+class CanGetPregnant(TagComponent):
     """Tags a character as capable of giving birth"""
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {}
+    pass
 
 
 class Deceased(StatusComponent):
@@ -45,28 +43,13 @@ class Deceased(StatusComponent):
 class Retired(StatusComponent):
     """Tags a character as retired"""
 
-    is_persistent = True
+    # is_persistent = True
 
 
 class CollegeGraduate(StatusComponent):
     """Tags a character as having graduated from college"""
 
-    is_persistent = True
-
-
-class Gender(Enum):
-    Male = auto()
-    Female = auto()
-    NonBinary = auto()
-    NotSpecified = auto()
-
-
-class LifeStage(IntEnum):
-    Child = auto()
-    Adolescent = auto()
-    YoungAdult = auto()
-    Adult = auto()
-    Senior = auto()
+    # is_persistent = True
 
 
 class GameCharacter(Component):
@@ -81,141 +64,38 @@ class GameCharacter(Component):
         The character's last or family name
     age: float
         The age of the character in years
-    life_stage: LifeStage
-        The current life stage of the character (determined by aging config)
-    gender: Gender
-        The gender expression of the character
-    config: CharacterConfig
-        The configuration settings for this character
     """
 
-    __slots__ = "first_name", "last_name", "age", "life_stage", "gender", "config"
+    __slots__ = "first_name", "last_name", "age"
 
     def __init__(
         self,
-        config: CharacterConfig,
         first_name: str,
         last_name: str,
         age: int = 0,
-        gender: Gender = Gender.NotSpecified,
     ) -> None:
         super().__init__()
-        self.config: CharacterConfig = config
         self.first_name: str = first_name
         self.last_name: str = last_name
         self.age: float = float(age)
-        self.life_stage: LifeStage = self.life_stage_from_age(
-            self.config.aging, int(self.age)
-        )
-        self.gender: Gender = gender
-
-    @staticmethod
-    def life_stage_from_age(aging_config: CharacterAgingConfig, age: int) -> LifeStage:
-        """Determine the life stage of a character given an age"""
-        if 0 <= age < aging_config.adolescent_age:
-            return LifeStage.Child
-        elif aging_config.adolescent_age <= age < aging_config.young_adult_age:
-            return LifeStage.Adolescent
-        elif aging_config.young_adult_age <= age < aging_config.adult_age:
-            return LifeStage.YoungAdult
-        elif aging_config.adult_age <= age < aging_config.senior_age:
-            return LifeStage.Adult
-        else:
-            return LifeStage.Senior
 
     @property
     def full_name(self) -> str:
         """Returns the full name of the character"""
         return f"{self.first_name} {self.last_name}"
 
-    def overwrite_age(self, years: float) -> None:
-        """Set the characters age"""
-        self.age = years
-
-        if self.age >= self.config.aging.senior_age:
-            self.life_stage = LifeStage.Senior
-
-        elif self.age >= self.config.aging.adult_age:
-            self.life_stage = LifeStage.Adult
-
-        elif self.life_stage >= self.config.aging.young_adult_age:
-            self.life_stage = LifeStage.YoungAdult
-
-        elif self.age >= self.config.aging.adolescent_age:
-            self.life_stage = LifeStage.Adolescent
-
-        else:
-            self.life_stage = LifeStage.Child
-
-    def overwrite_life_stage(self, life_stage: LifeStage) -> None:
-        self.life_stage = life_stage
-
-        if life_stage == LifeStage.Senior:
-            self.age = self.config.aging.senior_age
-
-        elif life_stage == LifeStage.Adult:
-            self.age = self.config.aging.adult_age
-
-        elif life_stage == LifeStage.YoungAdult:
-            self.age = self.config.aging.young_adult_age
-
-        elif life_stage == LifeStage.Adolescent:
-            self.age = self.config.aging.adolescent_age
-
-        elif life_stage == LifeStage.Child:
-            self.age = 0
-
-    def increment_age(self, years: float) -> None:
-        """
-        Increments the current age of the character, setting the life_stage accordingly
-
-        Parameters
-        ----------
-        years: float
-            The number of years to increment the character's age by
-        """
-        self.age += years
-
-        if (
-            self.life_stage < LifeStage.Adolescent
-            and self.age >= self.config.aging.adolescent_age
-        ):
-            self.life_stage = LifeStage.Adolescent
-
-        elif (
-            self.life_stage < LifeStage.YoungAdult
-            and self.age >= self.config.aging.young_adult_age
-        ):
-            self.life_stage = LifeStage.YoungAdult
-
-        elif (
-            self.life_stage < LifeStage.Adult
-            and self.age >= self.config.aging.adult_age
-        ):
-            self.life_stage = LifeStage.Adult
-
-        elif (
-            self.life_stage < LifeStage.Senior
-            and self.age >= self.config.aging.senior_age
-        ):
-            self.life_stage = LifeStage.Senior
-
     def to_dict(self) -> Dict[str, Any]:
         return {
             "first_name": self.first_name,
             "last_name": self.last_name,
             "age": self.age,
-            "life_stage": self.life_stage.name,
-            "gender": self.gender.name,
         }
 
     def __repr__(self) -> str:
-        return "{}(name={}, age={}, life_stage={}, gender={})".format(
+        return "{}(name={}, age={})".format(
             self.__class__.__name__,
             self.full_name,
             int(self.age),
-            self.life_stage.name,
-            self.gender.name,
         )
 
     def __str__(self) -> str:
@@ -285,3 +165,139 @@ class Dating(StatusComponent):
 
     def to_dict(self) -> Dict[str, Any]:
         return {**super().to_dict(), "years": self.years}
+
+
+@dataclasses.dataclass()
+class MarriageConfig(Component):
+    spouse_prefabs: List[str] = dataclasses.field(default_factory=list)
+    chance_spawn_with_spouse: float = 0.5
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "chance_spawn_with_spouse": self.chance_spawn_with_spouse,
+            "spouse_prefabs": self.spouse_prefabs,
+        }
+
+
+@dataclasses.dataclass()
+class AgingConfig(Component):
+    lifespan: int
+    adolescent_age: int
+    young_adult_age: int
+    adult_age: int
+    senior_age: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "lifespan": self.lifespan,
+            "adolescent_age": self.adolescent_age,
+            "young_adult_age": self.young_adult_age,
+            "adult_age": self.adult_age,
+            "senior_age": self.senior_age,
+        }
+
+
+@dataclasses.dataclass()
+class ReproductionConfig(Component):
+    max_children_at_spawn: int = 3
+    child_prefabs: List[str] = dataclasses.field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "max_children_at_spawn": self.max_children_at_spawn,
+            "child_prefabs": self.child_prefabs,
+        }
+
+
+class Gender(TagComponent, ABC):
+    pass
+
+
+class Male(TagComponent):
+    pass
+
+
+class Female(TagComponent):
+    pass
+
+
+class NonBinary(TagComponent):
+    pass
+
+
+class LifeStage(StatusComponent, ABC):
+
+    _value: int
+
+    def __int__(self) -> int:
+        return self.value()
+
+    @classmethod
+    def value(cls) -> int:
+        return cls._value
+
+    def __eq__(self, other: Union[object, int, Type[LifeStage]]) -> bool:
+        if isinstance(other, int):
+            return self.value() == other
+        if isinstance(other, LifeStage):
+            return self.value() == other.value()
+        if isclass(other) and issubclass(other, LifeStage):
+            return self.value() == other.value()
+        raise TypeError(f"Expected type of LifeStage or int, but was {other}")
+
+    def __ge__(self, other: Union[object, int, Type[LifeStage]]) -> bool:
+        if isinstance(other, int):
+            return self.value() >= other
+        if isinstance(other, LifeStage):
+            return self.value() >= other.value()
+        if isclass(other) and issubclass(other, LifeStage):
+            return self.value() >= other.value()
+        raise TypeError(f"Expected type of LifeStage or int, but was {other}")
+
+    def __le__(self, other: Union[object, int, Type[LifeStage]]) -> bool:
+        if isinstance(other, int):
+            return self.value() <= other
+        if isinstance(other, LifeStage):
+            return self.value() <= other.value()
+        if isclass(other) and issubclass(other, LifeStage):
+            return self.value() <= other.value()
+        raise TypeError(f"Expected type of LifeStage or int, but was {other}")
+
+    def __gt__(self, other: Union[object, int, Type[LifeStage]]) -> bool:
+        if isinstance(other, int):
+            return self.value() > other
+        if isinstance(other, LifeStage):
+            return self.value() > other.value()
+        if isclass(other) and issubclass(other, LifeStage):
+            return self.value() > other.value()
+        raise TypeError(f"Expected type of LifeStage ot int, but was {other}")
+
+    def __lt__(self, other: Union[object, int, Type[LifeStage]]) -> bool:
+        if isinstance(other, int):
+            return self.value() < other
+        if isinstance(other, LifeStage):
+            return self.value() < other.value()
+        if isclass(other) and issubclass(other, LifeStage):
+            return self.value() < other.value()
+        raise TypeError(f"Expected type of LifeStage or int, but was {other}")
+
+
+class Child(LifeStage):
+
+    _value = 0
+
+
+class Adolescent(LifeStage):
+    _value = 1
+
+
+class YoungAdult(LifeStage):
+    _value = 2
+
+
+class Adult(LifeStage):
+    _value = 3
+
+
+class Senior(LifeStage):
+    _value = 4

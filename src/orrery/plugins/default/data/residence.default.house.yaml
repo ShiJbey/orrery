@@ -5,3 +5,5 @@ components:
   Position2D: {}
   StatusManager: {}
   EventHistory: {}
+  Building:
+    building_type: residential

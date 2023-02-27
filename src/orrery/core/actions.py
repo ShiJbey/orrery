@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, Optional, Union
 
-from orrery import GameObject, SimDateTime, World
+from orrery.core.ecs import GameObject, World
+from orrery.core.time import SimDateTime
 from orrery.core.event import Event
+from orrery.core.roles import Role, RoleList
 
 
 class Action(Event, ABC):
@@ -18,7 +20,7 @@ class Action(Event, ABC):
     def __init__(
         self,
         timestamp: SimDateTime,
-        roles: Dict[str, GameObject],
+        roles: Union[RoleList, Dict[str, GameObject]],
     ) -> None:
         """
         Parameters
@@ -29,17 +31,23 @@ class Action(Event, ABC):
             The names of roles mapped to GameObjects
         """
         super().__init__(timestamp)
-        self._roles: Dict[str, GameObject] = roles
+        self._roles: RoleList = RoleList()
+
+        if isinstance(roles, RoleList):
+            self._roles = roles
+        else:
+            for role, gameobject in roles.items():
+                self._roles.add_role(Role(role, gameobject))
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize this LifeEvent to a dictionary"""
         return {
             **super().to_dict(),
-            "roles": {role: gameobject.uid for role, gameobject in self._roles.items()},
+            "roles": [role.to_dict() for role in self._roles],
         }
 
-    def iter_roles(self) -> Iterator[Tuple[str, GameObject]]:
-        return self._roles.items().__iter__()
+    def iter_roles(self) -> Iterator[Role]:
+        return self._roles.__iter__()
 
     def get_priority(self) -> float:
         """Get the probability of an instance of this event happening
@@ -59,7 +67,7 @@ class Action(Event, ABC):
 
     def is_valid(self, world: World) -> bool:
         """Check that all gameobjects still meet the preconditions for their roles"""
-        return self.instantiate(world, bindings={**self._roles}) is not None
+        return self.instantiate(world, bindings=self._roles) is not None
 
     def get_initiator(self) -> GameObject:
         return self._roles[self.initiator]
@@ -76,18 +84,15 @@ class Action(Event, ABC):
         return "{} [at {}] : {}".format(
             self.get_type(),
             str(self.get_timestamp()),
-            ", ".join(
-                map(
-                    lambda pair: f"{pair[0]}:{pair[1]}",
-                    self._roles.items(),
-                )
-            ),
+            ", ".join([str(role) for role in self._roles]),
         )
 
     @classmethod
     @abstractmethod
     def instantiate(
-        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+        cls,
+        world: World,
+        bindings: Optional[RoleList] = None,
     ) -> Optional[Action]:
         """Attempts to create a new LifeEvent instance
 

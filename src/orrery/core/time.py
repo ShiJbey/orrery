@@ -211,7 +211,7 @@ class SimDateTime:
 
     def to_iso_str(self) -> str:
         """Return ISO string format"""
-        return "{:04d}-{:02d}-{:02d}T00:00.000z".format(self.year, self.month, self.day)
+        return "{:04d}-{:02d}-{:02d}T00:00:00".format(self.year, self.month, self.day)
 
     def to_ordinal(self) -> int:
         """Returns the number of elapsed days since 01-01-0000"""

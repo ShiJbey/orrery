@@ -26,7 +26,7 @@ class CharacterSpawnConfig(pydantic.BaseModel):
     spawn_frequency: int
         The relative frequency that this archetype should be
         chosen to spawn into the simulation
-    spouse_archetypes: List[str]
+    spouse_prefabs: List[str]
         A list of regular expression strings used to match what
         other character archetypes can spawn as this a spouse
         to this character archetype
@@ -35,17 +35,17 @@ class CharacterSpawnConfig(pydantic.BaseModel):
     max_children_at_spawn: int
         The maximum number of children that a character can spawn
         with regardless of the presence of a spouse
-    child_archetypes: List[str]
+    child_prefabs: List[str]
         A list of regular expression strings used to match what
         other character archetypes can spawn as a child to
         this character archetype
     """
 
     spawn_frequency: int = 1
-    spouse_archetypes: List[str] = pydantic.Field(default_factory=list)
+    spouse_prefabs: List[str] = pydantic.Field(default_factory=list)
     chance_spawn_with_spouse: float = 0.5
     max_children_at_spawn: int = 3
-    child_archetypes: List[str] = pydantic.Field(default_factory=list)
+    child_prefabs: List[str] = pydantic.Field(default_factory=list)
 
 
 class CharacterAgingConfig(pydantic.BaseModel):

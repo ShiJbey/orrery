@@ -41,13 +41,14 @@ from .settlement import Settlement
 from .shared import (
     Active,
     Building,
+    CurrentLot,
     CurrentSettlement,
     FrequentedBy,
     FrequentedLocations,
     Location,
     Position2D,
 )
-from .virtues import Virtues, VirtueType
+from .virtues import Virtue, Virtues
 
 __all__ = [
     "Active",
@@ -55,6 +56,7 @@ __all__ = [
     "Activity",
     "Building",
     "CurrentSettlement",
+    "CurrentLot",
     "FrequentedBy",
     "FrequentedLocations",
     "Location",
@@ -63,7 +65,7 @@ __all__ = [
     "Resident",
     "Vacant",
     "Settlement",
-    "VirtueType",
+    "Virtue",
     "Virtues",
     "CanAge",
     "CanDie",
@@ -74,8 +76,6 @@ __all__ = [
     "Deceased",
     "Departed",
     "GameCharacter",
-    "Gender",
-    "LifeStage",
     "Married",
     "ParentOf",
     "Pregnant",
@@ -92,4 +92,6 @@ __all__ = [
     "Services",
     "Unemployed",
     "WorkHistory",
+    "LifeStage",
+    "Gender",
 ]

@@ -10,7 +10,7 @@ from orrery.components.business import OccupationType, Service
 from orrery.components.settlement import Settlement
 from orrery.core.ai import IAIBrain
 from orrery.core.ecs import GameObject, World
-from orrery.core.life_event import LifeEvent
+from orrery.core.life_event import ActionableLifeEvent
 from orrery.core.location_bias import ILocationBiasRule
 from orrery.core.social_rule import ISocialRule
 from orrery.core.time import SimDateTime
@@ -381,13 +381,13 @@ class LifeEventLibrary:
     __slots__ = "_registry"
 
     def __init__(self) -> None:
-        self._registry: Dict[str, Type[LifeEvent]] = {}
+        self._registry: Dict[str, Type[ActionableLifeEvent]] = {}
 
-    def add(self, life_event_type: Type[LifeEvent]) -> None:
+    def add(self, life_event_type: Type[ActionableLifeEvent]) -> None:
         """Register a new LifeEventType mapped to a name"""
         self._registry[life_event_type.__name__] = life_event_type
 
-    def get_all(self) -> List[Type[LifeEvent]]:
+    def get_all(self) -> List[Type[ActionableLifeEvent]]:
         """Get all LifeEventTypes stores in the Library"""
         return list(self._registry.values())
 

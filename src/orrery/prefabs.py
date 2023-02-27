@@ -44,6 +44,7 @@ class CharacterPrefab(EntityPrefab):
 
     name: str
     config: CharacterConfig
+    spawn_frequency: int = 1
     is_template: bool = False
     extends: str = ""
 

@@ -1,5 +1,5 @@
 import threading
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from flask import Flask
 from flask_restful import Api, Resource
@@ -39,15 +39,15 @@ class AllGameObjectsResource(Resource):
         return {"gameobjects": [g.uid for g in self.world.get_gameobjects()]}
 
 
-class DatatablesResource(Resource):
+class DataTablesResource(Resource):
 
     world: World
 
-    def get(self, table_name: str):
+    def get(self, table_name: str) -> Dict[str, Any]:
         return (
             self.world.get_resource(DataCollector)
             .get_table_dataframe(table_name)
-            .to_dict()
+            .to_dict()  # type: ignore
         )
 
 
@@ -58,19 +58,19 @@ def run_api_server(sim: Orrery) -> None:
     GameObjectResource.world = sim.world
     ComponentResource.world = sim.world
     AllGameObjectsResource.world = sim.world
-    DatatablesResource.world = sim.world
+    DataTablesResource.world = sim.world
 
-    api.add_resource(GameObjectResource, "/api/gameobject/<int:guid>")
-    api.add_resource(
+    api.add_resource(GameObjectResource, "/api/gameobject/<int:guid>") # type: ignore
+    api.add_resource(  # type: ignore
         ComponentResource,
         "/api/gameobject/<int:guid>/component/<string:component_type>",
     )
-    api.add_resource(
+    api.add_resource( # type: ignore
         AllGameObjectsResource,
         "/api/gameobject/",
     )
-    api.add_resource(
-        DatatablesResource,
+    api.add_resource( # type: ignore
+        DataTablesResource,
         "/api/data/<string:table_name>",
     )
 

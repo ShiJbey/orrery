@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import List, Type, TypeVar
 
-from orrery import SimDateTime
 from orrery.config import OrreryConfig
 from orrery.content_management import SocialRuleLibrary
 from orrery.core.ecs import GameObject
@@ -11,6 +10,7 @@ from orrery.core.relationship import (
     RelationshipManager,
     RelationshipModifier,
 )
+from orrery.core.time import SimDateTime
 from orrery.core.status import StatusComponent, StatusManager
 from orrery.utils.statuses import add_status, has_status, remove_status
 

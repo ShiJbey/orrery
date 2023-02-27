@@ -1,34 +1,22 @@
 from __future__ import annotations
 
-from typing import Tuple, Type, Union
+from typing import List, Set, Tuple, Type, Union
 
 from orrery import Component
 from orrery.components.business import Occupation, WorkHistory
-from orrery.components.character import (
-    ChildOf,
-    Dating,
-    GameCharacter,
-    Gender,
-    LifeStage,
-    Married,
-    ParentOf,
-    SiblingOf,
-)
+from orrery.components.character import ChildOf, Dating, Married, ParentOf, SiblingOf
 from orrery.core.ecs import GameObject
 from orrery.core.ecs.query import QueryClause, QueryContext, Relation, WithClause
 from orrery.core.relationship import Relationship, RelationshipManager
 from orrery.core.status import StatusComponent
-from orrery.utils.relationships import get_relationship
-
-###############################
-# Entire Clauses
-###############################
 
 
 def with_components(
     variable: str, component_types: Union[Type[Component], Tuple[Type[Component], ...]]
 ) -> QueryClause:
-    return WithClause(tuple(component_types), variable)
+    if isinstance(component_types, tuple):
+        return WithClause(component_types, variable)
+    return WithClause((component_types,), variable)
 
 
 def with_statuses(
@@ -46,7 +34,7 @@ def with_relationship(
     *statuses: Type[StatusComponent],
 ) -> QueryClause:
     def clause(ctx: QueryContext) -> Relation:
-        results = []
+        results: List[Tuple[int, int, int]] = []
         for rel_id, relationship in ctx.world.get_component(Relationship):
             r = ctx.world.get_gameobject(rel_id)
 
@@ -57,57 +45,6 @@ def with_relationship(
         return Relation((owner_var, target_var, relationship_var), results)
 
     return clause
-
-
-def life_stage_eq(stage: LifeStage):
-    def fn(gameobject: GameObject) -> bool:
-        character = gameobject.try_component(GameCharacter)
-        if character is not None:
-            return character.life_stage == stage
-        return False
-
-    return fn
-
-
-def life_stage_ge(stage: LifeStage):
-    def fn(gameobject: GameObject) -> bool:
-        character = gameobject.try_component(GameCharacter)
-        if character is not None:
-            return character.life_stage >= stage
-        return False
-
-    return fn
-
-
-def life_stage_le(stage: LifeStage):
-    def fn(gameobject: GameObject) -> bool:
-        character = gameobject.try_component(GameCharacter)
-        if character is not None:
-            return character.life_stage <= stage
-        return False
-
-    return fn
-
-
-def over_age(age: int):
-    def fn(gameobject: GameObject) -> bool:
-        character = gameobject.try_component(GameCharacter)
-        if character is not None:
-            return character.age > age
-        return False
-
-    return fn
-
-
-def is_gender(gender: Gender):
-    """Return precondition function that checks if an entity is a given gender"""
-
-    def fn(gameobject: GameObject) -> bool:
-        if character := gameobject.try_component(GameCharacter):
-            return character.gender == gender
-        return False
-
-    return fn
 
 
 def has_work_experience_filter(occupation_type: str, years_experience: int = 0):
@@ -156,7 +93,36 @@ def is_single(gameobject: GameObject) -> bool:
     return True
 
 
+def _get_family_members(character: GameObject) -> Set[GameObject]:
+    world = character.world
+    degree_of_sep: int = 0
+    family_status_types = (ChildOf, ParentOf, SiblingOf)
+
+    # Get all familial ties n-degrees of separation from each character
+    family_members: Set[GameObject] = {character}
+
+    character_queue: List[Tuple[int, GameObject]] = [(0, character)]
+
+    while character_queue:
+
+        deg, character = character_queue.pop(0)
+
+        if deg >= degree_of_sep:
+            break
+
+        for relationship_id in character.get_component(
+            RelationshipManager
+        ).relationships:
+            relationship = world.get_gameobject(relationship_id)
+            if any([relationship.has_component(st) for st in family_status_types]):
+                family_member = world.get_gameobject(
+                    relationship.get_component(Relationship).target
+                )
+                character_queue.append((deg + 1, family_member))
+                family_members.add(family_member)
+
+    return family_members
+
+
 def are_related(a: GameObject, b: GameObject) -> bool:
-    relationship = get_relationship(a, b)
-    family_status_types = [ChildOf, ParentOf, SiblingOf]
-    return any([relationship.has_component(st) for st in family_status_types])
+    return len(_get_family_members(a).intersection(_get_family_members(b))) == 0

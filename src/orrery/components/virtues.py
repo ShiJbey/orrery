@@ -18,7 +18,7 @@ import numpy.typing as npt
 from orrery.core.ecs import Component
 
 
-class VirtueType(enum.IntEnum):
+class Virtue(enum.IntEnum):
     ADVENTURE = 0
     AMBITION = enum.auto()
     EXCITEMENT = enum.auto()
@@ -69,20 +69,15 @@ class Virtues(Component):
     def __init__(self, overrides: Optional[Dict[str, int]] = None) -> None:
         super().__init__()
         self._virtues: npt.NDArray[np.int32] = np.zeros(  # type: ignore
-            len(VirtueType), dtype=np.int32
+            len(Virtue), dtype=np.int32
         )
 
         if overrides:
             for trait, value in overrides.items():
-                self[VirtueType[trait]] = value
+                self[Virtue[trait]] = value
 
-    def to_array(self) -> npt.NDArray[np.int32]:
-        """Converts the virtue"""
-        return self._virtues
-
-    def compatibility(self, other: Virtues) -> float:
-        """
-        Calculates the cosine similarity between one VirtueVector and an other
+    def compatibility(self, other: Virtues) -> int:
+        """Calculates the similarity between two Virtue components
 
         Parameters
         ----------
@@ -91,34 +86,41 @@ class Virtues(Component):
 
         Returns
         -------
-        float
-            Similarity score on the range [-1.0, 1.0]
+        int
+            Similarity score on the range [-100, 100]
         """
         # Cosine similarity is a value between -1 and 1
         norm_product: float = float(
-            np.linalg.norm(self.to_array()) * np.linalg.norm(other.to_array())  # type: ignore
+            np.linalg.norm(self._virtues) * np.linalg.norm(other._virtues)  # type: ignore
         )
 
         if norm_product == 0:
-            return 0
+            cosine_similarity = 0.0
         else:
-            return round(
-                float(np.dot(self.to_array(), other.to_array()) / norm_product), 2  # type: ignore
-            )
+            cosine_similarity = float(np.dot(self._virtues, other._virtues) / norm_product)  # type: ignore
 
-    def get_high_values(self, n: int = 3) -> List[VirtueType]:
+        # Distance similarity is a value between -1 and 1
+        max_distance = 509.9019513592785
+        distance = float(np.linalg.norm(self._virtues - other._virtues)) # type: ignore
+        distance_similarity = 2.0 * (1.0 - (distance / max_distance)) - 1.0
+
+        similarity: int = round(100 * ((cosine_similarity + distance_similarity) / 2.0))
+
+        return similarity
+
+    def get_high_values(self, n: int = 3) -> List[Virtue]:
         """Return the virtues names associated with the n-highest values"""
-        sorted_index_array = np.argsort(self.to_array())[-n:]  # type: ignore
+        sorted_index_array = np.argsort(self._virtues)[-n:]  # type: ignore
 
-        value_names = list(VirtueType)
+        value_names = list(Virtue)
 
         return [value_names[i] for i in sorted_index_array]
 
-    def get_low_values(self, n: int = 3) -> List[VirtueType]:
+    def get_low_values(self, n: int = 3) -> List[Virtue]:
         """Return the virtues names associated with the n-lowest values"""
-        sorted_index_array = np.argsort(self.to_array())[:n]  # type: ignore
+        sorted_index_array = np.argsort(self._virtues)[:n]  # type: ignore
 
-        value_names = list(VirtueType)
+        value_names = list(Virtue)
 
         return [value_names[i] for i in sorted_index_array]
 
@@ -134,9 +136,9 @@ class Virtues(Component):
     def __repr__(self) -> str:
         return "{}({})".format(self.__class__.__name__, self._virtues.__repr__())
 
-    def __iter__(self) -> Iterator[Tuple[VirtueType, int]]:
+    def __iter__(self) -> Iterator[Tuple[Virtue, int]]:
         virtue_dict = {
-            virtue: int(self._virtues[i]) for i, virtue in enumerate(list(VirtueType))
+            virtue: int(self._virtues[i]) for i, virtue in enumerate(list(Virtue))
         }
 
         return virtue_dict.items().__iter__()
@@ -145,6 +147,6 @@ class Virtues(Component):
         return {
             **{
                 virtue.name: int(self._virtues[i])
-                for i, virtue in enumerate(list(VirtueType))
+                for i, virtue in enumerate(list(Virtue))
             },
         }

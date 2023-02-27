@@ -3,6 +3,7 @@ import time
 from typing import Any
 
 from orrery import ISystem, Orrery, OrreryConfig, SimDateTime
+from orrery.decorators import system
 from orrery.exporter import export_to_json
 from orrery.utils.common import spawn_settlement
 
@@ -43,7 +44,7 @@ sim = Orrery(
 )
 
 
-@sim.system()
+@system(sim)
 class CreateTown(ISystem):
     sys_group = "initialization"
 

@@ -1,18 +1,19 @@
 import random
-from typing import Dict, List, Optional
+from typing import List, Optional
 
-from orrery import GameObject, SimDateTime, World
+from orrery.core.ecs import GameObject, World
 from orrery.components import (
     Active,
-    Business,
     CurrentSettlement,
     InTheWorkforce,
     Settlement,
     Unemployed,
 )
+from orrery.core.time import SimDateTime
 from orrery.content_management import BusinessLibrary, OccupationTypeLibrary
 from orrery.core.actions import Action
 from orrery.core.event import EventBuffer
+from orrery.core.roles import RoleList
 from orrery.events import StartBusinessEvent
 from orrery.prefabs import BusinessPrefab
 from orrery.utils.common import add_business_to_settlement, spawn_business, start_job
@@ -51,7 +52,11 @@ class StartBusinessAction(Action):
         # Pick a random lot from those available
         lot = rng.choice(vacancies)
 
-        owner_occupation_type = occupation_types.get(business_prefab.config.owner_type)
+        owner_type = business_prefab.config.owner_type
+
+        assert owner_type
+
+        owner_occupation_type = occupation_types.get(owner_type)
 
         business = spawn_business(world, business_prefab)
 
@@ -67,11 +72,12 @@ class StartBusinessAction(Action):
                 character,
                 business,
                 owner_occupation_type.name,
-                business.get_component(Business).name,
             )
         )
 
         start_job(character, business, owner_occupation_type.name, is_owner=True)
+
+        return True
 
     @staticmethod
     def _get_business_character_can_own(
@@ -91,11 +97,8 @@ class StartBusinessAction(Action):
             if prefab.config.owner_type is not None:
                 owner_occupation_type = occupation_types.get(prefab.config.owner_type)
 
-                if owner_occupation_type.precondition:
-                    if owner_occupation_type.precondition(character):
-                        choices.append(prefab)
-                        weights.append(prefab.config.spawning.spawn_frequency)
-                else:
+
+                if owner_occupation_type.precondition(character):
                     choices.append(prefab)
                     weights.append(prefab.config.spawning.spawn_frequency)
 
@@ -107,7 +110,7 @@ class StartBusinessAction(Action):
 
     @classmethod
     def instantiate(
-        cls, world: World, bindings: Optional[Dict[str, GameObject]] = None
+        cls, world: World, bindings: Optional[RoleList] = None
     ) -> Optional[Action]:
         rng = world.get_resource(random.Random)
 
