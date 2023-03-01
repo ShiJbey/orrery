@@ -58,7 +58,7 @@ class Activities(Component):
         self._activities: Set[Activity] = activities
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"activities": [a.name for a in self._activities]}
+        return {"activities": [str(a) for a in self._activities]}
 
     def add_activity(self, activity: Activity) -> None:
         self._activities.add(activity)

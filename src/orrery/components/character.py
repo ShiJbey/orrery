@@ -227,6 +227,7 @@ class NonBinary(TagComponent):
 
 class LifeStage(StatusComponent, ABC):
 
+    is_persistent = True
     _value: int
 
     def __int__(self) -> int:

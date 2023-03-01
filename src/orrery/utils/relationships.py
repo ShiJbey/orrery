@@ -10,8 +10,8 @@ from orrery.core.relationship import (
     RelationshipManager,
     RelationshipModifier,
 )
-from orrery.core.time import SimDateTime
 from orrery.core.status import StatusComponent, StatusManager
+from orrery.core.time import SimDateTime
 from orrery.utils.statuses import add_status, has_status, remove_status
 
 _RST = TypeVar("_RST", bound=StatusComponent)
@@ -81,14 +81,12 @@ def get_relationship(
     KeyError
         If no relationship is found for the given target and create_new is False
     """
-    if target.uid not in subject.get_component(RelationshipManager).relationships:
+    if target not in subject.get_component(RelationshipManager):
         return add_relationship(subject, target)
 
-    relationship_id = subject.get_component(RelationshipManager).relationships[
-        target.uid
-    ]
-
-    return subject.world.get_gameobject(relationship_id)
+    return subject.world.get_gameobject(
+        subject.get_component(RelationshipManager)[target]
+    )
 
 
 def has_relationship(subject: GameObject, target: GameObject) -> bool:
@@ -126,7 +124,7 @@ def add_relationship_status(
         The core component of the status
     """
     relationship = get_relationship(subject, target)
-    status.set_created(str(subject.world.get_resource(SimDateTime)))
+    status.set_created(subject.world.get_resource(SimDateTime))
     add_status(relationship, status)
 
 

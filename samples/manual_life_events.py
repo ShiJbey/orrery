@@ -102,7 +102,9 @@ class FindJob(ActionableLifeEvent):
         business: GameObject,
         occupation: str,
     ):
-        super().__init__(date, [Role("Character", character), Role("Business",  business)])
+        super().__init__(
+            date, [Role("Character", character), Role("Business", business)]
+        )
         self.occupation: str = occupation
 
     def execute(self) -> None:
@@ -113,9 +115,9 @@ class FindJob(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        bindings = bindings if bindings else RoleList()
+
         character = bindings["Character"]
         business = world.get_gameobject(world.get_component(MockBiz)[0][0])
         return cls(world.get_resource(SimDateTime), character, business, "worker")

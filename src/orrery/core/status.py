@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterator, List, Type
 from ordered_set import OrderedSet
 
 from orrery.core.ecs import Component
+from orrery.core.time import SimDateTime
 
 
 class StatusComponent(Component, ABC):
@@ -29,13 +30,13 @@ class StatusComponent(Component, ABC):
 
     def __init__(self) -> None:
         super().__init__()
-        self.created: str = ""
+        self.created: SimDateTime = SimDateTime(1, 1, 1)
 
-    def set_created(self, timestamp: str) -> None:
-        self.created = timestamp
+    def set_created(self, timestamp: SimDateTime) -> None:
+        self.created = timestamp.copy()
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"created": self.created}
+        return {"created": str(self.created)}
 
     def __str__(self) -> str:
         return f"Status::{self.__class__.__name__}"

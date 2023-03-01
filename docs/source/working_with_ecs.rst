@@ -6,7 +6,7 @@ allows orrery to be flexible to new content without users needing to extend
 the core library code.
 
 ECS seems to be all the rage lately, with Unity introducing entities in its
-Data-Oriented Technology Stack and their popularity among rougelike designers.
+Data-Oriented Technology Stack and their popularity among roguelike designers.
 
 If you are unfamiliar with ECSs then we will do a brief primer before
 explaining how to navigate Orrery's.
@@ -139,6 +139,7 @@ Getting started
                 #    money = cast(Money, money)
                 #    job = cast(Job, job)
                 money.dollars += job.salary
+                print(money.dollars)
 
     # You need to register the component with the world instance
     # to use it with the YAML authoring interface

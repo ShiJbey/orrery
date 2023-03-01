@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import dataclasses
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from orrery.config import BusinessConfig
@@ -92,13 +92,12 @@ class WorkHistoryEntry:
     def to_dict(self) -> Dict[str, Any]:
         """Return dictionary representation for serialization"""
 
-        ret = {
+        return {
             "occupation_type": self.occupation_type,
             "business": self.business,
             "years_held": self.years_held,
             "reason_for_leaving": self.reason_for_leaving,
         }
-        return ret
 
 
 class WorkHistory(Component):
@@ -371,7 +370,9 @@ class OccupationType:
 
     name: str
     level: int = 1
-    precondition: Callable[[GameObject], bool] = dataclasses.field(default_factory=lambda: (lambda g: True))
+    precondition: Callable[[GameObject], bool] = dataclasses.field(
+        default_factory=lambda: (lambda g: True)
+    )
 
 
 class BusinessOwner(StatusComponent):

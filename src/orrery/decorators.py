@@ -3,7 +3,6 @@ Utility decorators that should assist with content authoring
 """
 from typing import Any, Type, TypeVar
 
-from orrery import Component, IComponentFactory, ISystem, Orrery
 from orrery.content_management import (
     AIBrainFactory,
     AIBrainLibrary,
@@ -11,9 +10,11 @@ from orrery.content_management import (
     LocationBiasRuleLibrary,
     SocialRuleLibrary,
 )
+from orrery.core.ecs import Component, IComponentFactory, ISystem
 from orrery.core.life_event import ActionableLifeEvent
 from orrery.core.location_bias import ILocationBiasRule
 from orrery.core.social_rule import ISocialRule
+from orrery.orrery import Orrery
 
 _CT = TypeVar("_CT", bound=Component)
 _CF = TypeVar("_CF", bound=IComponentFactory)

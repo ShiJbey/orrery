@@ -77,7 +77,7 @@ class RoleBinder(Protocol):
     def __call__(
         self,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[RoleList]:
         raise NotImplementedError
 
@@ -116,9 +116,7 @@ class RoleList:
 
     __slots__ = "_roles", "_sorted_roles"
 
-    def __init__(
-        self, roles: Optional[Iterable[Role]] = None
-    ) -> None:
+    def __init__(self, roles: Optional[Iterable[Role]] = None) -> None:
         self._roles: List[Role] = []
         self._sorted_roles: Dict[str, List[Role]] = {}
 

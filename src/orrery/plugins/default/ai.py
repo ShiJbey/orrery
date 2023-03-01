@@ -1,10 +1,10 @@
 import random
 from typing import Any, List, Optional
 
-from orrery import GameObject, World
 from orrery.content_management import AIBrainLibrary
 from orrery.core.actions import Action
 from orrery.core.ai import IAIBrain
+from orrery.core.ecs import GameObject, World
 from orrery.core.life_event import ActionableLifeEvent
 from orrery.orrery import Orrery, PluginInfo
 
@@ -51,8 +51,9 @@ plugin_info: PluginInfo = {
     "version": "0.1.0",
 }
 
+
 def default_brain_factory(**kwargs: Any) -> IAIBrain:
-        return DefaultBrain()
+    return DefaultBrain()
 
 
 def setup(sim: Orrery):

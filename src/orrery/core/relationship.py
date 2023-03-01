@@ -3,9 +3,9 @@ from __future__ import annotations
 import math
 from abc import ABC
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Type
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union
 
-from orrery.core.ecs import Component
+from orrery.core.ecs import Component, GameObject
 
 
 def lerp(a: float, b: float, f: float) -> float:
@@ -274,6 +274,23 @@ class RelationshipManager(Component):
 
     def to_dict(self) -> Dict[str, Any]:
         return {str(k): v for k, v in self.relationships.items()}
+
+    def targets(self) -> Iterator[int]:
+        return self.relationships.__iter__()
+
+    def __setitem__(
+        self, key: Union[int, GameObject], value: Union[int, GameObject]
+    ) -> None:
+        self.relationships[int(key)] = int(value)
+
+    def __getitem__(self, key: Union[int, GameObject]) -> int:
+        return self.relationships[int(key)]
+
+    def __contains__(self, item: Union[int, GameObject]):
+        return int(item) in self.relationships
+
+    def __iter__(self) -> Iterator[int]:
+        return self.relationships.values().__iter__()
 
     def __str__(self) -> str:
         return self.__repr__()

@@ -60,6 +60,7 @@ from orrery.core.relationship import (
     Romance,
     lerp,
 )
+from orrery.core.roles import RoleList
 from orrery.core.time import DAYS_PER_YEAR, SimDateTime, TimeDelta
 from orrery.prefabs import CharacterPrefab
 from orrery.utils.common import (
@@ -83,7 +84,7 @@ from orrery.utils.relationships import (
     get_relationships_with_statuses,
     has_relationship,
 )
-from orrery.utils.statuses import add_status, remove_status
+from orrery.utils.statuses import add_status, has_status, remove_status
 
 
 class InitializationSystemGroup(SystemGroup):
@@ -242,7 +243,7 @@ class LifeEventSystem(System):
         event_type: Type[ActionableLifeEvent]
         for _ in range(total_population // 10):
             event_type = random.choice(all_event_types)
-            if event := event_type.instantiate(self.world):
+            if event := event_type.instantiate(self.world, RoleList()):
                 life_event_buffer.append(event)
                 event.execute()
 
@@ -796,6 +797,11 @@ class PregnantStatusSystem(System):
                 last_name=character.get_component(GameCharacter).last_name,
             )
 
+            settlement = self.world.get_gameobject(
+                character.get_component(CurrentSettlement).settlement
+            )
+            add_character_to_settlement(baby, settlement)
+
             set_residence(
                 baby,
                 self.world.get_gameobject(character.get_component(Resident).residence),
@@ -942,7 +948,10 @@ class OnJoinSettlementSystem(ISystem):
             orrery.events.JoinSettlementEvent
         ):
             # Add young-adult or older characters to the workforce
-            if get_life_stage(event.character) >= YoungAdult:
+            if (
+                has_status(event.character, Active)
+                and get_life_stage(event.character) >= YoungAdult
+            ):
                 add_status(event.character, InTheWorkforce())
                 if not event.character.has_component(Occupation):
                     add_status(event.character, Unemployed())

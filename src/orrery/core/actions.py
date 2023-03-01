@@ -4,9 +4,9 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator, Optional, Union
 
 from orrery.core.ecs import GameObject, World
-from orrery.core.time import SimDateTime
 from orrery.core.event import Event
 from orrery.core.roles import Role, RoleList
+from orrery.core.time import SimDateTime
 
 
 class Action(Event, ABC):
@@ -92,7 +92,7 @@ class Action(Event, ABC):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[Action]:
         """Attempts to create a new LifeEvent instance
 

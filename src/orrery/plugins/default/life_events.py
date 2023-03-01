@@ -3,7 +3,6 @@ from __future__ import annotations
 import random
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-from orrery import OrreryConfig
 from orrery.components.business import (
     Business,
     BusinessOwner,
@@ -12,9 +11,9 @@ from orrery.components.business import (
     OpenForBusiness,
 )
 from orrery.components.character import (
+    Adolescent,
     AgingConfig,
     CanGetPregnant,
-    ChildOf,
     Dating,
     Deceased,
     GameCharacter,
@@ -23,11 +22,11 @@ from orrery.components.character import (
     Pregnant,
     Retired,
     Senior,
-    SiblingOf,
     YoungAdult,
 )
 from orrery.components.residence import Residence, Resident, Vacant
 from orrery.components.shared import Active
+from orrery.config import OrreryConfig
 from orrery.content_management import (
     BusinessLibrary,
     LifeEventLibrary,
@@ -36,7 +35,7 @@ from orrery.content_management import (
 from orrery.core.ecs import GameObject, World
 from orrery.core.ecs.query import QB
 from orrery.core.life_event import ActionableLifeEvent, LifeEventBuffer
-from orrery.core.relationship import Romance
+from orrery.core.relationship import RelationshipManager, Romance
 from orrery.core.roles import Role, RoleList
 from orrery.core.time import SimDateTime
 from orrery.orrery import Orrery, PluginInfo
@@ -47,29 +46,30 @@ from orrery.utils.common import (
     end_job,
     get_life_stage,
     remove_character_from_settlement,
+    set_character_name,
     set_residence,
     shutdown_business,
 )
-from orrery.utils.query import (
-    are_related,
-    is_single,
-    with_components,
-    with_relationship,
-    with_statuses,
-)
+from orrery.utils.query import are_related, is_married, is_single, with_relationship
 from orrery.utils.relationships import (
     add_relationship_status,
-    get_relationship_status,
+    get_relationship,
     get_relationships_with_statuses,
+    has_relationship,
     remove_relationship_status,
 )
-from orrery.utils.statuses import add_status, clear_statuses
+from orrery.utils.statuses import add_status, clear_statuses, has_status
 
 
 class StartDatingLifeEvent(ActionableLifeEvent):
 
     optional = True
     initiator = "Initiator"
+
+    def __init__(
+        self, date: SimDateTime, initiator: GameObject, other: GameObject
+    ) -> None:
+        super().__init__(date, [Role("Initiator", initiator), Role("Other", other)])
 
     def get_priority(self) -> float:
         return 1
@@ -81,81 +81,114 @@ class StartDatingLifeEvent(ActionableLifeEvent):
         add_relationship_status(initiator, other, Dating())
         add_relationship_status(other, initiator, Dating())
 
+    @staticmethod
+    def _bind_initiator(
+        world: World, candidate: Optional[GameObject] = None
+    ) -> Optional[GameObject]:
+        if candidate:
+            candidates = [candidate]
+        else:
+            candidates = [
+                world.get_gameobject(result[0])
+                for result in world.get_components((GameCharacter, Active))
+            ]
+
+        candidates = [
+            c for c in candidates if is_single(c) and get_life_stage(c) >= Adolescent
+        ]
+
+        if candidates:
+            return world.get_resource(random.Random).choice(candidates)
+
+        return None
+
+    @staticmethod
+    def _bind_other(
+        world: World, initiator: GameObject, candidate: Optional[GameObject] = None
+    ) -> Optional[GameObject]:
+
+        romance_threshold = world.get_resource(OrreryConfig).settings.get(
+            "dating_romance_threshold", 25
+        )
+
+        if candidate:
+            if has_relationship(initiator, candidate) and has_relationship(
+                candidate, initiator
+            ):
+                candidates = [candidate]
+            else:
+                return None
+        else:
+            candidates = [
+                world.get_gameobject(c)
+                for c in initiator.get_component(RelationshipManager).targets()
+            ]
+
+        matches: List[GameObject] = []
+
+        for character in candidates:
+            outgoing_relationship = get_relationship(initiator, character)
+            incoming_relationship = get_relationship(character, initiator)
+
+            outgoing_romance = outgoing_relationship.get_component(Romance)
+            incoming_romance = incoming_relationship.get_component(Romance)
+
+            if not character.has_component(Active):
+                continue
+
+            if get_life_stage(character) < Adolescent:
+                continue
+
+            if not is_single(character):
+                continue
+
+            if outgoing_romance.get_value() < romance_threshold:
+                continue
+
+            if incoming_romance.get_value() < romance_threshold:
+                continue
+
+            if are_related(initiator, character):
+                continue
+
+            if character == initiator:
+                continue
+
+            matches.append(character)
+
+        if matches:
+            return world.get_resource(random.Random).choice(matches)
+
+        return None
+
     @classmethod
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        query = QB.query(
-            ("Initiator", "Other"),
-            QB.with_((GameCharacter, Active), "Initiator"),
-            QB.filter_(is_single, "Initiator"),
-            with_relationship("Initiator", "Other", "?relationship_a"),
-            QB.with_(Active, "Other"),
-            QB.filter_(is_single, "Other"),
-            QB.filter_(
-                lambda g: g.get_component(Romance).get_value()
-                >= g.world.get_resource(OrreryConfig).settings.get(
-                    "dating_romance_threshold", 25
-                ),
-                "?relationship_a",
-            ),
-            with_relationship("Other", "Initiator", "?relationship_b"),
-            QB.filter_(
-                lambda g: g.get_component(Romance).get_value()
-                >= g.world.get_resource(OrreryConfig).settings.get(
-                    "dating_romance_threshold", 25
-                ),
-                "?relationship_b",
-            ),
-            QB.not_(
-                QB.filter_(
-                    lambda a, b: a == b,
-                    ("Initiator", "Other"),
-                )
-            ),
-            QB.not_(
-                QB.filter_(
-                    are_related,
-                    ("Initiator", "Other"),
-                )
-            ),
-            QB.not_(
-                QB.or_(
-                    QB.with_(Dating, "?relationship_a"),
-                    QB.with_(Married, "?relationship_a"),
-                    QB.with_(ChildOf, "?relationship_a"),
-                    QB.with_(ParentOf, "?relationship_a"),
-                    QB.with_(SiblingOf, "?relationship_a"),
-                )
-            ),
-            QB.not_(
-                QB.or_(
-                    QB.with_(Dating, "?relationship_b"),
-                    QB.with_(Married, "?relationship_b"),
-                    QB.with_(ChildOf, "?relationship_b"),
-                    QB.with_(ParentOf, "?relationship_b"),
-                    QB.with_(SiblingOf, "?relationship_b"),
-                )
-            ),
-        )
 
-        if bindings:
-            results = query.execute(world, {r.name: r.gameobject.uid for r in bindings})
-        else:
-            results = query.execute(world)
+        initiator = cls._bind_initiator(world, bindings.get("Initiator"))
 
-        if results:
-            chosen_result = world.get_resource(random.Random).choice(results)
-            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
-            roles = dict(zip(query.get_symbols(), chosen_objects))
-            return cls(world.get_resource(SimDateTime), [Role(title, gameobject) for title, gameobject in roles.items()])
+        if initiator is None:
+            return None
+
+        other = cls._bind_other(world, initiator, bindings.get("Other"))
+
+        if other is None:
+            return None
+
+        return cls(world.get_resource(SimDateTime), initiator, other)
 
 
 class DatingBreakUp(ActionableLifeEvent):
 
     initiator = "Initiator"
+
+    def __init__(
+        self, date: SimDateTime, initiator: GameObject, other: GameObject
+    ) -> None:
+        super().__init__(date, [Role("Initiator", initiator), Role("Other", other)])
 
     def get_priority(self) -> float:
         return 1
@@ -167,37 +200,87 @@ class DatingBreakUp(ActionableLifeEvent):
         remove_relationship_status(initiator, other, Dating)
         remove_relationship_status(other, initiator, Dating)
 
+    @staticmethod
+    def _bind_initiator(
+        world: World, candidate: Optional[GameObject] = None
+    ) -> Optional[GameObject]:
+        if candidate:
+            candidates = [candidate]
+        else:
+            candidates = [
+                world.get_gameobject(result[0])
+                for result in world.get_components((GameCharacter, Active))
+            ]
+
+        candidates = [
+            c for c in candidates if len(get_relationships_with_statuses(c, Dating)) > 0
+        ]
+
+        if candidates:
+            return world.get_resource(random.Random).choice(candidates)
+
+        return None
+
+    @staticmethod
+    def _bind_other(
+        world: World, initiator: GameObject, candidate: Optional[GameObject] = None
+    ) -> Optional[GameObject]:
+
+        romance_threshold = world.get_resource(OrreryConfig).settings.get(
+            "breakup_romance_thresh", -10
+        )
+
+        if candidate:
+            if has_relationship(initiator, candidate) and has_relationship(
+                candidate, initiator
+            ):
+                candidates = [candidate]
+            else:
+                return None
+        else:
+            candidates = [
+                world.get_gameobject(c)
+                for c in initiator.get_component(RelationshipManager).targets()
+            ]
+
+        matches: List[GameObject] = []
+
+        for character in candidates:
+            outgoing_relationship = get_relationship(initiator, character)
+
+            outgoing_romance = outgoing_relationship.get_component(Romance)
+
+            if not has_status(outgoing_relationship, Dating):
+                continue
+
+            if outgoing_romance.get_value() > romance_threshold:
+                continue
+
+            matches.append(character)
+
+        if matches:
+            return world.get_resource(random.Random).choice(matches)
+
+        return None
+
     @classmethod
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        query = QB.query(
-            ("Initiator", "Other"),
-            with_components("Initiator", (GameCharacter, Active)),
-            with_relationship("Initiator", "Other", "?relationship"),
-            with_statuses("?relationship", Dating),
-            with_components("Other", (GameCharacter, Active)),
-            QB.filter_(
-                lambda rel: rel.get_component(Romance).get_value()
-                <= rel.world.get_resource(OrreryConfig).settings.get(
-                    "dating_breakup_thresh", 20
-                ),
-                "?relationship",
-            ),
-        )
 
-        if bindings:
-            results = query.execute(world, {r.name: r.gameobject.uid for r in bindings})
-        else:
-            results = query.execute(world)
+        initiator = cls._bind_initiator(world, bindings.get("Initiator"))
 
-        if results:
-            chosen_result = world.get_resource(random.Random).choice(results)
-            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
-            roles = dict(zip(query.get_symbols(), chosen_objects))
-            return cls(world.get_resource(SimDateTime), [Role(title, gameobject) for title, gameobject in roles.items()])
+        if initiator is None:
+            return None
+
+        other = cls._bind_other(world, initiator, bindings.get("Other"))
+
+        if other is None:
+            return None
+
+        return cls(world.get_resource(SimDateTime), initiator, other)
 
 
 class DivorceLifeEvent(ActionableLifeEvent):
@@ -205,7 +288,7 @@ class DivorceLifeEvent(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
         query = QB.query(
             ("Initiator", "Other"),
@@ -230,7 +313,10 @@ class DivorceLifeEvent(ActionableLifeEvent):
             chosen_result = world.get_resource(random.Random).choice(results)
             chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
             roles = dict(zip(query.get_symbols(), chosen_objects))
-            return cls(world.get_resource(SimDateTime), [Role(title, gameobject) for title, gameobject in roles.items()])
+            return cls(
+                world.get_resource(SimDateTime),
+                [Role(title, gameobject) for title, gameobject in roles.items()],
+            )
 
     def get_priority(self) -> float:
         return 0.8
@@ -244,56 +330,110 @@ class DivorceLifeEvent(ActionableLifeEvent):
 
 
 class MarriageLifeEvent(ActionableLifeEvent):
+    def __init__(
+        self, date: SimDateTime, initiator: GameObject, other: GameObject
+    ) -> None:
+        super().__init__(date, [Role("Initiator", initiator), Role("Other", other)])
+
+    @staticmethod
+    def _bind_initiator(
+        world: World, candidate: Optional[GameObject] = None
+    ) -> Optional[GameObject]:
+        if candidate:
+            candidates = [candidate]
+        else:
+            candidates = [
+                world.get_gameobject(result[0])
+                for result in world.get_components((GameCharacter, Active))
+            ]
+
+        candidates = [
+            c for c in candidates if len(get_relationships_with_statuses(c, Dating)) > 0
+        ]
+
+        if candidates:
+            return world.get_resource(random.Random).choice(candidates)
+
+        return None
+
+    @staticmethod
+    def _bind_other(
+        world: World, initiator: GameObject, candidate: Optional[GameObject] = None
+    ) -> Optional[GameObject]:
+
+        romance_threshold = world.get_resource(OrreryConfig).settings.get(
+            "marriage_romance_threshold", 60
+        )
+
+        current_date = world.get_resource(SimDateTime)
+
+        if candidate:
+            if has_relationship(initiator, candidate) and has_relationship(
+                candidate, initiator
+            ):
+                candidates = [candidate]
+            else:
+                return None
+        else:
+            candidates = [
+                world.get_gameobject(c)
+                for c in initiator.get_component(RelationshipManager).targets()
+            ]
+
+        matches: List[GameObject] = []
+
+        for character in candidates:
+            outgoing_relationship = get_relationship(initiator, character)
+            incoming_relationship = get_relationship(character, initiator)
+
+            outgoing_romance = outgoing_relationship.get_component(Romance)
+            incoming_romance = incoming_relationship.get_component(Romance)
+
+            if dating := outgoing_relationship.try_component(Dating):
+                if (current_date - dating.created).years < 1:
+                    continue
+            else:
+                continue
+
+            if not has_status(incoming_relationship, Dating):
+                continue
+
+            if not character.has_component(Active):
+                continue
+
+            if outgoing_romance.get_value() < romance_threshold:
+                continue
+
+            if incoming_romance.get_value() < romance_threshold:
+                continue
+
+            if character == initiator:
+                continue
+
+            matches.append(character)
+
+        if matches:
+            return world.get_resource(random.Random).choice(matches)
+
+        return None
+
     @classmethod
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        query = QB.query(
-            ("Initiator", "Other"),
-            QB.with_((GameCharacter, Active), "Initiator"),
-            with_relationship("Initiator", "Other", "?relationship_a", Dating),
-            with_relationship("Initiator", "Other", "?relationship_b", Dating),
-            QB.not_(
-                QB.filter_(
-                    lambda initiator, other: initiator == other,
-                    ("Initiator", "Other"),
-                )
-            ),
-            QB.filter_(
-                lambda initiator, other: get_relationship_status(
-                    initiator, other, Dating
-                ).years
-                > 36,
-                ("Initiator", "Other"),
-            ),
-            QB.filter_(
-                lambda rel: rel.get_component(Romance).get_value()
-                >= rel.world.get_resource(OrreryConfig).settings.get(
-                    "marriage_romance_thresh", 25
-                ),
-                "?relationship_a",
-            ),
-            QB.filter_(
-                lambda rel: rel.get_component(Romance).get_value()
-                >= rel.world.get_resource(OrreryConfig).settings.get(
-                    "marriage_romance_thresh", 25
-                ),
-                "?relationship_b",
-            ),
-        )
+        initiator = cls._bind_initiator(world, bindings.get("Initiator"))
 
-        if bindings:
-            results = query.execute(world, {r.name: r.gameobject.uid for r in bindings})
-        else:
-            results = query.execute(world)
+        if initiator is None:
+            return None
 
-        if results:
-            chosen_result = world.get_resource(random.Random).choice(results)
-            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
-            roles = dict(zip(query.get_symbols(), chosen_objects))
-            return cls(world.get_resource(SimDateTime), [Role(title, gameobject) for title, gameobject in roles.items()])
+        other = cls._bind_other(world, initiator, bindings.get("Other"))
+
+        if other is None:
+            return None
+
+        return cls(world.get_resource(SimDateTime), initiator, other)
 
     def get_priority(self) -> float:
         return 0.8
@@ -301,45 +441,133 @@ class MarriageLifeEvent(ActionableLifeEvent):
     def execute(self) -> None:
         initiator = self["Initiator"]
         other = self["Other"]
+        world = initiator.world
 
         remove_relationship_status(initiator, other, Dating)
         remove_relationship_status(other, initiator, Dating)
         add_relationship_status(initiator, other, Married())
         add_relationship_status(other, initiator, Married())
 
+        # Move in together
+        former_residence = world.get_gameobject(other.get_component(Resident).residence)
+        new_residence = world.get_gameobject(
+            initiator.get_component(Resident).residence
+        )
+
+        movers: List[int] = [*former_residence.get_component(Residence).residents]
+
+        for character_id in movers:
+            character = world.get_gameobject(character_id)
+            is_owner = former_residence.get_component(Residence).is_owner(character_id)
+            set_residence(character, new_residence, is_owner)
+
+        # Change last names
+        new_last_name = initiator.get_component(GameCharacter).last_name
+
+        set_character_name(other, last_name=new_last_name)
+
+        for relationship in get_relationships_with_statuses(other, ParentOf):
+            target = world.get_gameobject(relationship.target)
+
+            if target.uid not in movers:
+                continue
+
+            if not has_status(target, Active):
+                continue
+
+            if get_life_stage(target) < YoungAdult and not is_married(target):
+                set_character_name(target, last_name=new_last_name)
+
 
 class GetPregnantLifeEvent(ActionableLifeEvent):
     """Defines an event where two characters stop dating"""
+
+    def __init__(
+        self, date: SimDateTime, pregnant_one: GameObject, other: GameObject
+    ) -> None:
+        super().__init__(
+            date, [Role("PregnantOne", pregnant_one), Role("Other", other)]
+        )
+
+    @staticmethod
+    def _bind_pregnant_one(
+        world: World, candidate: Optional[GameObject] = None
+    ) -> Optional[GameObject]:
+        if candidate:
+            candidates = [candidate]
+        else:
+            candidates = [
+                world.get_gameobject(result[0])
+                for result in world.get_components((GameCharacter, Active))
+            ]
+
+        candidates = [
+            c
+            for c in candidates
+            if c.has_component(CanGetPregnant) and not c.has_component(Pregnant)
+        ]
+
+        if candidates:
+            return world.get_resource(random.Random).choice(candidates)
+
+        return None
+
+    @staticmethod
+    def _bind_other(
+        world: World, initiator: GameObject, candidate: Optional[GameObject] = None
+    ) -> Optional[GameObject]:
+
+        if candidate:
+            if has_relationship(initiator, candidate) and has_relationship(
+                candidate, initiator
+            ):
+                candidates = [candidate]
+            else:
+                return None
+        else:
+            candidates = [
+                world.get_gameobject(c)
+                for c in initiator.get_component(RelationshipManager).targets()
+            ]
+
+        matches: List[GameObject] = []
+
+        for character in candidates:
+            outgoing_relationship = get_relationship(initiator, character)
+
+            if not has_status(character, Active):
+                continue
+
+            if not (
+                has_status(outgoing_relationship, Dating)
+                or has_status(outgoing_relationship, Married)
+            ):
+                continue
+
+            matches.append(character)
+
+        if matches:
+            return world.get_resource(random.Random).choice(matches)
+
+        return None
 
     @classmethod
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
+        pregnant_one = cls._bind_pregnant_one(world, bindings.get("Initiator"))
 
-        query = QB.query(
-            ("PregnantOne", "Other"),
-            QB.with_((GameCharacter, Active, CanGetPregnant), "PregnantOne"),
-            QB.not_(QB.with_(Pregnant, "PregnantOne")),
-            with_relationship("PregnantOne", "Other", "?relationship"),
-            QB.with_((GameCharacter, Active), "Other"),
-            QB.or_(
-                QB.with_(Dating, "?relationship"),
-                QB.with_(Married, "?relationship"),
-            ),
-        )
+        if pregnant_one is None:
+            return None
 
-        if bindings:
-            results = query.execute(world, {r.name: r.gameobject.uid for r in bindings})
-        else:
-            results = query.execute(world)
+        other = cls._bind_other(world, pregnant_one, bindings.get("Other"))
 
-        if results:
-            chosen_result = world.get_resource(random.Random).choice(results)
-            chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
-            roles = dict(zip(query.get_symbols(), chosen_objects))
-            return cls(world.get_resource(SimDateTime), [Role(title, gameobject) for title, gameobject in roles.items()])
+        if other is None:
+            return None
+
+        return cls(world.get_resource(SimDateTime), pregnant_one, other)
 
     def execute(self):
         current_date = self["PregnantOne"].world.get_resource(SimDateTime)
@@ -368,7 +596,7 @@ class RetireLifeEvent(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
         query = QB.query(
             "Retiree",
@@ -385,7 +613,10 @@ class RetireLifeEvent(ActionableLifeEvent):
             chosen_result = world.get_resource(random.Random).choice(results)
             chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
             roles = dict(zip(query.get_symbols(), chosen_objects))
-            return cls(world.get_resource(SimDateTime), [Role(title, gameobject) for title, gameobject in roles.items()])
+            return cls(
+                world.get_resource(SimDateTime),
+                [Role(title, gameobject) for title, gameobject in roles.items()],
+            )
 
     def get_priority(self) -> float:
         return (
@@ -411,7 +642,7 @@ class FindOwnPlaceLifeEvent(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
         query = QB.query(
             "Character",
@@ -427,7 +658,10 @@ class FindOwnPlaceLifeEvent(ActionableLifeEvent):
             chosen_result = world.get_resource(random.Random).choice(results)
             chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
             roles = dict(zip(query.get_symbols(), chosen_objects))
-            return cls(world.get_resource(SimDateTime), [Role(title, gameobject) for title, gameobject in roles.items()])
+            return cls(
+                world.get_resource(SimDateTime),
+                [Role(title, gameobject) for title, gameobject in roles.items()],
+            )
 
     def get_priority(self) -> float:
         return 0.7
@@ -491,7 +725,7 @@ class DieOfOldAge(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
         query = QB.query(
             "Deceased",
@@ -512,7 +746,10 @@ class DieOfOldAge(ActionableLifeEvent):
             chosen_result = world.get_resource(random.Random).choice(results)
             chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
             roles = dict(zip(query.get_symbols(), chosen_objects))
-            return cls(world.get_resource(SimDateTime), [Role(title, gameobject) for title, gameobject in roles.items()])
+            return cls(
+                world.get_resource(SimDateTime),
+                [Role(title, gameobject) for title, gameobject in roles.items()],
+            )
 
     def get_priority(self) -> float:
         return 0.8
@@ -555,10 +792,8 @@ class Die(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-
-        bindings = bindings if bindings else RoleList()
 
         character = bindings.get("Character")
 
@@ -592,7 +827,7 @@ class GoOutOfBusiness(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
         query = QB.query(
             "Business", QB.with_((Business, OpenForBusiness, Active), "Business")
@@ -606,7 +841,10 @@ class GoOutOfBusiness(ActionableLifeEvent):
             chosen_result = world.get_resource(random.Random).choice(results)
             chosen_objects = [world.get_gameobject(uid) for uid in chosen_result]
             roles = dict(zip(query.get_symbols(), chosen_objects))
-            return cls(world.get_resource(SimDateTime), [Role(title, gameobject) for title, gameobject in roles.items()])
+            return cls(
+                world.get_resource(SimDateTime),
+                [Role(title, gameobject) for title, gameobject in roles.items()],
+            )
 
 
 class StartBusiness(ActionableLifeEvent):
@@ -619,7 +857,7 @@ class StartBusiness(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
         pass
 
@@ -661,7 +899,8 @@ class StartBusiness(ActionableLifeEvent):
         # Filter for all the business types that the potential owner is eligible
         # to own
         candidates = [
-            c for c in candidates
+            c
+            for c in candidates
             if c.config.owner_type is not None
             and occupation_types.get(c.config.owner_type).precondition(
                 roles["BusinessOwner"]

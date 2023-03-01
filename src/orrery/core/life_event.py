@@ -39,7 +39,7 @@ class LifeEvent(Event, ABC):
         """Serialize this LifeEvent to a dictionary"""
         return {
             **super().to_dict(),
-            "roles": {role.name: role.gameobject for role in self._roles},
+            "roles": {role.name: role.gameobject.uid for role in self._roles},
         }
 
     def iter_roles(self) -> Iterator[Role]:
@@ -119,7 +119,7 @@ class ActionableLifeEvent(LifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
         """Attempts to create a new LifeEvent instance
 

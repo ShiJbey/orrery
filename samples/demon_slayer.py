@@ -581,9 +581,8 @@ class BecomeDemonSlayer(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        bindings = bindings if bindings else RoleList()
 
         # Only create demon slayers if demons are an actual problem
         demons_exist = len(world.get_component(Demon)) > 5
@@ -632,16 +631,18 @@ class DemonSlayerPromotion(ActionableLifeEvent):
     def execute(self) -> None:
         character = self["Character"]
         slayer = character.get_component(DemonSlayer)
-        power_level_rank = power_level_to_slayer_rank(character.get_component(PowerLevel).level)
+        power_level_rank = power_level_to_slayer_rank(
+            character.get_component(PowerLevel).level
+        )
         slayer.rank = power_level_rank
 
     @classmethod
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        bindings = bindings if bindings else RoleList()
+
         character = cls._bind_demon_slayer(world, bindings.get("Character"))
 
         if character is None:
@@ -682,7 +683,9 @@ class DemonChallengeForPower(ActionableLifeEvent):
     def __init__(
         self, date: SimDateTime, challenger: GameObject, opponent: GameObject
     ) -> None:
-        super().__init__(date, [Role("Challenger", challenger), Role("Opponent", opponent)])
+        super().__init__(
+            date, [Role("Challenger", challenger), Role("Opponent", opponent)]
+        )
 
     def execute(self) -> None:
         """Execute the battle"""
@@ -700,9 +703,9 @@ class DemonChallengeForPower(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        bindings = bindings if bindings else RoleList()
+
         challenger = cls._bind_challenger(world, bindings.get("Challenger"))
 
         if challenger is None:
@@ -804,9 +807,9 @@ class DevourHuman(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        bindings = bindings if bindings else RoleList()
+
         demon = cls._bind_demon(world, bindings.get("Demon"))
 
         if demon is None:
@@ -886,7 +889,9 @@ class Battle(ActionableLifeEvent):
     def __init__(
         self, date: SimDateTime, challenger: GameObject, opponent: GameObject
     ) -> None:
-        super().__init__(date, [Role("Challenger", challenger), Role("Opponent", opponent)])
+        super().__init__(
+            date, [Role("Challenger", challenger), Role("Opponent", opponent)]
+        )
 
     def execute(self) -> None:
         """Choose a winner based on their expected success"""
@@ -948,9 +953,8 @@ class Battle(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        bindings = bindings if bindings else RoleList()
 
         challenger = cls._bind_challenger(world, bindings.get("Challenger"))
         opponent = cls._bind_opponent(world, bindings.get("Opponent"))
@@ -1008,9 +1012,8 @@ class TurnSomeoneIntoDemon(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        bindings = bindings if bindings else RoleList()
 
         demon = cls._bind_demon(world, candidate=bindings.get("Demon"))
 
@@ -1111,9 +1114,9 @@ class PromotionToLowerMoon(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
-        bindings = bindings if bindings else RoleList()
+
         demon = cls._bind_demon(world, bindings.get("Character"))
         if demon:
             return cls(world.get_resource(SimDateTime), demon)
@@ -1153,7 +1156,7 @@ class PromotionToLowerMoon(ActionableLifeEvent):
 @life_event(sim)
 class PromotionToUpperMoon(ActionableLifeEvent):
     def __init__(self, date: SimDateTime, character: GameObject) -> None:
-        super().__init__(date,[Role("Character", character)])
+        super().__init__(date, [Role("Character", character)])
 
     def execute(self) -> None:
         character = self["Character"]
@@ -1164,7 +1167,7 @@ class PromotionToUpperMoon(ActionableLifeEvent):
     def instantiate(
         cls,
         world: World,
-        bindings: Optional[RoleList] = None,
+        bindings: RoleList,
     ) -> Optional[ActionableLifeEvent]:
         if bindings:
             demon = cls._bind_demon(world, bindings.get("Character"))

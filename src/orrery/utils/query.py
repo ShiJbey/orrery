@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import List, Set, Tuple, Type, Union
 
-from orrery import Component
 from orrery.components.business import Occupation, WorkHistory
 from orrery.components.character import ChildOf, Dating, Married, ParentOf, SiblingOf
-from orrery.core.ecs import GameObject
+from orrery.core.ecs import Component, GameObject
 from orrery.core.ecs.query import QueryClause, QueryContext, Relation, WithClause
 from orrery.core.relationship import Relationship, RelationshipManager
 from orrery.core.status import StatusComponent
@@ -84,11 +83,20 @@ def has_work_experience_filter(occupation_type: str, years_experience: int = 0):
 
 def is_single(gameobject: GameObject) -> bool:
     """Return true if the character is not dating or married"""
-    for _, rel_id in gameobject.get_component(
-        RelationshipManager
-    ).relationships.items():
-        relationship = gameobject.world.get_gameobject(rel_id)
+    world = gameobject.world
+    for rel_id in gameobject.get_component(RelationshipManager):
+        relationship = world.get_gameobject(rel_id)
         if relationship.has_component(Dating) or relationship.has_component(Married):
+            return False
+    return True
+
+
+def is_married(gameobject: GameObject) -> bool:
+    """Return true if the character is not dating or married"""
+    world = gameobject.world
+    for rel_id in gameobject.get_component(RelationshipManager):
+        relationship = world.get_gameobject(rel_id)
+        if relationship.has_component(Married):
             return False
     return True
 
@@ -101,11 +109,13 @@ def _get_family_members(character: GameObject) -> Set[GameObject]:
     # Get all familial ties n-degrees of separation from each character
     family_members: Set[GameObject] = {character}
 
+    visited: Set[GameObject] = set()
     character_queue: List[Tuple[int, GameObject]] = [(0, character)]
 
     while character_queue:
 
         deg, character = character_queue.pop(0)
+        visited.add(character)
 
         if deg >= degree_of_sep:
             break
@@ -118,11 +128,13 @@ def _get_family_members(character: GameObject) -> Set[GameObject]:
                 family_member = world.get_gameobject(
                     relationship.get_component(Relationship).target
                 )
-                character_queue.append((deg + 1, family_member))
-                family_members.add(family_member)
+
+                if family_member not in visited:
+                    character_queue.append((deg + 1, family_member))
+                    family_members.add(family_member)
 
     return family_members
 
 
 def are_related(a: GameObject, b: GameObject) -> bool:
-    return len(_get_family_members(a).intersection(_get_family_members(b))) == 0
+    return len(_get_family_members(a).intersection(_get_family_members(b))) > 0

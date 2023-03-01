@@ -1,7 +1,6 @@
 import random
 from typing import List, Optional
 
-from orrery.core.ecs import GameObject, World
 from orrery.components import (
     Active,
     CurrentSettlement,
@@ -9,11 +8,12 @@ from orrery.components import (
     Settlement,
     Unemployed,
 )
-from orrery.core.time import SimDateTime
 from orrery.content_management import BusinessLibrary, OccupationTypeLibrary
 from orrery.core.actions import Action
+from orrery.core.ecs import GameObject, World
 from orrery.core.event import EventBuffer
 from orrery.core.roles import RoleList
+from orrery.core.time import SimDateTime
 from orrery.events import StartBusinessEvent
 from orrery.prefabs import BusinessPrefab
 from orrery.utils.common import add_business_to_settlement, spawn_business, start_job
@@ -97,7 +97,6 @@ class StartBusinessAction(Action):
             if prefab.config.owner_type is not None:
                 owner_occupation_type = occupation_types.get(prefab.config.owner_type)
 
-
                 if owner_occupation_type.precondition(character):
                     choices.append(prefab)
                     weights.append(prefab.config.spawning.spawn_frequency)
@@ -109,9 +108,7 @@ class StartBusinessAction(Action):
         return None
 
     @classmethod
-    def instantiate(
-        cls, world: World, bindings: Optional[RoleList] = None
-    ) -> Optional[Action]:
+    def instantiate(cls, world: World, bindings: RoleList) -> Optional[Action]:
         rng = world.get_resource(random.Random)
 
         if bindings:

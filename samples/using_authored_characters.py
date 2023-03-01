@@ -23,7 +23,10 @@ from orrery.decorators import component, system
 from orrery.exporter import export_to_json
 from orrery.utils.common import (
     add_character_to_settlement,
+    add_residence_to_settlement,
+    set_residence,
     spawn_character,
+    spawn_residence,
     spawn_settlement,
 )
 
@@ -115,7 +118,8 @@ class RelationshipReporter(ISystem):
                     )
 
 
-EXPORT_SIM = False
+EXPORT_SIM = True
+YEARS_TO_SIMULATE = 50
 
 
 def main():
@@ -147,38 +151,24 @@ def main():
 
     add_character_to_settlement(delores, west_world)
 
-    charlotte = spawn_character(
-        sim.world,
-        "character::default::female",
-        first_name="Charlotte",
-        last_name="Hale",
-        age=40,
-    )
+    house = spawn_residence(sim.world, "residence::default::house")
 
-    add_character_to_settlement(charlotte, west_world)
+    add_residence_to_settlement(house, west_world)
 
-    william = spawn_character(
-        sim.world,
-        "character::default::male",
-        first_name="William",
-        last_name="ManInBlack",
-        age=68,
-    )
-
-    add_character_to_settlement(william, west_world)
+    set_residence(delores, house)
 
     st = time.time()
-    sim.run_for(25)
+    sim.run_for(YEARS_TO_SIMULATE)
     elapsed_time = time.time() - st
 
     print(f"World Date: {str(sim.world.get_resource(SimDateTime))}")
     print("Execution time: ", elapsed_time, "seconds")
 
-    rel_data = sim.world.get_resource(DataCollector).get_table_dataframe(
-        "relationships"
-    )
-
-    rel_data[:800].to_csv("rel_data.csv")
+    # rel_data = sim.world.get_resource(DataCollector).get_table_dataframe(
+    #     "relationships"
+    # )
+    #
+    # rel_data[:800].to_csv("rel_data.csv")
 
     if EXPORT_SIM:
         with open(f"orrery_{sim.config.seed}.json", "w") as f:
